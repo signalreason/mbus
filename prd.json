@@ -26,7 +26,7 @@
       "title": "LLM schema round-trip",
       "type": "spike",
       "milestone": "M0",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2",
       "summary": "Prove action JSON parsing and validation.",
       "details": "Define action schema and parse sample payloads; reject malformed input.",
