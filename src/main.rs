@@ -5,6 +5,7 @@ use mbus::config::{load_config, CliOverrides, ConfigError, LlmConfig, LlmMode};
 use mbus::llm::openai::{OpenAiClient, OpenAiConfig};
 use mbus::llm::router::Router;
 use mbus::llm::scripted::{ScriptedLlm, StubLlm};
+use mbus::telemetry;
 use mbus::verify::rules::Validator;
 use serde::Serialize;
 use std::error::Error;
@@ -94,6 +95,7 @@ struct RunArgs {
 
 #[tokio::main]
 async fn main() {
+    telemetry::init_tracing();
     if let Err(err) = run_cli().await {
         eprintln!("error: {err}");
         std::process::exit(1);

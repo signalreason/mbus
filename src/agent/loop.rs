@@ -3,9 +3,12 @@ use crate::agent::policy::AgentPolicy;
 use crate::browser::{Browser, BrowserError};
 use crate::llm::client::{LlmClient, LlmError};
 use crate::llm::router::{Router, StepOutcome, Tier};
+use crate::telemetry;
 use crate::types::{Action, Observation, StepError, StepResult};
 use crate::verify::rules::{ValidationError, Validator};
 use std::fmt;
+use std::time::Instant;
+use tracing::Instrument;
 
 pub struct LlmClients {
     fast: Box<dyn LlmClient>,
@@ -131,31 +134,180 @@ impl<B: Browser> AgentLoop<B> {
     }
 
     pub async fn run(&mut self) -> Result<RunResult, AgentError> {
-        let mut observation = self.browser.snapshot().await?;
+        enum StepControl {
+            Continue,
+            Done(Action),
+        }
+
+        let snapshot_start = Instant::now();
+        let mut observation = match self.browser.snapshot().await {
+            Ok(observation) => {
+                telemetry::record_snapshot_duration(snapshot_start.elapsed());
+                observation
+            }
+            Err(err) => {
+                telemetry::record_snapshot_duration(snapshot_start.elapsed());
+                tracing::error!(
+                    event = "snapshot_error",
+                    error_code = err.code,
+                    error_message = %err.message
+                );
+                return Err(AgentError::Browser(err));
+            }
+        };
         self.memory.record_observation(observation.clone());
 
-        for _step in 0..self.policy.max_steps {
+        for step_index in 0..self.policy.max_steps {
             let tier = self.router.tier();
-            let client = self.clients.client(tier);
-            let action = client
-                .propose_action(
-                    &self.task,
-                    self.memory.plan(),
-                    &observation,
-                    self.memory.history(),
-                )
-                .await?;
+            telemetry::inc_step();
 
-            if let Err(errors) = self.validator.validate(&action, &observation) {
-                let result = validation_result(errors);
-                self.memory.record_step(action, result);
-                self.router.record(StepOutcome::Failure);
-                continue;
+            let step_span = tracing::info_span!(
+                "step",
+                step_index = step_index + 1,
+                tier = ?tier,
+                url = %observation.url,
+                state_hash = ?observation.state_hash
+            );
+
+            let step_result = async {
+                let step_start = Instant::now();
+                let client = self.clients.client(tier);
+
+                let action = match client
+                    .propose_action(
+                        &self.task,
+                        self.memory.plan(),
+                        &observation,
+                        self.memory.history(),
+                    )
+                    .await
+                {
+                    Ok(action) => action,
+                    Err(err) => {
+                        let duration = step_start.elapsed();
+                        telemetry::record_step_duration(duration);
+                        tracing::error!(
+                            event = "llm_error",
+                            error_code = err.code,
+                            error_message_len = err.message.chars().count(),
+                            step_duration_ms = duration.as_millis() as u64
+                        );
+                        return Err(AgentError::Llm(err));
+                    }
+                };
+
+                telemetry::inc_action(&action);
+                tracing::info!(
+                    event = "action_proposed",
+                    action_type = telemetry::action_type(&action),
+                    action = ?telemetry::ActionSummary::from(&action)
+                );
+
+                if let Err(errors) = self.validator.validate(&action, &observation) {
+                    let error_count = errors.len();
+                    telemetry::inc_validation_failure();
+                    let result = validation_result(errors);
+                    self.memory.record_step(action, result);
+                    let tier_after = self.router.record(StepOutcome::Failure);
+                    telemetry::set_no_progress_streak(self.router.counters().no_progress);
+                    let duration = step_start.elapsed();
+                    telemetry::record_step_duration(duration);
+                    tracing::warn!(
+                        event = "validation_failed",
+                        error_count = error_count,
+                        tier = ?tier_after,
+                        step_duration_ms = duration.as_millis() as u64
+                    );
+                    return Ok(StepControl::Continue);
+                }
+
+                if matches!(action, Action::Done { .. }) {
+                    let result = done_result(&observation);
+                    self.memory.record_step(action.clone(), result);
+                    let duration = step_start.elapsed();
+                    telemetry::record_step_duration(duration);
+                    tracing::info!(
+                        event = "done",
+                        step_duration_ms = duration.as_millis() as u64
+                    );
+                    return Ok(StepControl::Done(action));
+                }
+
+                let apply_start = Instant::now();
+                let result = match self.browser.apply(&action).await {
+                    Ok(result) => result,
+                    Err(err) => {
+                        let apply_duration = apply_start.elapsed();
+                        telemetry::record_apply_duration(apply_duration);
+                        let duration = step_start.elapsed();
+                        telemetry::record_step_duration(duration);
+                        tracing::error!(
+                            event = "apply_error",
+                            error_code = err.code,
+                            error_message = %err.message,
+                            step_duration_ms = duration.as_millis() as u64
+                        );
+                        return Err(AgentError::Browser(err));
+                    }
+                };
+                let apply_duration = apply_start.elapsed();
+                telemetry::record_apply_duration(apply_duration);
+                if !result.ok {
+                    telemetry::inc_apply_failure();
+                }
+                self.memory.record_step(action.clone(), result.clone());
+
+                let snapshot_start = Instant::now();
+                let next_observation = match self.browser.snapshot().await {
+                    Ok(observation) => observation,
+                    Err(err) => {
+                        let snapshot_duration = snapshot_start.elapsed();
+                        telemetry::record_snapshot_duration(snapshot_duration);
+                        let duration = step_start.elapsed();
+                        telemetry::record_step_duration(duration);
+                        tracing::error!(
+                            event = "snapshot_error",
+                            error_code = err.code,
+                            error_message = %err.message,
+                            step_duration_ms = duration.as_millis() as u64
+                        );
+                        return Err(AgentError::Browser(err));
+                    }
+                };
+                let snapshot_duration = snapshot_start.elapsed();
+                telemetry::record_snapshot_duration(snapshot_duration);
+                self.memory.record_observation(next_observation.clone());
+
+                let outcome = step_outcome(&result, &observation, &next_observation);
+                let tier_after = self.router.record(outcome);
+                telemetry::set_no_progress_streak(self.router.counters().no_progress);
+
+                let error_code = result
+                    .error
+                    .as_ref()
+                    .map(|err| err.code.as_str())
+                    .unwrap_or("none");
+                let duration = step_start.elapsed();
+                telemetry::record_step_duration(duration);
+                tracing::info!(
+                    event = "step_result",
+                    outcome = ?outcome,
+                    ok = result.ok,
+                    error_code = error_code,
+                    tier = ?tier_after,
+                    apply_duration_ms = apply_duration.as_millis() as u64,
+                    snapshot_duration_ms = snapshot_duration.as_millis() as u64,
+                    step_duration_ms = duration.as_millis() as u64,
+                    new_state_hash = ?result.new_state_hash
+                );
+
+                observation = next_observation;
+                Ok(StepControl::Continue)
             }
+            .instrument(step_span)
+            .await?;
 
-            if matches!(action, Action::Done { .. }) {
-                let result = done_result(&observation);
-                self.memory.record_step(action.clone(), result);
+            if let StepControl::Done(action) = step_result {
                 return Ok(RunResult {
                     status: RunStatus::Done,
                     final_action: action,
@@ -163,16 +315,6 @@ impl<B: Browser> AgentLoop<B> {
                     final_observation: observation,
                 });
             }
-
-            let result = self.browser.apply(&action).await?;
-            self.memory.record_step(action.clone(), result.clone());
-
-            let next_observation = self.browser.snapshot().await?;
-            self.memory.record_observation(next_observation.clone());
-
-            let outcome = step_outcome(&result, &observation, &next_observation);
-            self.router.record(outcome);
-            observation = next_observation;
         }
 
         let final_action = Action::Done {

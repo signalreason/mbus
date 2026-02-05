@@ -4,6 +4,7 @@ pub mod browser;
 pub mod llm;
 pub mod verify;
 pub mod types;
+pub mod telemetry;
 
 #[cfg(test)]
 mod tests {

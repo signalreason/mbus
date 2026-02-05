@@ -1,12 +1,14 @@
 use crate::llm::client::{LlmClient, LlmError, LlmResult};
 use crate::llm::prompts::SYSTEM_PROMPT;
 use crate::llm::schema::ActionSchema;
+use crate::telemetry;
 use crate::types::{Action, Observation};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use tracing::Instrument;
 
 #[derive(Clone, Debug)]
 pub struct OpenAiConfig {
@@ -96,51 +98,69 @@ impl LlmClient for OpenAiClient {
         observation: &Observation,
         history: &[Action],
     ) -> LlmResult<Action> {
-        let prompt = self.build_prompt(task, plan, observation, history)?;
-        let mut body = json!({
-            "model": self.config.model,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": self.config.temperature
-        });
-        if let Some(max_tokens) = self.config.max_tokens {
-            body["max_tokens"] = json!(max_tokens);
-        }
+        telemetry::inc_llm_call();
+        let start = Instant::now();
+        let span = tracing::info_span!("llm_call", model = %self.config.model);
+        let result = async {
+            let prompt = self.build_prompt(task, plan, observation, history)?;
+            let mut body = json!({
+                "model": self.config.model,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": self.config.temperature
+            });
+            if let Some(max_tokens) = self.config.max_tokens {
+                body["max_tokens"] = json!(max_tokens);
+            }
 
-        let response = self
-            .http
-            .post(self.config.endpoint())
-            .bearer_auth(&self.config.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|err| LlmError::new("http_error", err.to_string()))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response
-                .text()
+            let response = self
+                .http
+                .post(self.config.endpoint())
+                .bearer_auth(&self.config.api_key)
+                .json(&body)
+                .send()
                 .await
-                .unwrap_or_else(|_| "<no body>".to_string());
-            return Err(LlmError::new(
-                "http_error",
-                format!("status {status}: {text}"),
-            ));
-        }
+                .map_err(|err| LlmError::new("http_error", err.to_string()))?;
 
-        let payload: ChatResponse = response
-            .json()
-            .await
-            .map_err(|err| LlmError::new("http_error", err.to_string()))?;
-        let content = payload
-            .choices
-            .get(0)
-            .and_then(|choice| choice.message.content.as_ref())
-            .ok_or_else(|| LlmError::new("empty_response", "missing content"))?;
-        let content_text = extract_content(content)?;
-        self.parse_content(&content_text)
+            if !response.status().is_success() {
+                let status = response.status();
+                let text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "<no body>".to_string());
+                return Err(LlmError::new(
+                    "http_error",
+                    format!("status {status}: {text}"),
+                ));
+            }
+
+            let payload: ChatResponse = response
+                .json()
+                .await
+                .map_err(|err| LlmError::new("http_error", err.to_string()))?;
+            let content = payload
+                .choices
+                .get(0)
+                .and_then(|choice| choice.message.content.as_ref())
+                .ok_or_else(|| LlmError::new("empty_response", "missing content"))?;
+            let content_text = extract_content(content)?;
+            self.parse_content(&content_text)
+        }
+        .instrument(span)
+        .await;
+
+        telemetry::record_llm_duration(start.elapsed());
+        if let Err(err) = &result {
+            telemetry::inc_llm_failure();
+            tracing::warn!(
+                event = "llm_failure",
+                error_code = err.code,
+                error_message_len = err.message.chars().count()
+            );
+        }
+        result
     }
 }
 

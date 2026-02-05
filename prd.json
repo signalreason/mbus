@@ -265,7 +265,7 @@
       "title": "Telemetry (logs + metrics)",
       "type": "build",
       "milestone": "M1",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
       "summary": "Structured logs, traces, and metrics for each step.",
       "details": "Add tracing spans and metric counters for steps and LLM calls.",
