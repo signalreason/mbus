@@ -406,6 +406,7 @@ fn validation_result(errors: Vec<ValidationError>) -> StepResult {
             message,
         }),
         new_state_hash: None,
+        extract: None,
     }
 }
 
@@ -426,6 +427,7 @@ fn done_result(observation: &Observation) -> StepResult {
         ok: true,
         error: None,
         new_state_hash: observation.state_hash.clone(),
+        extract: None,
     }
 }
 
@@ -608,11 +610,13 @@ mod tests {
                     ok: true,
                     error: None,
                     new_state_hash: None,
+                    extract: None,
                 },
                 StepResult {
                     ok: true,
                     error: None,
                     new_state_hash: None,
+                    extract: None,
                 },
             ],
         );
@@ -652,6 +656,7 @@ mod tests {
             ok: true,
             error: None,
             new_state_hash: None,
+            extract: None,
         };
 
         let (outcome, heuristics) = step_outcome(&result, &prev, &next);
@@ -668,6 +673,7 @@ mod tests {
             ok: true,
             error: None,
             new_state_hash: None,
+            extract: None,
         };
 
         let (outcome, heuristics) = step_outcome(&result, &prev, &next);
@@ -692,6 +698,7 @@ mod tests {
             ok: true,
             error: None,
             new_state_hash: None,
+            extract: None,
         };
 
         let (outcome, heuristics) = step_outcome(&result, &prev, &next);

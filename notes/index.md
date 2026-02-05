@@ -17,3 +17,4 @@
 - 2026-02-05 E2E-001 local harness: `notes/2026-02-05-e2e-001-e2e-harness.md`
 - 2026-02-05 REPAIR-001 schema repair: `notes/2026-02-05-repair-001-schema-repair.md`
 - 2026-02-05 PROGRESS-001 no-progress heuristics: `notes/2026-02-05-progress-001-no-progress-heuristics.md`
+- 2026-02-05 EXTRACT-001 extraction output: `notes/2026-02-05-extract-001-output.md`

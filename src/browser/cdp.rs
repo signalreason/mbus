@@ -119,7 +119,7 @@ impl Browser for CdpBrowser {
         let result =
             timeout(self.timeouts.action, self.applier.apply(&page, action, Some(&map))).await;
         let step = match result {
-            Ok(Ok(())) => action_result_ok(),
+            Ok(Ok(outcome)) => action_result_ok(outcome.extract),
             Ok(Err(err)) => action_result_err(err),
             Err(err) => action_result_err(ActionError::new(
                 "timeout",

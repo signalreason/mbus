@@ -5,6 +5,7 @@ pub mod llm;
 pub mod verify;
 pub mod types;
 pub mod telemetry;
+pub mod output;
 
 #[cfg(test)]
 mod tests {

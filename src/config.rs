@@ -15,6 +15,7 @@ pub struct AppConfig {
     pub router: RouterConfig,
     pub validator: ValidatorConfig,
     pub llm: LlmConfig,
+    pub output: OutputConfig,
 }
 
 impl Default for AppConfig {
@@ -25,6 +26,7 @@ impl Default for AppConfig {
             router: RouterConfig::default(),
             validator: ValidatorConfig::default(),
             llm: LlmConfig::default(),
+            output: OutputConfig::default(),
         }
     }
 }
@@ -88,6 +90,19 @@ impl Default for LlmConfig {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct OutputConfig {
+    pub extract_output: Option<PathBuf>,
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        Self {
+            extract_output: Some(PathBuf::from("mbus_extract.json")),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct CliOverrides {
     pub max_steps: Option<usize>,
@@ -117,6 +132,7 @@ pub struct CliOverrides {
     pub llm_temperature: Option<f32>,
     pub llm_max_tokens: Option<u32>,
     pub llm_actions_file: Option<PathBuf>,
+    pub extract_output: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -182,6 +198,8 @@ struct FileConfig {
     validator: Option<FileValidatorConfig>,
     #[serde(default)]
     llm: Option<FileLlmConfig>,
+    #[serde(default)]
+    output: Option<FileOutputConfig>,
 }
 
 impl FileConfig {
@@ -227,6 +245,12 @@ impl FileConfig {
             }
             if let Some(max_text_len) = browser.max_text_len {
                 config.browser.max_text_len = max_text_len;
+            }
+        }
+
+        if let Some(output) = self.output.as_ref() {
+            if let Some(path) = output.extract_output.as_ref() {
+                config.output.extract_output = Some(PathBuf::from(path));
             }
         }
 
@@ -351,6 +375,11 @@ struct FileLlmConfig {
     actions_file: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+struct FileOutputConfig {
+    extract_output: Option<String>,
+}
+
 #[derive(Clone, Debug, Default)]
 struct EnvOverrides {
     inner: CliOverrides,
@@ -428,6 +457,7 @@ impl EnvOverrides {
                     overrides.llm_max_tokens = Some(parse_u32(&key, &value)?)
                 }
                 "MBUS_LLM_ACTIONS_FILE" => overrides.llm_actions_file = Some(PathBuf::from(value)),
+                "MBUS_EXTRACT_OUTPUT" => overrides.extract_output = Some(PathBuf::from(value)),
                 _ => {}
             }
         }
@@ -520,6 +550,9 @@ impl CliOverrides {
         }
         if let Some(value) = self.llm_actions_file.as_ref() {
             config.llm.actions_file = Some(value.to_path_buf());
+        }
+        if let Some(value) = self.extract_output.as_ref() {
+            config.output.extract_output = Some(value.to_path_buf());
         }
 
         Ok(())

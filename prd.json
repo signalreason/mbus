@@ -388,7 +388,7 @@
       "title": "Structured extraction output",
       "type": "build",
       "milestone": "M2",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
       "summary": "Persist structured extraction results to JSON.",
       "details": "Implement extract action output file with schema.",

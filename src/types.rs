@@ -58,12 +58,22 @@ pub struct StepError {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ExtractResult {
+    pub query: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct StepResult {
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<StepError>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_state_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extract: Option<ExtractResult>,
 }
 
 #[cfg(test)]
@@ -115,6 +125,24 @@ mod tests {
                 message: "missing id".to_string(),
             }),
             new_state_hash: None,
+            extract: None,
+        };
+        let value = serde_json::to_value(&result).expect("serialize step result");
+        let parsed: StepResult = serde_json::from_value(value).expect("deserialize step result");
+        assert_eq!(parsed, result);
+    }
+
+    #[test]
+    fn step_result_with_extract_round_trip() {
+        let result = StepResult {
+            ok: true,
+            error: None,
+            new_state_hash: None,
+            extract: Some(ExtractResult {
+                query: "price".to_string(),
+                id: Some("el_4".to_string()),
+                value: "$10".to_string(),
+            }),
         };
         let value = serde_json::to_value(&result).expect("serialize step result");
         let parsed: StepResult = serde_json::from_value(value).expect("deserialize step result");

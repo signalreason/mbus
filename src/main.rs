@@ -91,6 +91,8 @@ struct RunArgs {
     llm_max_tokens: Option<u32>,
     #[arg(long)]
     llm_actions_file: Option<PathBuf>,
+    #[arg(long)]
+    extract_output: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -122,7 +124,7 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
     let browser = CdpBrowser::launch(config.browser.clone()).await?;
     let clients = build_clients(&config.llm)?;
 
-    let mut agent = AgentLoop::new(browser, clients, task);
+    let mut agent = AgentLoop::new(browser, clients, task.clone());
     if let Some(plan) = plan.as_ref() {
         agent = agent.with_plan(plan.to_string());
     }
@@ -140,6 +142,7 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
 
     let result = run_result?;
     emit_run_logs(&result)?;
+    write_extract_output(&task, &config, &result)?;
 
     Ok(())
 }
@@ -221,6 +224,7 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
         llm_temperature: args.llm_temperature,
         llm_max_tokens: args.llm_max_tokens,
         llm_actions_file: args.llm_actions_file.clone(),
+        extract_output: args.extract_output.clone(),
     })
 }
 
@@ -312,6 +316,24 @@ fn emit_run_logs(result: &mbus::agent::r#loop::RunResult) -> Result<(), Box<dyn 
     Ok(())
 }
 
+fn write_extract_output(
+    task: &str,
+    config: &mbus::config::AppConfig,
+    result: &mbus::agent::r#loop::RunResult,
+) -> Result<(), Box<dyn Error>> {
+    let Some(path) = config.output.extract_output.as_ref() else {
+        return Ok(());
+    };
+    let task_id = mbus::output::task_id_for(task);
+    let timestamp = mbus::output::current_timestamp()?;
+    if let Some(output) =
+        mbus::output::build_extract_output(task_id, timestamp, &result.steps)
+    {
+        mbus::output::write_extract_output(path, &output)?;
+    }
+    Ok(())
+}
+
 fn emit_json<T: Serialize>(value: &T) -> Result<(), Box<dyn Error>> {
     let text = serde_json::to_string(value)?;
     println!("{text}");
@@ -347,6 +369,7 @@ struct ConfigLog {
     router: RouterLog,
     validator: ValidatorLog,
     llm: LlmLog,
+    output: OutputLog,
 }
 
 impl From<&mbus::config::AppConfig> for ConfigLog {
@@ -393,6 +416,13 @@ impl From<&mbus::config::AppConfig> for ConfigLog {
                     .as_ref()
                     .map(|value| value.display().to_string()),
                 api_key_present: config.llm.api_key.is_some(),
+            },
+            output: OutputLog {
+                extract_output: config
+                    .output
+                    .extract_output
+                    .as_ref()
+                    .map(|value| value.display().to_string()),
             },
         }
     }
@@ -443,4 +473,9 @@ struct LlmLog {
     max_tokens: Option<u32>,
     actions_file: Option<String>,
     api_key_present: bool,
+}
+
+#[derive(Serialize)]
+struct OutputLog {
+    extract_output: Option<String>,
 }

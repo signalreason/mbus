@@ -1,4 +1,4 @@
-use crate::types::{Action, StepError, StepResult};
+use crate::types::{Action, ExtractResult, StepError, StepResult};
 use chromiumoxide::keys;
 use chromiumoxide::layout::Point;
 use chromiumoxide::page::Page;
@@ -16,6 +16,17 @@ use tokio::time::{sleep, Duration};
 
 #[derive(Clone, Debug)]
 pub struct ActionApplier;
+
+#[derive(Clone, Debug)]
+pub struct ApplyOutcome {
+    pub extract: Option<ExtractResult>,
+}
+
+impl ApplyOutcome {
+    fn none() -> Self {
+        Self { extract: None }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ActionError {
@@ -56,48 +67,63 @@ impl ActionApplier {
         page: &Page,
         action: &Action,
         element_map: Option<&HashMap<String, BackendNodeId>>,
-    ) -> Result<(), ActionError> {
-        match action {
+    ) -> Result<ApplyOutcome, ActionError> {
+        let outcome = match action {
             Action::Click { id } => {
                 click_by_id(page, id, element_map).await?;
+                ApplyOutcome::none()
             }
             Action::Type { id, text, submit } => {
                 type_by_id(page, id, text, submit.unwrap_or(false), element_map).await?;
+                ApplyOutcome::none()
             }
             Action::Select { id, value } => {
                 select_by_id(page, id, value, element_map).await?;
+                ApplyOutcome::none()
             }
             Action::Scroll { dx, dy } => {
                 let script = format!("() => window.scrollBy({dx}, {dy})");
                 page.evaluate(script).await?;
+                ApplyOutcome::none()
             }
             Action::Wait { ms } => {
                 sleep(Duration::from_millis(*ms)).await;
+                ApplyOutcome::none()
             }
             Action::Navigate { url } => {
                 page.goto(url.as_str()).await?;
+                ApplyOutcome::none()
             }
             Action::Back => {
                 page.evaluate("() => history.back()").await?;
+                ApplyOutcome::none()
             }
             Action::Extract { query, id } => {
-                if let Some(target) = id.as_deref() {
-                    extract_by_id(page, target, query, element_map).await?;
+                let value = if let Some(target) = id.as_deref() {
+                    extract_by_id(page, target, query, element_map).await?
                 } else {
-                    extract_from_page(page, query).await?;
+                    extract_from_page(page, query).await?
+                };
+                ApplyOutcome {
+                    extract: Some(ExtractResult {
+                        query: query.to_string(),
+                        id: id.clone(),
+                        value,
+                    }),
                 }
             }
-            Action::Done { .. } => {}
-        }
-        Ok(())
+            Action::Done { .. } => ApplyOutcome::none(),
+        };
+        Ok(outcome)
     }
 }
 
-pub fn action_result_ok() -> StepResult {
+pub fn action_result_ok(extract: Option<ExtractResult>) -> StepResult {
     StepResult {
         ok: true,
         error: None,
         new_state_hash: None,
+        extract,
     }
 }
 
@@ -109,6 +135,7 @@ pub fn action_result_err(error: ActionError) -> StepResult {
             message: error.message,
         }),
         new_state_hash: None,
+        extract: None,
     }
 }
 
@@ -291,7 +318,7 @@ async fn extract_by_id(
     id: &str,
     query: &str,
     element_map: Option<&HashMap<String, BackendNodeId>>,
-) -> Result<(), ActionError> {
+) -> Result<String, ActionError> {
     let backend_id = resolve_backend_node_id(id, element_map)?;
     let value = call_function_on_node(
         page,
@@ -300,11 +327,10 @@ async fn extract_by_id(
         vec![Value::String(query.to_string())],
     )
     .await?;
-    parse_js_action_result(value, "extract_failed")?;
-    Ok(())
+    Ok(parse_js_action_result(value, "extract_failed")?.unwrap_or_default())
 }
 
-async fn extract_from_page(page: &Page, query: &str) -> Result<(), ActionError> {
+async fn extract_from_page(page: &Page, query: &str) -> Result<String, ActionError> {
     let query_literal =
         serde_json::to_string(query).map_err(|err| ActionError::new("js_error", err.to_string()))?;
     let script = format!("({})({})", extract_function(), query_literal);
@@ -312,8 +338,7 @@ async fn extract_from_page(page: &Page, query: &str) -> Result<(), ActionError> 
     let value = result
         .into_value()
         .map_err(|err| ActionError::new("js_error", format!("extract: {err}")))?;
-    parse_js_action_result(value, "extract_failed")?;
-    Ok(())
+    Ok(parse_js_action_result(value, "extract_failed")?.unwrap_or_default())
 }
 
 fn extract_function() -> &'static str {
