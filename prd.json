@@ -72,7 +72,7 @@
       "title": "Core types and schema",
       "type": "build",
       "milestone": "M1",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
       "summary": "Define Observation/Action/StepResult and schema helpers.",
       "details": "Add serde types and validation helpers for action JSON.",
