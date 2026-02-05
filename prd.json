@@ -1,0 +1,433 @@
+{
+  "tasks": [
+    {
+      "task_id": "SPIKE-001",
+      "title": "CDP snapshot feasibility",
+      "type": "spike",
+      "milestone": "M0",
+      "status": "unstarted",
+      "model": "gpt-5.2",
+      "summary": "Validate chromiumoxide snapshot + click on real pages.",
+      "details": "Create a small harness to open a page, list actionable elements, and click by node id.",
+      "acceptance_criteria": [
+        "Can list >= 10 actionable elements on a demo page",
+        "Can click one element without crashing",
+        "Logs include snapshot and click timings"
+      ],
+      "dependencies": [],
+      "risk": "medium",
+      "tags": [
+        "cdp",
+        "spike"
+      ]
+    },
+    {
+      "task_id": "SPIKE-002",
+      "title": "LLM schema round-trip",
+      "type": "spike",
+      "milestone": "M0",
+      "status": "unstarted",
+      "model": "gpt-5.2",
+      "summary": "Prove action JSON parsing and validation.",
+      "details": "Define action schema and parse sample payloads; reject malformed input.",
+      "acceptance_criteria": [
+        "Valid actions parse into types",
+        "Malformed actions fail with structured errors",
+        "Unit tests cover all action types"
+      ],
+      "dependencies": [],
+      "risk": "low",
+      "tags": [
+        "schema",
+        "spike"
+      ]
+    },
+    {
+      "task_id": "CORE-001",
+      "title": "Crate scaffold and module layout",
+      "type": "build",
+      "milestone": "M1",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Create the Rust crate and module skeleton aligned to the architecture.",
+      "details": "Set up Cargo project, modules, and placeholder traits; ensure project builds.",
+      "acceptance_criteria": [
+        "Cargo project builds successfully",
+        "Module layout matches documented structure"
+      ],
+      "dependencies": [],
+      "verify": {
+        "cmd": "cargo test",
+        "cwd": "/Users/xwoj/src/mbus",
+        "timeout_seconds": 600
+      },
+      "risk": "low",
+      "tags": [
+        "scaffold",
+        "core"
+      ]
+    },
+    {
+      "task_id": "TYPES-001",
+      "title": "Core types and schema",
+      "type": "build",
+      "milestone": "M1",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Define Observation/Action/StepResult and schema helpers.",
+      "details": "Add serde types and validation helpers for action JSON.",
+      "acceptance_criteria": [
+        "Types serialize and deserialize correctly",
+        "Schema validates sample actions"
+      ],
+      "dependencies": [
+        "CORE-001"
+      ],
+      "verify": {
+        "cmd": "cargo test",
+        "cwd": "/Users/xwoj/src/mbus",
+        "timeout_seconds": 600
+      },
+      "risk": "low",
+      "tags": [
+        "types",
+        "schema"
+      ]
+    },
+    {
+      "task_id": "BROW-001",
+      "title": "Browser adapter (CDP)",
+      "type": "build",
+      "milestone": "M1",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Implement Browser trait with chromiumoxide.",
+      "details": "Provide snapshot/apply methods with timeouts and lifecycle management.",
+      "acceptance_criteria": [
+        "Snapshot returns valid Observation",
+        "Click and type actions work on demo page"
+      ],
+      "dependencies": [
+        "SPIKE-001",
+        "CORE-001",
+        "TYPES-001"
+      ],
+      "risk": "medium",
+      "tags": [
+        "browser",
+        "cdp"
+      ]
+    },
+    {
+      "task_id": "OBS-001",
+      "title": "Observation builder and state hash",
+      "type": "build",
+      "milestone": "M1",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Generate stable element refs and progress hash.",
+      "details": "Use accessibility roles/names and compute hash from URL/title/top elements.",
+      "acceptance_criteria": [
+        "Element ids stable across snapshots",
+        "Hash changes on navigation"
+      ],
+      "dependencies": [
+        "TYPES-001",
+        "BROW-001"
+      ],
+      "risk": "medium",
+      "tags": [
+        "observation",
+        "hash"
+      ]
+    },
+    {
+      "task_id": "ACT-001",
+      "title": "Action executor",
+      "type": "build",
+      "milestone": "M1",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Map actions to CDP operations.",
+      "details": "Implement click/type/select/scroll/wait/navigate/back/extract/done execution.",
+      "acceptance_criteria": [
+        "Actions execute on local test pages",
+        "Errors return structured StepResult"
+      ],
+      "dependencies": [
+        "TYPES-001",
+        "BROW-001"
+      ],
+      "risk": "medium",
+      "tags": [
+        "actions",
+        "executor"
+      ]
+    },
+    {
+      "task_id": "VERIFY-001",
+      "title": "Action validator",
+      "type": "build",
+      "milestone": "M1",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Reject invalid actions before execution.",
+      "details": "Check ids, bounds, and type constraints with structured errors.",
+      "acceptance_criteria": [
+        "Invalid actions rejected deterministically",
+        "Validation errors are structured"
+      ],
+      "dependencies": [
+        "TYPES-001"
+      ],
+      "verify": {
+        "cmd": "cargo test",
+        "cwd": "/Users/xwoj/src/mbus",
+        "timeout_seconds": 600
+      },
+      "risk": "low",
+      "tags": [
+        "validation"
+      ]
+    },
+    {
+      "task_id": "ROUTE-001",
+      "title": "Model router",
+      "type": "build",
+      "milestone": "M1",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Implement fast->mid->strong escalation policy.",
+      "details": "Track failure/no-progress counters and select tier; expose thresholds in config.",
+      "acceptance_criteria": [
+        "Tier changes on thresholds",
+        "Counters reset on progress"
+      ],
+      "dependencies": [
+        "TYPES-001",
+        "SPIKE-002"
+      ],
+      "risk": "low",
+      "tags": [
+        "router",
+        "llm"
+      ]
+    },
+    {
+      "task_id": "AGENT-001",
+      "title": "Agent loop",
+      "type": "build",
+      "milestone": "M1",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Orchestrate snapshot->propose->validate->apply cycle.",
+      "details": "Implement max-step loop, history, and termination on Done.",
+      "acceptance_criteria": [
+        "Simple task completes within max steps",
+        "History records each action"
+      ],
+      "dependencies": [
+        "OBS-001",
+        "ACT-001",
+        "VERIFY-001",
+        "ROUTE-001"
+      ],
+      "risk": "medium",
+      "tags": [
+        "agent",
+        "loop"
+      ]
+    },
+    {
+      "task_id": "CLI-001",
+      "title": "CLI and config",
+      "type": "build",
+      "milestone": "M1",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Add CLI entrypoint and config file support.",
+      "details": "Use clap; support env vars and config file overrides.",
+      "acceptance_criteria": [
+        "`mbus run` executes a task",
+        "Config overrides are applied correctly"
+      ],
+      "dependencies": [
+        "AGENT-001"
+      ],
+      "risk": "low",
+      "tags": [
+        "cli",
+        "config"
+      ]
+    },
+    {
+      "task_id": "TELE-001",
+      "title": "Telemetry (logs + metrics)",
+      "type": "build",
+      "milestone": "M1",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Structured logs, traces, and metrics for each step.",
+      "details": "Add tracing spans and metric counters for steps and LLM calls.",
+      "acceptance_criteria": [
+        "Structured logs include action + outcome",
+        "Metrics counters increment per step"
+      ],
+      "dependencies": [
+        "AGENT-001"
+      ],
+      "risk": "low",
+      "tags": [
+        "telemetry",
+        "metrics"
+      ]
+    },
+    {
+      "task_id": "TEST-001",
+      "title": "Schema and validator unit tests",
+      "type": "build",
+      "milestone": "M1",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Unit tests for schema parsing and validation rules.",
+      "details": "Cover all action types and invalid cases.",
+      "acceptance_criteria": [
+        "All action types covered by tests",
+        "Invalid cases fail as expected"
+      ],
+      "dependencies": [
+        "VERIFY-001"
+      ],
+      "verify": {
+        "cmd": "cargo test",
+        "cwd": "/Users/xwoj/src/mbus",
+        "timeout_seconds": 600
+      },
+      "risk": "low",
+      "tags": [
+        "tests",
+        "unit"
+      ]
+    },
+    {
+      "task_id": "E2E-001",
+      "title": "Local E2E harness",
+      "type": "build",
+      "milestone": "M1",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Integration tests against local static pages.",
+      "details": "Serve simple HTML pages and verify click/type/select behaviors.",
+      "acceptance_criteria": [
+        "E2E tests pass on local pages",
+        "Action results are validated"
+      ],
+      "dependencies": [
+        "BROW-001",
+        "CLI-001"
+      ],
+      "verify": {
+        "cmd": "cargo test",
+        "cwd": "/Users/xwoj/src/mbus",
+        "timeout_seconds": 600
+      },
+      "risk": "medium",
+      "tags": [
+        "tests",
+        "integration"
+      ]
+    },
+    {
+      "task_id": "REPAIR-001",
+      "title": "Schema repair on invalid output",
+      "type": "build",
+      "milestone": "M2",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Repair malformed LLM outputs before escalation.",
+      "details": "Add small repair step and measure repair success rate.",
+      "acceptance_criteria": [
+        "Malformed samples repaired to valid actions",
+        "Repair attempts counted in metrics"
+      ],
+      "dependencies": [
+        "VERIFY-001",
+        "ROUTE-001"
+      ],
+      "risk": "medium",
+      "tags": [
+        "repair",
+        "llm"
+      ]
+    },
+    {
+      "task_id": "PROGRESS-001",
+      "title": "Improved no-progress heuristics",
+      "type": "build",
+      "milestone": "M2",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Detect and handle stagnation cases more robustly.",
+      "details": "Add heuristics for unchanged DOM and low-actionability pages.",
+      "acceptance_criteria": [
+        "Escalation triggers after configured no-progress threshold",
+        "Heuristics logged for debugging"
+      ],
+      "dependencies": [
+        "OBS-001",
+        "ROUTE-001"
+      ],
+      "risk": "medium",
+      "tags": [
+        "heuristics",
+        "progress"
+      ]
+    },
+    {
+      "task_id": "EXTRACT-001",
+      "title": "Structured extraction output",
+      "type": "build",
+      "milestone": "M2",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "summary": "Persist structured extraction results to JSON.",
+      "details": "Implement extract action output file with schema.",
+      "acceptance_criteria": [
+        "Extract results written to JSON file",
+        "Output includes task id and timestamp"
+      ],
+      "dependencies": [
+        "TYPES-001",
+        "AGENT-001"
+      ],
+      "risk": "low",
+      "tags": [
+        "extract",
+        "output"
+      ]
+    },
+    {
+      "task_id": "DOCS-001",
+      "title": "Usage and operations guide",
+      "type": "docs",
+      "milestone": "M2",
+      "status": "unstarted",
+      "model": "gpt-5.1-codex-mini",
+      "summary": "Document setup, config, and troubleshooting.",
+      "details": "Create a guide covering install, run, common errors, and runbook.",
+      "acceptance_criteria": [
+        "Docs include install, run, config, and troubleshooting",
+        "Runbook section describes verification and rollback"
+      ],
+      "dependencies": [
+        "CLI-001",
+        "TELE-001"
+      ],
+      "risk": "low",
+      "tags": [
+        "docs",
+        "runbook"
+      ]
+    }
+  ]
+}
