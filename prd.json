@@ -5,7 +5,7 @@
       "title": "CDP snapshot feasibility",
       "type": "spike",
       "milestone": "M0",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2",
       "summary": "Validate chromiumoxide snapshot + click on real pages.",
       "details": "Create a small harness to open a page, list actionable elements, and click by node id.",
