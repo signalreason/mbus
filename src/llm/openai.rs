@@ -3,6 +3,7 @@ use crate::llm::prompts::SYSTEM_PROMPT;
 use crate::llm::schema::ActionSchema;
 use crate::telemetry;
 use crate::types::{Action, Observation};
+use crate::verify::repair::repair_action;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
@@ -72,6 +73,35 @@ impl OpenAiClient {
     }
 
     fn parse_content(&self, content: &str) -> LlmResult<Action> {
+        match self.parse_strict(content) {
+            Ok(action) => Ok(action),
+            Err(err) => {
+                telemetry::inc_repair_attempt();
+                match repair_action(content, &self.schema) {
+                    Ok(action) => {
+                        telemetry::inc_repair_success();
+                        tracing::info!(
+                            event = "repair_success",
+                            error_code = err.code,
+                            repaired = true
+                        );
+                        Ok(action)
+                    }
+                    Err(repair_err) => {
+                        let message = format!("{}; repair_failed: {}", err.message, repair_err);
+                        tracing::warn!(
+                            event = "repair_failed",
+                            error_code = err.code,
+                            repair_error = %repair_err
+                        );
+                        Err(LlmError::new("repair_failed", message))
+                    }
+                }
+            }
+        }
+    }
+
+    fn parse_strict(&self, content: &str) -> LlmResult<Action> {
         let value: Value = serde_json::from_str(content)
             .map_err(|err| LlmError::new("invalid_json", err.to_string()))?;
         self.schema

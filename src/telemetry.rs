@@ -9,6 +9,8 @@ pub struct MetricsSnapshot {
     pub steps_total: u64,
     pub llm_calls_total: u64,
     pub llm_failures_total: u64,
+    pub repair_attempts_total: u64,
+    pub repair_success_total: u64,
     pub validation_failures_total: u64,
     pub apply_failures_total: u64,
     pub actions_click_total: u64,
@@ -32,6 +34,8 @@ struct Metrics {
     steps_total: AtomicU64,
     llm_calls_total: AtomicU64,
     llm_failures_total: AtomicU64,
+    repair_attempts_total: AtomicU64,
+    repair_success_total: AtomicU64,
     validation_failures_total: AtomicU64,
     apply_failures_total: AtomicU64,
     actions_click_total: AtomicU64,
@@ -61,6 +65,14 @@ impl Metrics {
 
     fn inc_llm_failure(&self) {
         self.llm_failures_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn inc_repair_attempt(&self) {
+        self.repair_attempts_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn inc_repair_success(&self) {
+        self.repair_success_total.fetch_add(1, Ordering::Relaxed);
     }
 
     fn inc_validation_failure(&self) {
@@ -118,6 +130,8 @@ impl Metrics {
             steps_total: self.steps_total.load(Ordering::Relaxed),
             llm_calls_total: self.llm_calls_total.load(Ordering::Relaxed),
             llm_failures_total: self.llm_failures_total.load(Ordering::Relaxed),
+            repair_attempts_total: self.repair_attempts_total.load(Ordering::Relaxed),
+            repair_success_total: self.repair_success_total.load(Ordering::Relaxed),
             validation_failures_total: self.validation_failures_total.load(Ordering::Relaxed),
             apply_failures_total: self.apply_failures_total.load(Ordering::Relaxed),
             actions_click_total: self.actions_click_total.load(Ordering::Relaxed),
@@ -158,6 +172,14 @@ pub fn inc_llm_call() {
 
 pub fn inc_llm_failure() {
     metrics().inc_llm_failure();
+}
+
+pub fn inc_repair_attempt() {
+    metrics().inc_repair_attempt();
+}
+
+pub fn inc_repair_success() {
+    metrics().inc_repair_success();
 }
 
 pub fn inc_validation_failure() {

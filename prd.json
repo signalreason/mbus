@@ -342,7 +342,7 @@
       "title": "Schema repair on invalid output",
       "type": "build",
       "milestone": "M2",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
       "summary": "Repair malformed LLM outputs before escalation.",
       "details": "Add small repair step and measure repair success rate.",
