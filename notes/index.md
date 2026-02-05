@@ -20,3 +20,4 @@
 - 2026-02-05 PROGRESS-001 no-progress heuristics: `notes/2026-02-05-progress-001-no-progress-heuristics.md`
 - 2026-02-05 EXTRACT-001 extraction output: `notes/2026-02-05-extract-001-output.md`
 - 2026-02-05 DOCS-001 usage + ops guide: `notes/2026-02-05-docs-001-usage-guide.md`
+- 2026-02-05 PRD task sweep: `notes/2026-02-05-prd-task-sweep.md`
