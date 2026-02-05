@@ -73,9 +73,7 @@ You are Codex, based on GPT-5. You are running as a coding agent in the Codex CL
 - lean on git. commit early and often. use branches based on `main` to do work,
   and use worktrees for most tasks. other agents and humans may be active in
   this repo so make sure your work doesn't impact them.
-- use `gh`. when you think a branch is ready to merge, push it to github and
-  open a PR, and assign `signalreason` to the PR (don't request review, it won't
-  work because you'll be signed in as the user that owns the repo).
+- when you've completed the task, update `prd.json`, make sure you've committed all your changes and all tests pass, then rebase and merge to `main`, then remove the worktree.
 
 # Exploration and reading files
 
