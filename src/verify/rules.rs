@@ -196,6 +196,18 @@ mod tests {
     }
 
     #[test]
+    fn validates_type_with_known_id() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Type {
+            id: "el_1".to_string(),
+            text: "hello".to_string(),
+            submit: Some(false),
+        };
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
     fn rejects_missing_id() {
         let validator = Validator::default();
         let obs = sample_observation();
@@ -210,6 +222,29 @@ mod tests {
         let obs = sample_observation();
         let action = Action::Click {
             id: "el_9".to_string(),
+        };
+        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        assert_eq!(errors[0].code, "unknown_id");
+    }
+
+    #[test]
+    fn validates_select_with_known_id() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Select {
+            id: "el_1".to_string(),
+            value: "choice".to_string(),
+        };
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
+    fn rejects_select_with_unknown_id() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Select {
+            id: "el_9".to_string(),
+            value: "choice".to_string(),
         };
         let errors = validator.validate(&action, &obs).expect_err("expected errors");
         assert_eq!(errors[0].code, "unknown_id");
@@ -239,12 +274,39 @@ mod tests {
     }
 
     #[test]
+    fn validates_scroll_within_bounds() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Scroll { dx: -2000, dy: 2000 };
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
     fn rejects_wait_too_long() {
         let validator = Validator::default();
         let obs = sample_observation();
         let action = Action::Wait { ms: 40_000 };
         let errors = validator.validate(&action, &obs).expect_err("expected errors");
         assert_eq!(errors[0].code, "wait_too_long");
+    }
+
+    #[test]
+    fn validates_wait_within_bounds() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Wait { ms: 500 };
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
+    fn rejects_missing_url() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Navigate {
+            url: "  ".to_string(),
+        };
+        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        assert_eq!(errors[0].code, "missing_url");
     }
 
     #[test]
@@ -259,6 +321,16 @@ mod tests {
     }
 
     #[test]
+    fn validates_https_url() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Navigate {
+            url: "https://example.com".to_string(),
+        };
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
     fn allows_insecure_url_when_configured() {
         let validator = Validator::new(ValidatorConfig {
             allow_insecure: true,
@@ -267,6 +339,47 @@ mod tests {
         let obs = sample_observation();
         let action = Action::Navigate {
             url: "file:///tmp/test.html".to_string(),
+        };
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
+    fn validates_extract_without_id() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Extract {
+            query: "price".to_string(),
+            id: None,
+        };
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
+    fn rejects_extract_unknown_id() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Extract {
+            query: "price".to_string(),
+            id: Some("el_9".to_string()),
+        };
+        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        assert_eq!(errors[0].code, "unknown_id");
+    }
+
+    #[test]
+    fn validates_back_action() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Back;
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
+    fn validates_done_action() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Done {
+            summary: "Finished".to_string(),
         };
         assert!(validator.validate(&action, &obs).is_ok());
     }

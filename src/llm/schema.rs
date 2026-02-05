@@ -60,11 +60,19 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn schema_accepts_valid_actions() {
+    fn schema_accepts_all_action_variants() {
         let schema = ActionSchema::new();
         let samples = vec![
             json!({"type": "click", "id": "el_1"}),
+            json!({"type": "type", "id": "el_2", "text": "hello"}),
             json!({"type": "type", "id": "el_2", "text": "hello", "submit": true}),
+            json!({"type": "select", "id": "el_3", "value": "option"}),
+            json!({"type": "scroll", "dx": 10, "dy": -20}),
+            json!({"type": "wait", "ms": 500}),
+            json!({"type": "navigate", "url": "https://example.com"}),
+            json!({"type": "back"}),
+            json!({"type": "extract", "query": "price"}),
+            json!({"type": "extract", "query": "price", "id": "el_4"}),
             json!({"type": "done", "summary": "Finished"}),
         ];
         for sample in samples {
@@ -80,7 +88,16 @@ mod tests {
         let schema = ActionSchema::new();
         let samples = vec![
             json!({"type": "click"}),
+            json!({"type": "click", "id": "el_1", "extra": 1}),
             json!({"type": "type", "id": "el_2"}),
+            json!({"type": "select", "id": "el_3"}),
+            json!({"type": "scroll", "dx": 0}),
+            json!({"type": "wait"}),
+            json!({"type": "wait", "ms": "fast"}),
+            json!({"type": "navigate"}),
+            json!({"type": "extract"}),
+            json!({"type": "done"}),
+            json!({"type": "back", "extra": true}),
             json!({"type": "unknown"}),
         ];
         for sample in samples {
