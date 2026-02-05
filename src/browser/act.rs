@@ -2,10 +2,15 @@ use crate::types::{Action, StepError, StepResult};
 use chromiumoxide::keys;
 use chromiumoxide::layout::Point;
 use chromiumoxide::page::Page;
-use chromiumoxide_cdp::cdp::browser_protocol::dom::{BackendNodeId, FocusParams, GetBoxModelParams};
+use chromiumoxide_cdp::cdp::browser_protocol::dom::{
+    BackendNodeId, FocusParams, GetBoxModelParams, ResolveNodeParams,
+};
 use chromiumoxide_cdp::cdp::browser_protocol::input::{
     DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams,
 };
+use chromiumoxide_cdp::cdp::js_protocol::runtime::{CallArgument, CallFunctionOnParams, RemoteObject};
+use serde::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
 
@@ -24,10 +29,6 @@ impl ActionError {
             code,
             message: message.into(),
         }
-    }
-
-    fn unsupported(action: &Action) -> Self {
-        Self::new("unsupported_action", format!("action not supported: {action:?}"))
     }
 }
 
@@ -63,6 +64,9 @@ impl ActionApplier {
             Action::Type { id, text, submit } => {
                 type_by_id(page, id, text, submit.unwrap_or(false), element_map).await?;
             }
+            Action::Select { id, value } => {
+                select_by_id(page, id, value, element_map).await?;
+            }
             Action::Scroll { dx, dy } => {
                 let script = format!("() => window.scrollBy({dx}, {dy})");
                 page.evaluate(script).await?;
@@ -76,9 +80,14 @@ impl ActionApplier {
             Action::Back => {
                 page.evaluate("() => history.back()").await?;
             }
-            Action::Select { .. } | Action::Extract { .. } | Action::Done { .. } => {
-                return Err(ActionError::unsupported(action));
+            Action::Extract { query, id } => {
+                if let Some(target) = id.as_deref() {
+                    extract_by_id(page, target, query, element_map).await?;
+                } else {
+                    extract_from_page(page, query).await?;
+                }
             }
+            Action::Done { .. } => {}
         }
         Ok(())
     }
@@ -128,6 +137,208 @@ async fn type_by_id(
         press_key(page, "Enter").await?;
     }
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct JsActionResult {
+    ok: bool,
+    #[serde(default)]
+    value: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+fn parse_js_action_result(
+    value: Value,
+    failure_code: &'static str,
+) -> Result<Option<String>, ActionError> {
+    let parsed: JsActionResult = serde_json::from_value(value).map_err(|err| {
+        ActionError::new("js_error", format!("invalid js result: {err}"))
+    })?;
+    if parsed.ok {
+        Ok(parsed.value)
+    } else {
+        Err(ActionError::new(
+            failure_code,
+            parsed
+                .error
+                .unwrap_or_else(|| "js action failed".to_string()),
+        ))
+    }
+}
+
+async fn call_function_on_node(
+    page: &Page,
+    backend_node_id: BackendNodeId,
+    function_declaration: &str,
+    arguments: Vec<Value>,
+) -> Result<Value, ActionError> {
+    let resolved = page
+        .execute(
+            ResolveNodeParams::builder()
+                .backend_node_id(backend_node_id)
+                .build(),
+        )
+        .await?;
+    let object_id = resolved
+        .result
+        .object
+        .object_id
+        .ok_or_else(|| ActionError::new("missing_object_id", "resolve node returned no object"))?;
+
+    let mut builder = CallFunctionOnParams::builder()
+        .function_declaration(function_declaration)
+        .object_id(object_id)
+        .return_by_value(true);
+    for argument in arguments {
+        builder = builder.argument(CallArgument::builder().value(argument).build());
+    }
+    let params = builder
+        .build()
+        .map_err(|err| ActionError::new("js_error", err))?;
+    let response = page.execute(params).await?;
+    let call_result = response.result;
+    if let Some(details) = call_result.exception_details {
+        return Err(ActionError::new(
+            "js_error",
+            format!("js exception: {details:?}"),
+        ));
+    }
+    let remote: RemoteObject = call_result.result;
+    remote
+        .value
+        .ok_or_else(|| ActionError::new("js_error", "missing js return value"))
+}
+
+async fn select_by_id(
+    page: &Page,
+    id: &str,
+    value: &str,
+    element_map: Option<&HashMap<String, BackendNodeId>>,
+) -> Result<(), ActionError> {
+    const SELECT_FN: &str = r#"
+        function(value) {
+            if (!this) {
+                return { ok: false, error: "missing_element" };
+            }
+            const tag = this.tagName ? this.tagName.toLowerCase() : "";
+            if (tag !== "select" && !("value" in this)) {
+                return { ok: false, error: "not_select" };
+            }
+            let nextValue = value;
+            if (tag === "select" && this.options) {
+                const options = Array.from(this.options);
+                const match = options.find(
+                    (opt) => opt.value === value || opt.text === value
+                );
+                if (match) {
+                    nextValue = match.value;
+                }
+            }
+            try {
+                this.value = nextValue;
+            } catch (err) {
+                return { ok: false, error: "set_value_failed" };
+            }
+            this.dispatchEvent(new Event("input", { bubbles: true }));
+            this.dispatchEvent(new Event("change", { bubbles: true }));
+            return { ok: true, value: String(this.value ?? "") };
+        }
+    "#;
+    let backend_id = resolve_backend_node_id(id, element_map)?;
+    let value = call_function_on_node(
+        page,
+        backend_id,
+        SELECT_FN,
+        vec![Value::String(value.to_string())],
+    )
+    .await?;
+    parse_js_action_result(value, "select_failed")?;
+    Ok(())
+}
+
+async fn extract_by_id(
+    page: &Page,
+    id: &str,
+    query: &str,
+    element_map: Option<&HashMap<String, BackendNodeId>>,
+) -> Result<(), ActionError> {
+    let backend_id = resolve_backend_node_id(id, element_map)?;
+    let value = call_function_on_node(
+        page,
+        backend_id,
+        extract_function(),
+        vec![Value::String(query.to_string())],
+    )
+    .await?;
+    parse_js_action_result(value, "extract_failed")?;
+    Ok(())
+}
+
+async fn extract_from_page(page: &Page, query: &str) -> Result<(), ActionError> {
+    let query_literal =
+        serde_json::to_string(query).map_err(|err| ActionError::new("js_error", err.to_string()))?;
+    let script = format!("({})({})", extract_function(), query_literal);
+    let result = page.evaluate(script).await?;
+    let value = result
+        .into_value()
+        .map_err(|err| ActionError::new("js_error", format!("extract: {err}")))?;
+    parse_js_action_result(value, "extract_failed")?;
+    Ok(())
+}
+
+fn extract_function() -> &'static str {
+    r#"
+        function(query) {
+            const root = (this && this.querySelectorAll) ? this : document;
+            if (!query) {
+                return { ok: false, error: "missing_query" };
+            }
+            let target = null;
+            if (query === "self" && root !== document) {
+                target = root;
+            }
+            if (!target) {
+                try {
+                    if (root.querySelector) {
+                        target = root.querySelector(query);
+                    }
+                } catch (err) {
+                    target = null;
+                }
+            }
+            if (!target) {
+                try {
+                    const needle = String(query).toLowerCase();
+                    const nodes = root.querySelectorAll ? root.querySelectorAll("*") : [];
+                    for (let i = 0; i < nodes.length && i < 2000; i += 1) {
+                        const text = (nodes[i].innerText || nodes[i].textContent || "").trim();
+                        if (text && text.toLowerCase().includes(needle)) {
+                            target = nodes[i];
+                            break;
+                        }
+                    }
+                } catch (err) {
+                    target = null;
+                }
+            }
+            if (!target) {
+                return { ok: false, error: "not_found" };
+            }
+            let value = "";
+            if ("value" in target) {
+                try {
+                    value = String(target.value ?? "");
+                } catch (err) {
+                    value = "";
+                }
+            }
+            if (!value) {
+                value = (target.innerText || target.textContent || "").trim();
+            }
+            return { ok: true, value };
+        }
+    "#
 }
 
 async fn focus_backend_node(page: &Page, backend_node_id: BackendNodeId) -> Result<(), ActionError> {
@@ -224,6 +435,7 @@ async fn press_key(page: &Page, key: &str) -> Result<(), ActionError> {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use serde_json::json;
 
     #[test]
     fn parse_backend_node_id_accepts_el_prefix() {
@@ -259,5 +471,27 @@ mod tests {
         let map = HashMap::new();
         let resolved = resolve_backend_node_id("el_42", Some(&map)).expect("resolve id");
         assert_eq!(*resolved.inner(), 42);
+    }
+
+    #[test]
+    fn parse_js_action_result_accepts_ok() {
+        let value = json!({"ok": true, "value": "done"});
+        let parsed = parse_js_action_result(value, "select_failed").expect("parse result");
+        assert_eq!(parsed, Some("done".to_string()));
+    }
+
+    #[test]
+    fn parse_js_action_result_reports_failure() {
+        let value = json!({"ok": false, "error": "not_found"});
+        let err = parse_js_action_result(value, "extract_failed").expect_err("expect error");
+        assert_eq!(err.code, "extract_failed");
+        assert_eq!(err.message, "not_found");
+    }
+
+    #[test]
+    fn parse_js_action_result_rejects_invalid() {
+        let value = json!(true);
+        let err = parse_js_action_result(value, "extract_failed").expect_err("expect error");
+        assert_eq!(err.code, "js_error");
     }
 }

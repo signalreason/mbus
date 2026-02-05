@@ -146,7 +146,7 @@
       "title": "Action executor",
       "type": "build",
       "milestone": "M1",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
       "summary": "Map actions to CDP operations.",
       "details": "Implement click/type/select/scroll/wait/navigate/back/extract/done execution.",
