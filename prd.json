@@ -365,7 +365,7 @@
       "title": "Improved no-progress heuristics",
       "type": "build",
       "milestone": "M2",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
       "summary": "Detect and handle stagnation cases more robustly.",
       "details": "Add heuristics for unchanged DOM and low-actionability pages.",

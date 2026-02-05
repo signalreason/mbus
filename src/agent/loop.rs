@@ -278,7 +278,7 @@ impl<B: Browser> AgentLoop<B> {
                 telemetry::record_snapshot_duration(snapshot_duration);
                 self.memory.record_observation(next_observation.clone());
 
-                let outcome = step_outcome(&result, &observation, &next_observation);
+                let (outcome, heuristics) = step_outcome(&result, &observation, &next_observation);
                 let tier_after = self.router.record(outcome);
                 telemetry::set_no_progress_streak(self.router.counters().no_progress);
 
@@ -298,7 +298,12 @@ impl<B: Browser> AgentLoop<B> {
                     apply_duration_ms = apply_duration.as_millis() as u64,
                     snapshot_duration_ms = snapshot_duration.as_millis() as u64,
                     step_duration_ms = duration.as_millis() as u64,
-                    new_state_hash = ?result.new_state_hash
+                    new_state_hash = ?result.new_state_hash,
+                    state_hash_unchanged = heuristics.state_hash_unchanged,
+                    actionables_unchanged = heuristics.actionables_unchanged,
+                    low_actionability = heuristics.low_actionability,
+                    prev_actionables = heuristics.prev_actionables,
+                    next_actionables = heuristics.next_actionables
                 );
 
                 observation = next_observation;
@@ -330,18 +335,66 @@ impl<B: Browser> AgentLoop<B> {
     }
 }
 
-fn step_outcome(result: &StepResult, previous: &Observation, next: &Observation) -> StepOutcome {
+const LOW_ACTIONABILITY_THRESHOLD: usize = 2;
+
+#[derive(Clone, Copy, Debug)]
+struct ProgressHeuristics {
+    state_hash_unchanged: bool,
+    actionables_unchanged: bool,
+    low_actionability: bool,
+    prev_actionables: usize,
+    next_actionables: usize,
+}
+
+fn step_outcome(
+    result: &StepResult,
+    previous: &Observation,
+    next: &Observation,
+) -> (StepOutcome, ProgressHeuristics) {
+    let heuristics = evaluate_progress(previous, next);
+
     if !result.ok {
-        return StepOutcome::Failure;
+        return (StepOutcome::Failure, heuristics);
     }
 
-    let prev_hash = previous.state_hash.as_deref();
-    let next_hash = next.state_hash.as_deref();
-    if prev_hash.is_some() && prev_hash == next_hash {
+    let no_progress = heuristics.state_hash_unchanged
+        || heuristics.actionables_unchanged
+        || heuristics.low_actionability;
+
+    let outcome = if no_progress {
         StepOutcome::NoProgress
     } else {
         StepOutcome::Progress
+    };
+
+    (outcome, heuristics)
+}
+
+fn evaluate_progress(previous: &Observation, next: &Observation) -> ProgressHeuristics {
+    let prev_actionables = previous.elements.len();
+    let next_actionables = next.elements.len();
+    let state_hash_unchanged = previous.state_hash.is_some() && previous.state_hash == next.state_hash;
+    let actionables_unchanged = actionable_signature(previous) == actionable_signature(next);
+    let low_actionability = prev_actionables <= LOW_ACTIONABILITY_THRESHOLD
+        && next_actionables <= LOW_ACTIONABILITY_THRESHOLD;
+
+    ProgressHeuristics {
+        state_hash_unchanged,
+        actionables_unchanged,
+        low_actionability,
+        prev_actionables,
+        next_actionables,
     }
+}
+
+fn actionable_signature(observation: &Observation) -> Vec<String> {
+    let mut ids: Vec<String> = observation
+        .elements
+        .iter()
+        .map(|element| element.id.clone())
+        .collect();
+    ids.sort();
+    ids
 }
 
 fn validation_result(errors: Vec<ValidationError>) -> StepResult {
@@ -589,6 +642,63 @@ mod tests {
         assert_eq!(agent.memory().history().len(), 2);
         let applied = agent.browser.applied().await;
         assert_eq!(applied.len(), 2);
+    }
+
+    #[test]
+    fn step_outcome_marks_no_progress_when_actionables_unchanged() {
+        let prev = sample_observation("obs1", "hash1", vec![element("el_1"), element("el_2")]);
+        let next = sample_observation("obs2", "hash2", vec![element("el_1"), element("el_2")]);
+        let result = StepResult {
+            ok: true,
+            error: None,
+            new_state_hash: None,
+        };
+
+        let (outcome, heuristics) = step_outcome(&result, &prev, &next);
+        assert_eq!(outcome, StepOutcome::NoProgress);
+        assert!(heuristics.actionables_unchanged);
+        assert!(!heuristics.state_hash_unchanged);
+    }
+
+    #[test]
+    fn step_outcome_marks_no_progress_on_low_actionability() {
+        let prev = sample_observation("obs1", "hash1", vec![element("el_1")]);
+        let next = sample_observation("obs2", "hash2", vec![element("el_2")]);
+        let result = StepResult {
+            ok: true,
+            error: None,
+            new_state_hash: None,
+        };
+
+        let (outcome, heuristics) = step_outcome(&result, &prev, &next);
+        assert_eq!(outcome, StepOutcome::NoProgress);
+        assert!(heuristics.low_actionability);
+        assert!(!heuristics.actionables_unchanged);
+    }
+
+    #[test]
+    fn step_outcome_reports_progress_when_heuristics_clear() {
+        let prev = sample_observation(
+            "obs1",
+            "hash1",
+            vec![element("el_1"), element("el_2"), element("el_3")],
+        );
+        let next = sample_observation(
+            "obs2",
+            "hash2",
+            vec![element("el_4"), element("el_5"), element("el_6")],
+        );
+        let result = StepResult {
+            ok: true,
+            error: None,
+            new_state_hash: None,
+        };
+
+        let (outcome, heuristics) = step_outcome(&result, &prev, &next);
+        assert_eq!(outcome, StepOutcome::Progress);
+        assert!(!heuristics.state_hash_unchanged);
+        assert!(!heuristics.actionables_unchanged);
+        assert!(!heuristics.low_actionability);
     }
 
     trait ActionMatch {
