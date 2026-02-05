@@ -6,9 +6,11 @@ use async_trait::async_trait;
 use chromiumoxide::browser::{Browser as ChromiumBrowser, BrowserConfig};
 use chromiumoxide::page::Page;
 use futures::StreamExt;
+use std::collections::HashMap;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use std::time::Duration;
+use chromiumoxide_cdp::cdp::browser_protocol::dom::BackendNodeId;
 
 #[derive(Clone, Debug)]
 pub struct CdpConfig {
@@ -47,6 +49,7 @@ pub struct CdpBrowser {
     observer: Observer,
     applier: ActionApplier,
     timeouts: Timeouts,
+    element_map: Mutex<HashMap<String, BackendNodeId>>,
 }
 
 impl CdpBrowser {
@@ -83,6 +86,7 @@ impl CdpBrowser {
                 snapshot: config.snapshot_timeout,
                 action: config.action_timeout,
             },
+            element_map: Mutex::new(HashMap::new()),
         })
     }
 }
@@ -90,20 +94,30 @@ impl CdpBrowser {
 #[async_trait]
 impl Browser for CdpBrowser {
     async fn snapshot(&self) -> BrowserResult<Observation> {
-        let page = self.page.lock().await;
-        let result = timeout(self.timeouts.snapshot, self.observer.snapshot(&page)).await;
-        match result {
-            Ok(snapshot) => snapshot,
-            Err(err) => Err(BrowserError::new(
-                "timeout",
-                format!("snapshot timed out: {err}"),
-            )),
-        }
+        let snapshot = {
+            let page = self.page.lock().await;
+            let result = timeout(self.timeouts.snapshot, self.observer.snapshot(&page)).await;
+            match result {
+                Ok(snapshot) => snapshot?,
+                Err(err) => {
+                    return Err(BrowserError::new(
+                        "timeout",
+                        format!("snapshot timed out: {err}"),
+                    ))
+                }
+            }
+        };
+
+        let mut map = self.element_map.lock().await;
+        *map = snapshot.element_map;
+        Ok(snapshot.observation)
     }
 
     async fn apply(&self, action: &Action) -> BrowserResult<StepResult> {
         let page = self.page.lock().await;
-        let result = timeout(self.timeouts.action, self.applier.apply(&page, action)).await;
+        let map = { self.element_map.lock().await.clone() };
+        let result =
+            timeout(self.timeouts.action, self.applier.apply(&page, action, Some(&map))).await;
         let step = match result {
             Ok(Ok(())) => action_result_ok(),
             Ok(Err(err)) => action_result_err(err),

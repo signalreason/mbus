@@ -20,6 +20,12 @@ pub struct ObserverConfig {
     pub max_text_len: usize,
 }
 
+#[derive(Clone, Debug)]
+pub struct ObservedSnapshot {
+    pub observation: Observation,
+    pub element_map: HashMap<String, BackendNodeId>,
+}
+
 impl Default for ObserverConfig {
     fn default() -> Self {
         Self {
@@ -34,7 +40,7 @@ impl Observer {
         Self { config }
     }
 
-    pub async fn snapshot(&self, page: &Page) -> BrowserResult<Observation> {
+    pub async fn snapshot(&self, page: &Page) -> BrowserResult<ObservedSnapshot> {
         let url = page
             .url()
             .await?
@@ -42,28 +48,39 @@ impl Observer {
         let title = page.get_title().await?.unwrap_or_default();
         let viewport = viewport(page).await?;
         let visible_text = visible_text(page, self.config.max_text_len).await?;
-        let elements = collect_actionable(page, self.config.max_elements).await?;
+        let collected = collect_actionable(page, self.config.max_elements).await?;
+        let state_hash = Some(compute_state_hash(&url, &title, &collected.elements));
 
-        Ok(Observation {
-            url,
-            title,
-            viewport,
-            focused: None,
-            visible_text,
-            state_hash: None,
-            elements,
+        Ok(ObservedSnapshot {
+            observation: Observation {
+                url,
+                title,
+                viewport,
+                focused: None,
+                visible_text,
+                state_hash,
+                elements: collected.elements,
+            },
+            element_map: collected.element_map,
         })
     }
 }
 
 #[derive(Debug)]
 struct ActionableElement {
-    id: String,
+    backend_id: BackendNodeId,
     role: String,
     name: Option<String>,
     value: Option<String>,
     bbox: [f64; 4],
     flags: Vec<String>,
+    signature: String,
+}
+
+#[derive(Debug)]
+struct CollectedElements {
+    elements: Vec<ElementRef>,
+    element_map: HashMap<String, BackendNodeId>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -95,7 +112,7 @@ async fn visible_text(page: &Page, max_len: usize) -> BrowserResult<String> {
     Ok(truncate_text(trimmed, max_len))
 }
 
-async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<Vec<ElementRef>> {
+async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<CollectedElements> {
     let candidates = page.find_elements(ACTIONABLE_SELECTOR).await?;
     let mut seen = HashSet::new();
     let mut out = Vec::new();
@@ -148,13 +165,16 @@ async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<Vec<Elem
             }
         }
 
+        let signature = stable_signature(&role, &name, &node.node_name, &attrs);
+
         out.push(ActionableElement {
-            id: element_id(backend_id),
+            backend_id,
             role,
             name,
             value,
             bbox,
             flags,
+            signature,
         });
 
         if out.len() >= limit {
@@ -162,17 +182,26 @@ async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<Vec<Elem
         }
     }
 
-    Ok(out
-        .into_iter()
-        .map(|element| ElementRef {
-            id: element.id,
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    let mut elements = Vec::new();
+    let mut element_map = HashMap::new();
+
+    for element in out {
+        let count = counts.entry(element.signature.clone()).or_insert(0);
+        *count += 1;
+        let id = stable_element_id(&element.signature, *count);
+        element_map.insert(id.clone(), element.backend_id);
+        elements.push(ElementRef {
+            id,
             role: element.role,
             name: element.name,
             value: element.value,
             bbox: element.bbox,
             flags: element.flags,
-        })
-        .collect())
+        });
+    }
+
+    Ok(CollectedElements { elements, element_map })
 }
 
 fn attrs_to_map(attrs: Option<Vec<String>>) -> HashMap<String, String> {
@@ -219,8 +248,9 @@ fn derive_name(attrs: &HashMap<String, String>, js_info: &JsElementInfo) -> Opti
         .cloned();
 
     if let Some(candidate) = candidate {
-        if !candidate.trim().is_empty() {
-            return Some(candidate);
+        let trimmed = candidate.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
         }
     }
 
@@ -231,8 +261,79 @@ fn derive_name(attrs: &HashMap<String, String>, js_info: &JsElementInfo) -> Opti
         .filter(|text| !text.is_empty())
 }
 
-fn element_id(backend_node_id: BackendNodeId) -> String {
-    format!("el_{}", backend_node_id.inner())
+fn stable_signature(
+    role: &str,
+    name: &Option<String>,
+    node_name: &str,
+    attrs: &HashMap<String, String>,
+) -> String {
+    let mut parts = Vec::new();
+    parts.push(role.trim().to_lowercase());
+    parts.push(node_name.trim().to_lowercase());
+
+    if let Some(name) = name.as_ref().map(|value| value.trim()).filter(|v| !v.is_empty()) {
+        parts.push(name.to_string());
+    }
+
+    for key in [
+        "id",
+        "name",
+        "type",
+        "href",
+        "aria-label",
+        "title",
+        "alt",
+        "placeholder",
+    ] {
+        if let Some(value) = attrs.get(key) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                parts.push(format!("{key}={trimmed}"));
+            }
+        }
+    }
+
+    parts.join("|")
+}
+
+fn stable_element_id(signature: &str, occurrence: usize) -> String {
+    format!("el_{}_{}", hash_hex(signature), occurrence)
+}
+
+fn compute_state_hash(url: &str, title: &str, elements: &[ElementRef]) -> String {
+    const TOP_ELEMENTS: usize = 10;
+    let mut signature = String::new();
+    signature.push_str(url.trim());
+    signature.push('\n');
+    signature.push_str(title.trim());
+
+    for element in elements.iter().take(TOP_ELEMENTS) {
+        signature.push('\n');
+        signature.push_str(&element.id);
+        signature.push('|');
+        signature.push_str(&element.role);
+        if let Some(name) = element.name.as_ref() {
+            signature.push('|');
+            signature.push_str(name);
+        }
+    }
+
+    hash_hex(&signature)
+}
+
+fn hash_hex(input: &str) -> String {
+    format!("{:016x}", fnv1a_64(input.as_bytes()))
+}
+
+fn fnv1a_64(input: &[u8]) -> u64 {
+    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x00000100000001b3;
+    let mut hash = FNV_OFFSET;
+    for byte in input {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
 }
 
 fn truncate_text(value: &str, max_chars: usize) -> String {
@@ -285,5 +386,36 @@ mod tests {
         let text = "abcdefghij";
         let truncated = truncate_text(text, 6);
         assert_eq!(truncated, "abc...");
+    }
+
+    #[test]
+    fn stable_element_id_is_deterministic() {
+        let signature = "button|button|Save|id=save-btn";
+        let id_a = stable_element_id(signature, 1);
+        let id_b = stable_element_id(signature, 1);
+        assert_eq!(id_a, id_b);
+    }
+
+    #[test]
+    fn stable_element_id_distinguishes_occurrence() {
+        let signature = "button|button|Save|id=save-btn";
+        let id_a = stable_element_id(signature, 1);
+        let id_b = stable_element_id(signature, 2);
+        assert_ne!(id_a, id_b);
+    }
+
+    #[test]
+    fn state_hash_changes_with_url() {
+        let elements = vec![ElementRef {
+            id: "el_deadbeef_1".to_string(),
+            role: "button".to_string(),
+            name: Some("Save".to_string()),
+            value: None,
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            flags: Vec::new(),
+        }];
+        let hash_a = compute_state_hash("https://a.example", "Title", &elements);
+        let hash_b = compute_state_hash("https://b.example", "Title", &elements);
+        assert_ne!(hash_a, hash_b);
     }
 }

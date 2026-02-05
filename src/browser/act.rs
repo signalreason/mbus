@@ -6,6 +6,7 @@ use chromiumoxide_cdp::cdp::browser_protocol::dom::{BackendNodeId, FocusParams, 
 use chromiumoxide_cdp::cdp::browser_protocol::input::{
     DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams,
 };
+use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
 
 #[derive(Clone, Debug)]
@@ -49,13 +50,18 @@ impl ActionApplier {
         Self
     }
 
-    pub async fn apply(&self, page: &Page, action: &Action) -> Result<(), ActionError> {
+    pub async fn apply(
+        &self,
+        page: &Page,
+        action: &Action,
+        element_map: Option<&HashMap<String, BackendNodeId>>,
+    ) -> Result<(), ActionError> {
         match action {
             Action::Click { id } => {
-                click_by_id(page, id).await?;
+                click_by_id(page, id, element_map).await?;
             }
             Action::Type { id, text, submit } => {
-                type_by_id(page, id, text, submit.unwrap_or(false)).await?;
+                type_by_id(page, id, text, submit.unwrap_or(false), element_map).await?;
             }
             Action::Scroll { dx, dy } => {
                 let script = format!("() => window.scrollBy({dx}, {dy})");
@@ -97,8 +103,12 @@ pub fn action_result_err(error: ActionError) -> StepResult {
     }
 }
 
-async fn click_by_id(page: &Page, id: &str) -> Result<(), ActionError> {
-    let backend_id = parse_backend_node_id(id)?;
+async fn click_by_id(
+    page: &Page,
+    id: &str,
+    element_map: Option<&HashMap<String, BackendNodeId>>,
+) -> Result<(), ActionError> {
+    let backend_id = resolve_backend_node_id(id, element_map)?;
     let (x, y) = backend_node_click_point(page, backend_id).await?;
     page.click(Point::new(x, y)).await?;
     Ok(())
@@ -109,8 +119,9 @@ async fn type_by_id(
     id: &str,
     text: &str,
     submit: bool,
+    element_map: Option<&HashMap<String, BackendNodeId>>,
 ) -> Result<(), ActionError> {
-    let backend_id = parse_backend_node_id(id)?;
+    let backend_id = resolve_backend_node_id(id, element_map)?;
     focus_backend_node(page, backend_id).await?;
     page.execute(InsertTextParams::new(text)).await?;
     if submit {
@@ -169,6 +180,18 @@ fn parse_backend_node_id(id: &str) -> Result<BackendNodeId, ActionError> {
     Ok(BackendNodeId::new(parsed))
 }
 
+fn resolve_backend_node_id(
+    id: &str,
+    element_map: Option<&HashMap<String, BackendNodeId>>,
+) -> Result<BackendNodeId, ActionError> {
+    if let Some(map) = element_map {
+        if let Some(found) = map.get(id) {
+            return Ok(found.clone());
+        }
+    }
+    parse_backend_node_id(id)
+}
+
 async fn press_key(page: &Page, key: &str) -> Result<(), ActionError> {
     let key_definition = keys::get_key_definition(key)
         .ok_or_else(|| ActionError::new("invalid_key", format!("key not found: {key}")))?;
@@ -200,6 +223,7 @@ async fn press_key(page: &Page, key: &str) -> Result<(), ActionError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn parse_backend_node_id_accepts_el_prefix() {
@@ -219,5 +243,21 @@ mod tests {
         let center = quad_center(&quad).unwrap();
         assert_eq!(center.0, 5.0);
         assert_eq!(center.1, 10.0);
+    }
+
+    #[test]
+    fn resolve_backend_node_id_prefers_map() {
+        let mut map = HashMap::new();
+        map.insert("el_deadbeef_1".to_string(), BackendNodeId::new(7));
+        let resolved =
+            resolve_backend_node_id("el_deadbeef_1", Some(&map)).expect("resolve id");
+        assert_eq!(*resolved.inner(), 7);
+    }
+
+    #[test]
+    fn resolve_backend_node_id_falls_back_to_parse() {
+        let map = HashMap::new();
+        let resolved = resolve_backend_node_id("el_42", Some(&map)).expect("resolve id");
+        assert_eq!(*resolved.inner(), 42);
     }
 }

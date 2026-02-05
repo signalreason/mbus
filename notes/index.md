@@ -6,3 +6,4 @@
 - 2026-02-05 CORE-001 scaffold: `notes/2026-02-05-core-001-scaffold.md`
 - 2026-02-05 TYPES-001 core types: `notes/2026-02-05-types-001-core-types-schema.md`
 - 2026-02-05 BROW-001 browser adapter: `notes/2026-02-05-brow-001-browser-adapter.md`
+- 2026-02-05 OBS-001 observation builder: `notes/2026-02-05-obs-001-observation-builder.md`
