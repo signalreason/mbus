@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CDP Snapshot Demo</title>
+    <style>
+      body { font-family: sans-serif; padding: 24px; }
+      .grid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .card { border: 1px solid #ddd; padding: 12px; border-radius: 8px; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .status { margin-top: 16px; padding: 8px; background: #f5f5f5; }
+    </style>
+  </head>
+  <body>
+    <h1>CDP Snapshot Demo</h1>
+    <p>Interactive elements for listing + click tests.</p>
+
+    <div class="grid">
+      <div class="card">
+        <button id="btn-primary">Primary Button</button>
+      </div>
+      <div class="card">
+        <button id="btn-secondary" aria-label="Secondary">Secondary Button</button>
+      </div>
+      <div class="card">
+        <a href="https://example.com" id="link-example">Example Link</a>
+      </div>
+      <div class="card">
+        <a href="https://www.rust-lang.org" id="link-rust">Rust Link</a>
+      </div>
+      <div class="card row">
+        <label for="input-name">Name</label>
+        <input id="input-name" type="text" placeholder="Your name" />
+      </div>
+      <div class="card row">
+        <label for="input-search">Search</label>
+        <input id="input-search" type="search" placeholder="Search" />
+      </div>
+      <div class="card row">
+        <label for="select-plan">Plan</label>
+        <select id="select-plan">
+          <option value="free">Free</option>
+          <option value="pro">Pro</option>
+          <option value="team">Team</option>
+        </select>
+      </div>
+      <div class="card row">
+        <input id="check-terms" type="checkbox" />
+        <label for="check-terms">Accept terms</label>
+      </div>
+      <div class="card row">
+        <input id="radio-a" type="radio" name="group" />
+        <label for="radio-a">Option A</label>
+      </div>
+      <div class="card row">
+        <input id="radio-b" type="radio" name="group" />
+        <label for="radio-b">Option B</label>
+      </div>
+      <div class="card">
+        <textarea id="textarea-notes" rows="3" placeholder="Notes"></textarea>
+      </div>
+      <div class="card">
+        <div role="button" tabindex="0" id="role-button">Role Button</div>
+      </div>
+      <div class="card">
+        <span role="link" tabindex="0" id="role-link">Role Link</span>
+      </div>
+    </div>
+
+    <div class="status" id="status">Status: idle</div>
+
+    <script>
+      const status = document.getElementById('status');
+      document.getElementById('btn-primary').addEventListener('click', () => {
+        status.textContent = 'Status: primary clicked';
+      });
+      document.getElementById('role-button').addEventListener('click', () => {
+        status.textContent = 'Status: role button clicked';
+      });
+    </script>
+  </body>
+</html>
