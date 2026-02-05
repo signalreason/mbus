@@ -411,7 +411,7 @@
       "title": "Usage and operations guide",
       "type": "docs",
       "milestone": "M2",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.1-codex-mini",
       "summary": "Document setup, config, and troubleshooting.",
       "details": "Create a guide covering install, run, common errors, and runbook.",
