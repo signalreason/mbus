@@ -99,7 +99,7 @@
       "title": "Browser adapter (CDP)",
       "type": "build",
       "milestone": "M1",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
       "summary": "Implement Browser trait with chromiumoxide.",
       "details": "Provide snapshot/apply methods with timeouts and lifecycle management.",
