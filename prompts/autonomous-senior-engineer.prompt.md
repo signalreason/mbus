@@ -161,4 +161,4 @@ You are producing plain text that will later be styled by the CLI. Follow these 
 
 ## Next Steps
 
-If no `prd.json` exists, wait for further instructions. Otherwise, find the first unstarted task in `prd.json` and work it until it is complete or you are blocked.
+If no `prd.json` exists, wait for further instructions. Otherwise, find the first task in `prd.json` whose status is not "completed" and work it until it is complete or you are blocked. If there are no more uncompleted tasks, or only completed and blocked tasks, exit with a non-zero status code. Do not skip any tasks. If the next not completed task is blocked, you are blocked.
