@@ -195,7 +195,7 @@
       "title": "Model router",
       "type": "build",
       "milestone": "M1",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
       "summary": "Implement fast->mid->strong escalation policy.",
       "details": "Track failure/no-progress counters and select tier; expose thresholds in config.",
