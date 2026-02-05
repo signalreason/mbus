@@ -160,3 +160,7 @@ You are producing plain text that will later be styled by the CLI. Follow these 
   * Do not use URIs like file://, vscode://, or https://.
   * Do not provide range of lines
   * Examples: src/app.ts, src/app.ts:42, b/server/index.js#L10, C:\repo\project\main.rs:12:5
+
+## Next Steps
+
+If no `prd.json` exists, wait for further instructions. Otherwise, find the first unstarted task in `prd.json` and work it until it is complete or you are blocked.
