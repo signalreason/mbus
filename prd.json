@@ -243,7 +243,7 @@
       "title": "CLI and config",
       "type": "build",
       "milestone": "M1",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
       "summary": "Add CLI entrypoint and config file support.",
       "details": "Use clap; support env vars and config file overrides.",

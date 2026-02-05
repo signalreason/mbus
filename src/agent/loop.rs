@@ -126,6 +126,10 @@ impl<B: Browser> AgentLoop<B> {
         &self.memory
     }
 
+    pub async fn shutdown(&self) -> Result<(), BrowserError> {
+        self.browser.shutdown().await
+    }
+
     pub async fn run(&mut self) -> Result<RunResult, AgentError> {
         let mut observation = self.browser.snapshot().await?;
         self.memory.record_observation(observation.clone());

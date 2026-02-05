@@ -11,3 +11,4 @@
 - 2026-02-05 VERIFY-001 action validator: `notes/2026-02-05-verify-001-action-validator.md`
 - 2026-02-05 ROUTE-001 model router: `notes/2026-02-05-route-001-model-router.md`
 - 2026-02-05 AGENT-001 agent loop: `notes/2026-02-05-agent-001-agent-loop.md`
+- 2026-02-05 CLI-001 CLI + config: `notes/2026-02-05-cli-001-cli-config.md`

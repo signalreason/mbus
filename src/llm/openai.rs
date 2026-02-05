@@ -1,0 +1,183 @@
+use crate::llm::client::{LlmClient, LlmError, LlmResult};
+use crate::llm::prompts::SYSTEM_PROMPT;
+use crate::llm::schema::ActionSchema;
+use crate::types::{Action, Observation};
+use async_trait::async_trait;
+use reqwest::Client;
+use serde::Deserialize;
+use serde_json::{json, Value};
+use std::time::Duration;
+
+#[derive(Clone, Debug)]
+pub struct OpenAiConfig {
+    pub api_key: String,
+    pub base_url: String,
+    pub model: String,
+    pub timeout: Duration,
+    pub temperature: f32,
+    pub max_tokens: Option<u32>,
+}
+
+impl OpenAiConfig {
+    pub fn endpoint(&self) -> String {
+        format!(
+            "{}/chat/completions",
+            self.base_url.trim_end_matches('/')
+        )
+    }
+}
+
+pub struct OpenAiClient {
+    http: Client,
+    config: OpenAiConfig,
+    schema: ActionSchema,
+}
+
+impl OpenAiClient {
+    pub fn new(config: OpenAiConfig) -> LlmResult<Self> {
+        if config.api_key.trim().is_empty() {
+            return Err(LlmError::new("missing_api_key", "api key is required"));
+        }
+        let http = Client::builder()
+            .timeout(config.timeout)
+            .build()
+            .map_err(|err| LlmError::new("client_error", err.to_string()))?;
+        Ok(Self {
+            http,
+            config,
+            schema: ActionSchema::default(),
+        })
+    }
+
+    fn build_prompt(
+        &self,
+        task: &str,
+        plan: Option<&str>,
+        observation: &Observation,
+        history: &[Action],
+    ) -> LlmResult<String> {
+        let observation_json = serde_json::to_string(observation)
+            .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
+        let history_json = serde_json::to_string(history)
+            .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
+        let schema_json = serde_json::to_string(self.schema.json())
+            .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
+        let plan_text = plan.unwrap_or("(none)");
+
+        Ok(format!(
+            "Task: {task}\nPlan: {plan_text}\nObservation: {observation_json}\nHistory: {history_json}\nSchema: {schema_json}\nReturn exactly one JSON action object matching the schema and nothing else.",
+        ))
+    }
+
+    fn parse_content(&self, content: &str) -> LlmResult<Action> {
+        let value: Value = serde_json::from_str(content)
+            .map_err(|err| LlmError::new("invalid_json", err.to_string()))?;
+        self.schema
+            .validate_json(&value)
+            .map_err(|errors| {
+                let message = errors
+                    .into_iter()
+                    .map(|err| err.message)
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                LlmError::new("schema_violation", message)
+            })?;
+        serde_json::from_value(value)
+            .map_err(|err| LlmError::new("deserialize_error", err.to_string()))
+    }
+}
+
+#[async_trait]
+impl LlmClient for OpenAiClient {
+    async fn propose_action(
+        &self,
+        task: &str,
+        plan: Option<&str>,
+        observation: &Observation,
+        history: &[Action],
+    ) -> LlmResult<Action> {
+        let prompt = self.build_prompt(task, plan, observation, history)?;
+        let mut body = json!({
+            "model": self.config.model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": self.config.temperature
+        });
+        if let Some(max_tokens) = self.config.max_tokens {
+            body["max_tokens"] = json!(max_tokens);
+        }
+
+        let response = self
+            .http
+            .post(self.config.endpoint())
+            .bearer_auth(&self.config.api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|err| LlmError::new("http_error", err.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<no body>".to_string());
+            return Err(LlmError::new(
+                "http_error",
+                format!("status {status}: {text}"),
+            ));
+        }
+
+        let payload: ChatResponse = response
+            .json()
+            .await
+            .map_err(|err| LlmError::new("http_error", err.to_string()))?;
+        let content = payload
+            .choices
+            .get(0)
+            .and_then(|choice| choice.message.content.as_ref())
+            .ok_or_else(|| LlmError::new("empty_response", "missing content"))?;
+        let content_text = extract_content(content)?;
+        self.parse_content(&content_text)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatResponse {
+    choices: Vec<Choice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Choice {
+    message: Message,
+}
+
+#[derive(Debug, Deserialize)]
+struct Message {
+    content: Option<Value>,
+}
+
+fn extract_content(value: &Value) -> LlmResult<String> {
+    match value {
+        Value::String(text) => Ok(text.to_string()),
+        Value::Array(parts) => {
+            let mut out = String::new();
+            for part in parts {
+                if let Some(text) = part.get("text").and_then(|value| value.as_str()) {
+                    out.push_str(text);
+                }
+            }
+            if out.trim().is_empty() {
+                Err(LlmError::new("empty_response", "missing content text"))
+            } else {
+                Ok(out)
+            }
+        }
+        _ => Err(LlmError::new(
+            "empty_response",
+            "unexpected content format",
+        )),
+    }
+}
