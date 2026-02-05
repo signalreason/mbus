@@ -1,5 +1,8 @@
 # AGENTS.md
 
+- if there is an idea, it's in `notes.md`.
+- if there is a spec, it's in `prd.md`.
+- if there is a task list, it's in `prd.json`.
 - remember! when you learn something, write it down. keep notes in whatever
   files you like under `notes/`. i recommend you keep an index of your notes for
   quick reading. you want to only load the notes you need when you need them so
