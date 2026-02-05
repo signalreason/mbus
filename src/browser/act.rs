@@ -6,7 +6,7 @@ use chromiumoxide_cdp::cdp::browser_protocol::dom::{
     BackendNodeId, FocusParams, GetBoxModelParams, ResolveNodeParams,
 };
 use chromiumoxide_cdp::cdp::browser_protocol::input::{
-    DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams,
+    DispatchKeyEventParams, DispatchKeyEventType,
 };
 use chromiumoxide_cdp::cdp::js_protocol::runtime::{CallArgument, CallFunctionOnParams, RemoteObject};
 use serde::Deserialize;
@@ -130,9 +130,38 @@ async fn type_by_id(
     submit: bool,
     element_map: Option<&HashMap<String, BackendNodeId>>,
 ) -> Result<(), ActionError> {
+    const TYPE_FN: &str = r#"
+        function(text) {
+            if (!this) {
+                return { ok: false, error: "missing_element" };
+            }
+            try {
+                if ("value" in this) {
+                    this.value = text;
+                } else if (this.isContentEditable) {
+                    this.textContent = text;
+                } else {
+                    return { ok: false, error: "not_editable" };
+                }
+            } catch (err) {
+                return { ok: false, error: "set_value_failed" };
+            }
+            this.dispatchEvent(new Event("input", { bubbles: true }));
+            this.dispatchEvent(new Event("change", { bubbles: true }));
+            return { ok: true, value: String(this.value ?? this.textContent ?? "") };
+        }
+    "#;
+
     let backend_id = resolve_backend_node_id(id, element_map)?;
     focus_backend_node(page, backend_id).await?;
-    page.execute(InsertTextParams::new(text)).await?;
+    let value = call_function_on_node(
+        page,
+        backend_id,
+        TYPE_FN,
+        vec![Value::String(text.to_string())],
+    )
+    .await?;
+    parse_js_action_result(value, "type_failed")?;
     if submit {
         press_key(page, "Enter").await?;
     }

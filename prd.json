@@ -314,7 +314,7 @@
       "title": "Local E2E harness",
       "type": "build",
       "milestone": "M1",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
       "summary": "Integration tests against local static pages.",
       "details": "Serve simple HTML pages and verify click/type/select behaviors.",
