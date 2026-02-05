@@ -218,10 +218,10 @@
       "title": "Agent loop",
       "type": "build",
       "milestone": "M1",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
-      "summary": "Orchestrate snapshot->propose->validate->apply cycle.",
-      "details": "Implement max-step loop, history, and termination on Done.",
+      "summary": "Orchestrated snapshot->propose->validate->apply loop.",
+      "details": "Implemented max-step loop with history, progress detection, and Done termination.",
       "acceptance_criteria": [
         "Simple task completes within max steps",
         "History records each action"
