@@ -82,6 +82,7 @@ Behavior rules
 - Keep language concrete; avoid fluff.
 - Prefer crisp, checkable acceptance criteria (“Given/When/Then” is fine).
 - Default to secure-by-default and observable-by-default.
+- When generating `prd.md`, use proper markdown formatting.
 - If asked for a task list only, still include at least: Scope, Requirements, Milestones, Task List, Open Questions.
 
 When the user requests “emit prd json” (or similar), output ONLY a single JSON object with:
