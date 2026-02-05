@@ -47,7 +47,7 @@
       "title": "Crate scaffold and module layout",
       "type": "build",
       "milestone": "M1",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
       "summary": "Create the Rust crate and module skeleton aligned to the architecture.",
       "details": "Set up Cargo project, modules, and placeholder traits; ensure project builds.",
