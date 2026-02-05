@@ -169,7 +169,7 @@
       "title": "Action validator",
       "type": "build",
       "milestone": "M1",
-      "status": "unstarted",
+      "status": "completed",
       "model": "gpt-5.2-codex",
       "summary": "Reject invalid actions before execution.",
       "details": "Check ids, bounds, and type constraints with structured errors.",
