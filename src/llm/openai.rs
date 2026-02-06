@@ -142,7 +142,8 @@ impl LlmClient for OpenAiClient {
                 "temperature": self.config.temperature
             });
             if let Some(max_tokens) = self.config.max_tokens {
-                body["max_tokens"] = json!(max_tokens);
+                // OpenAI chat completions now prefer max_completion_tokens.
+                body["max_completion_tokens"] = json!(max_tokens);
             }
 
             let response = self
