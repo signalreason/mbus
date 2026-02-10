@@ -68,6 +68,49 @@ cargo run -- run --task "Click the button" \
 - `--llm-actions-file`
 - `--extract-output`
 
+`mbus bench` flags:
+- `--tasks-dir` (default: `harness/tasks`)
+- `--report-path` (default: `target/bench/report.json`)
+- `--config`
+- `--headless`
+- `--max-steps-per-task` (default: `40`)
+- `--required-passes` (default: total tasks minus two)
+
+## Benchmark Harness
+
+Run the local benchmark harness:
+
+```bash
+cargo run -- bench
+```
+
+The command:
+- Starts a local HTTP harness server on `127.0.0.1` with deterministic pages.
+- Loads task fixtures from `harness/tasks/*.json`.
+- Executes each task with scripted actions.
+- Writes the report to `target/bench/report.json`.
+- Enforces a gate (`required_passes`, default 8 of 10 tasks).
+
+Task fixture shape (example):
+
+```json
+{
+  "id": "bench-task-01",
+  "task": "Navigate to benchmark task 01 and confirm marker text.",
+  "start_path": "/bench/start",
+  "max_steps": 40,
+  "actions": [
+    {"type": "navigate", "url": "{{base_url}}/bench/task-01"},
+    {"type": "done", "summary": "Reached benchmark task 01"}
+  ],
+  "expect": {
+    "status": "done",
+    "final_url_contains": "/bench/task-01",
+    "final_visible_text_contains": "BENCH TASK 01"
+  }
+}
+```
+
 ## Config
 
 Config precedence is: defaults -> config file -> env (`MBUS_*`) -> CLI flags.

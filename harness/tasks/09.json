@@ -1,0 +1,15 @@
+{
+  "id": "bench-task-09",
+  "task": "Navigate to benchmark task 09 and confirm marker text.",
+  "start_path": "/bench/start",
+  "max_steps": 40,
+  "actions": [
+    {"type": "navigate", "url": "{{base_url}}/bench/task-09"},
+    {"type": "done", "summary": "Reached benchmark task 09"}
+  ],
+  "expect": {
+    "status": "done",
+    "final_url_contains": "/bench/task-09",
+    "final_visible_text_contains": "BENCH TASK 09"
+  }
+}

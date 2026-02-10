@@ -1,7 +1,13 @@
 use clap::{Args, Parser, Subcommand};
-use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
+use mbus::agent::r#loop::{AgentLoop, LlmClients, RunResult, RunStatus};
+use mbus::bench::{
+    BenchObservedStatus, BenchReport, BenchServer, BenchTaskResult, actions_file_path,
+    actions_work_dir, bench_task_limit, build_summary, evaluate_task, failure_buckets,
+    join_base_url, load_tasks, now_timestamp, render_actions, report_path_default,
+    sleep_between_tasks, tasks_dir_default, write_actions_file, write_report,
+};
 use mbus::browser::CdpBrowser;
-use mbus::config::{load_config, CliOverrides, ConfigError, LlmConfig, LlmMode};
+use mbus::config::{CliOverrides, ConfigError, LlmConfig, LlmMode, load_config};
 use mbus::llm::openai::{OpenAiClient, OpenAiConfig};
 use mbus::llm::router::Router;
 use mbus::llm::scripted::{ScriptedLlm, StubLlm};
@@ -12,6 +18,7 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
+use tokio::time::sleep;
 
 #[derive(Parser, Debug)]
 #[command(name = "mbus", version, about = "Rust browser + LLM agent")]
@@ -23,6 +30,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     Run(RunArgs),
+    Bench(BenchArgs),
 }
 
 #[derive(Args, Debug)]
@@ -95,6 +103,22 @@ struct RunArgs {
     extract_output: Option<PathBuf>,
 }
 
+#[derive(Args, Debug)]
+struct BenchArgs {
+    #[arg(long)]
+    tasks_dir: Option<PathBuf>,
+    #[arg(long)]
+    report_path: Option<PathBuf>,
+    #[arg(long)]
+    config: Option<PathBuf>,
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    headless: Option<bool>,
+    #[arg(long)]
+    max_steps_per_task: Option<usize>,
+    #[arg(long)]
+    required_passes: Option<usize>,
+}
+
 #[tokio::main]
 async fn main() {
     telemetry::init_tracing();
@@ -108,6 +132,7 @@ async fn run_cli() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Run(args) => run_command(args).await,
+        Commands::Bench(args) => bench_command(args).await,
     }
 }
 
@@ -120,39 +145,148 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
     let config = load_config(config_path.as_deref(), cli_overrides)?;
 
     emit_json(&ConfigLog::from(&config))?;
-
-    let browser = CdpBrowser::launch(config.browser.clone()).await?;
-    let clients = build_clients(&config.llm)?;
-
-    let mut agent = AgentLoop::new(browser, clients, task.clone());
-    if let Some(plan) = plan.as_ref() {
-        agent = agent.with_plan(plan.to_string());
-    }
-    agent = agent
-        .with_policy(config.agent.clone())
-        .with_router(Router::new(config.router.clone()))
-        .with_validator(Validator::new(config.validator.clone()));
-
-    let run_result = agent.run().await;
-    let shutdown_result = agent.shutdown().await;
-
-    if let Err(err) = shutdown_result {
-        eprintln!("shutdown error: {err}");
-    }
-
-    let result = run_result?;
+    let result = execute_agent(&task, plan.as_deref(), &config).await?;
     emit_run_logs(&result)?;
     write_extract_output(&task, &config, &result)?;
 
     Ok(())
 }
 
+async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
+    let tasks_dir = args.tasks_dir.unwrap_or_else(tasks_dir_default);
+    let report_path = args.report_path.unwrap_or_else(report_path_default);
+    let max_steps_per_task = args.max_steps_per_task.unwrap_or(40);
+
+    let tasks = load_tasks(&tasks_dir).map_err(|err| format!("bench tasks: {err}"))?;
+    let total_tasks = tasks.len();
+    let required_passes = args
+        .required_passes
+        .unwrap_or_else(|| total_tasks.saturating_sub(2));
+
+    let config_path = resolve_config_path(args.config.as_deref());
+    let cli_overrides = CliOverrides {
+        headless: args.headless,
+        max_steps: Some(max_steps_per_task),
+        llm_mode: Some(LlmMode::Scripted),
+        extract_output: None,
+        ..CliOverrides::default()
+    };
+    let base_config = load_config(config_path.as_deref(), cli_overrides)?;
+
+    let server = BenchServer::start()
+        .await
+        .map_err(|err| format!("bench server startup failed: {err}"))?;
+    let base_url = server.base_url();
+
+    emit_json(&BenchConfigLog {
+        r#type: "bench_config",
+        tasks_dir: tasks_dir.display().to_string(),
+        report_path: report_path.display().to_string(),
+        max_steps_per_task,
+        required_passes,
+        base_url: base_url.clone(),
+    })?;
+
+    let actions_dir = actions_work_dir(&report_path);
+    let mut results = Vec::with_capacity(tasks.len());
+
+    for task in tasks {
+        let started_at = std::time::Instant::now();
+        let mut task_config = base_config.clone();
+        let step_limit = bench_task_limit(&task, max_steps_per_task);
+        task_config.agent.max_steps = step_limit;
+        task_config.browser.initial_url = join_base_url(&base_url, &task.start_path);
+        task_config.llm.mode = LlmMode::Scripted;
+
+        let actions_json = render_actions(&task.actions, &base_url)
+            .map_err(|err| format!("task {} actions: {err}", task.id))?;
+        let actions_file = actions_file_path(&actions_dir, &task.id);
+        write_actions_file(&actions_file, &actions_json)
+            .map_err(|err| format!("task {} actions file: {err}", task.id))?;
+        task_config.llm.actions_file = Some(actions_file);
+
+        let run = execute_agent(&task.task, task.plan.as_deref(), &task_config).await;
+        let elapsed = started_at.elapsed().as_millis() as u64;
+        let task_result = match run {
+            Ok(result) => {
+                let observed_status = match result.status {
+                    RunStatus::Done => BenchObservedStatus::Done,
+                    RunStatus::MaxSteps => BenchObservedStatus::MaxSteps,
+                };
+                let mut evaluated = evaluate_task(
+                    &task,
+                    observed_status,
+                    result.steps.len(),
+                    Some(&result.final_observation.url),
+                    Some(&result.final_observation.visible_text),
+                    step_limit,
+                    None,
+                );
+                evaluated.duration_ms = elapsed;
+                evaluated
+            }
+            Err(err) => {
+                let mut evaluated = evaluate_task(
+                    &task,
+                    BenchObservedStatus::Error,
+                    0,
+                    None,
+                    None,
+                    step_limit,
+                    Some(&err.to_string()),
+                );
+                evaluated.duration_ms = elapsed;
+                evaluated
+            }
+        };
+        emit_json(&BenchTaskLog::from(&task_result))?;
+        results.push(task_result);
+        sleep(sleep_between_tasks()).await;
+    }
+
+    let summary = build_summary(&results, required_passes);
+    let report = BenchReport {
+        timestamp: now_timestamp().map_err(|err| format!("bench timestamp: {err}"))?,
+        tasks_dir: tasks_dir.display().to_string(),
+        report_path: report_path.display().to_string(),
+        max_steps_per_task,
+        required_passes,
+        summary: summary.clone(),
+        results,
+    };
+    write_report(&report_path, &report)
+        .map_err(|err| format!("failed to write bench report: {err}"))?;
+
+    emit_json(&BenchSummaryLog {
+        r#type: "bench_summary",
+        total_tasks: summary.total_tasks,
+        passed_tasks: summary.passed_tasks,
+        required_passes: summary.required_passes,
+        completion_rate: summary.completion_rate,
+        median_steps_success: summary.median_steps_success,
+        p95_steps_success: summary.p95_steps_success,
+        gate_passed: summary.gate_passed,
+        failure_buckets: failure_buckets(&report.results),
+        report_path: report_path.display().to_string(),
+    })?;
+
+    server.shutdown().await;
+
+    if !summary.gate_passed {
+        return Err(format!(
+            "benchmark gate failed: passed {} of {} tasks (required {})",
+            summary.passed_tasks, summary.total_tasks, summary.required_passes
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
 fn resolve_config_path(cli_path: Option<&Path>) -> Option<PathBuf> {
-    cli_path.map(|path| path.to_path_buf()).or_else(|| {
-        std::env::var("MBUS_CONFIG")
-            .ok()
-            .map(PathBuf::from)
-    })
+    cli_path
+        .map(|path| path.to_path_buf())
+        .or_else(|| std::env::var("MBUS_CONFIG").ok().map(PathBuf::from))
 }
 
 fn resolve_required_text(
@@ -161,7 +295,9 @@ fn resolve_required_text(
     file_path: Option<&Path>,
 ) -> Result<String, Box<dyn Error>> {
     match (inline, file_path) {
-        (Some(_), Some(_)) => Err(format!("{label}: use only one of --{label} or --{label}-file").into()),
+        (Some(_), Some(_)) => {
+            Err(format!("{label}: use only one of --{label} or --{label}-file").into())
+        }
         (Some(value), None) => Ok(value.to_string()),
         (None, Some(path)) => {
             let content = std::fs::read_to_string(path)?;
@@ -177,7 +313,9 @@ fn resolve_optional_text(
     file_path: Option<&Path>,
 ) -> Result<Option<String>, Box<dyn Error>> {
     match (inline, file_path) {
-        (Some(_), Some(_)) => Err(format!("{label}: use only one of --{label} or --{label}-file").into()),
+        (Some(_), Some(_)) => {
+            Err(format!("{label}: use only one of --{label} or --{label}-file").into())
+        }
         (Some(value), None) => Ok(Some(value.to_string())),
         (None, Some(path)) => {
             let content = std::fs::read_to_string(path)?;
@@ -289,6 +427,31 @@ fn build_clients(config: &LlmConfig) -> Result<LlmClients, Box<dyn Error>> {
     }
 }
 
+async fn execute_agent(
+    task: &str,
+    plan: Option<&str>,
+    config: &mbus::config::AppConfig,
+) -> Result<RunResult, Box<dyn Error>> {
+    let browser = CdpBrowser::launch(config.browser.clone()).await?;
+    let clients = build_clients(&config.llm)?;
+
+    let mut agent = AgentLoop::new(browser, clients, task.to_string())
+        .with_policy(config.agent.clone())
+        .with_router(Router::new(config.router.clone()))
+        .with_validator(Validator::new(config.validator.clone()));
+    if let Some(plan) = plan {
+        agent = agent.with_plan(plan.to_string());
+    }
+
+    let run_result = agent.run().await;
+    let shutdown_result = agent.shutdown().await;
+    if let Err(err) = shutdown_result {
+        eprintln!("shutdown error: {err}");
+    }
+
+    Ok(run_result?)
+}
+
 fn emit_run_logs(result: &mbus::agent::r#loop::RunResult) -> Result<(), Box<dyn Error>> {
     for (index, step) in result.steps.iter().enumerate() {
         emit_json(&StepLog {
@@ -326,9 +489,7 @@ fn write_extract_output(
     };
     let task_id = mbus::output::task_id_for(task);
     let timestamp = mbus::output::current_timestamp()?;
-    if let Some(output) =
-        mbus::output::build_extract_output(task_id, timestamp, &result.steps)
-    {
+    if let Some(output) = mbus::output::build_extract_output(task_id, timestamp, &result.steps) {
         mbus::output::write_extract_output(path, &output)?;
     }
     Ok(())
@@ -478,4 +639,57 @@ struct LlmLog {
 #[derive(Serialize)]
 struct OutputLog {
     extract_output: Option<String>,
+}
+
+#[derive(Serialize)]
+struct BenchConfigLog {
+    #[serde(rename = "type")]
+    r#type: &'static str,
+    tasks_dir: String,
+    report_path: String,
+    max_steps_per_task: usize,
+    required_passes: usize,
+    base_url: String,
+}
+
+#[derive(Serialize)]
+struct BenchTaskLog {
+    #[serde(rename = "type")]
+    r#type: &'static str,
+    task_id: String,
+    passed: bool,
+    status: BenchObservedStatus,
+    steps: usize,
+    duration_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure_reason: Option<String>,
+}
+
+impl From<&BenchTaskResult> for BenchTaskLog {
+    fn from(value: &BenchTaskResult) -> Self {
+        Self {
+            r#type: "bench_task",
+            task_id: value.task_id.clone(),
+            passed: value.passed,
+            status: value.status,
+            steps: value.steps,
+            duration_ms: value.duration_ms,
+            failure_reason: value.failure_reason.clone(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct BenchSummaryLog {
+    #[serde(rename = "type")]
+    r#type: &'static str,
+    total_tasks: usize,
+    passed_tasks: usize,
+    required_passes: usize,
+    completion_rate: f64,
+    median_steps_success: Option<u64>,
+    p95_steps_success: Option<u64>,
+    gate_passed: bool,
+    failure_buckets: std::collections::BTreeMap<String, usize>,
+    report_path: String,
 }

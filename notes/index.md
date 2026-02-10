@@ -22,3 +22,5 @@
 - 2026-02-05 DOCS-001 usage + ops guide: `notes/2026-02-05-docs-001-usage-guide.md`
 - 2026-02-05 PRD task sweep: `notes/2026-02-05-prd-task-sweep.md`
 - 2026-02-06 OpenAI config notes: `notes/2026-02-06-openai-config.md`
+- 2026-02-09 test runtime notes: `notes/2026-02-09-test-runtime.md`
+- 2026-02-09 BENCH-001 benchmark harness: `notes/2026-02-09-bench-001-harness.md`
