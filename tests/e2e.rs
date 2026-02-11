@@ -24,6 +24,11 @@ const HARNESS_HTML: &str = r##"<!doctype html>
   <button id="click-btn" aria-label="Click Button">Click Me</button>
   <label for="name-input">Name</label>
   <input id="name-input" aria-label="Name" type="text" />
+  <form id="submit-form">
+    <label for="submit-input">Search</label>
+    <input id="submit-input" aria-label="Search" type="text" />
+    <button id="submit-btn" type="submit">Go</button>
+  </form>
   <label for="choice-select">Choice</label>
   <select id="choice-select" aria-label="Choice">
     <option value="">Pick</option>
@@ -47,6 +52,10 @@ const HARNESS_HTML: &str = r##"<!doctype html>
     });
     document.getElementById('name-input').addEventListener('input', (event) => {
       status.textContent = `typed:${event.target.value}`;
+    });
+    document.getElementById('submit-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      status.textContent = `submitted:${document.getElementById('submit-input').value}`;
     });
     document.getElementById('choice-select').addEventListener('change', (event) => {
       status.textContent = `selected:${event.target.value}`;
@@ -292,6 +301,20 @@ async fn e2e_click_type_select() {
     assert!(step.ok);
 
     let snapshot = wait_for_visible_text(&browser, "typed:Ada Lovelace").await;
+
+    let submit_id = find_element_by_roles(&snapshot, &["textbox", "searchbox"], "Search")
+        .id
+        .clone();
+    let submit = Action::Type {
+        id: submit_id,
+        text: "Lambda".to_string(),
+        submit: Some(true),
+    };
+    validator.validate(&submit, &snapshot).expect("valid submit type");
+    let step = browser.apply(&submit).await.expect("apply submit type");
+    assert!(step.ok);
+
+    let snapshot = wait_for_visible_text(&browser, "submitted:Lambda").await;
 
     let select_id = find_element_by_roles(&snapshot, &["combobox", "listbox"], "Choice")
         .id

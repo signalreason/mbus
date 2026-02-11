@@ -199,6 +199,36 @@ async fn type_by_id(
             return { ok: true, value: String(this.value ?? this.textContent ?? "") };
         }
     "#;
+    const SUBMIT_FN: &str = r#"
+        function() {
+            if (!this) {
+                return { ok: false, error: "missing_element" };
+            }
+            let form = this.form;
+            if (!form && this.closest) {
+                try {
+                    form = this.closest("form");
+                } catch (err) {
+                    form = null;
+                }
+            }
+            if (!form) {
+                return { ok: false, error: "missing_form" };
+            }
+            try {
+                if (typeof form.requestSubmit === "function") {
+                    form.requestSubmit();
+                } else if (typeof form.submit === "function") {
+                    form.submit();
+                } else {
+                    return { ok: false, error: "submit_unavailable" };
+                }
+            } catch (err) {
+                return { ok: false, error: "submit_failed" };
+            }
+            return { ok: true, value: "submitted" };
+        }
+    "#;
 
     let backend_id = resolve_backend_node_id(id, element_map)?;
     focus_backend_node(page, backend_id).await?;
@@ -211,7 +241,18 @@ async fn type_by_id(
     .await?;
     parse_js_action_result(value, "type_failed")?;
     if submit {
-        press_key(page, "Enter").await?;
+        let submit_result = call_function_on_node(page, backend_id, SUBMIT_FN, Vec::new()).await?;
+        let parsed = parse_js_action_result_raw(submit_result)?;
+        if parsed.ok {
+            return Ok(());
+        }
+        let error = parsed.error.unwrap_or_else(|| "submit_failed".to_string());
+        if error == "missing_form" || error == "submit_unavailable" {
+            focus_backend_node(page, backend_id).await?;
+            press_key(page, "Enter").await?;
+        } else {
+            return Err(ActionError::new("submit_failed", error));
+        }
     }
     Ok(())
 }
@@ -225,13 +266,16 @@ struct JsActionResult {
     error: Option<String>,
 }
 
+fn parse_js_action_result_raw(value: Value) -> Result<JsActionResult, ActionError> {
+    serde_json::from_value(value)
+        .map_err(|err| ActionError::new("js_error", format!("invalid js result: {err}")))
+}
+
 fn parse_js_action_result(
     value: Value,
     failure_code: &'static str,
 ) -> Result<Option<String>, ActionError> {
-    let parsed: JsActionResult = serde_json::from_value(value).map_err(|err| {
-        ActionError::new("js_error", format!("invalid js result: {err}"))
-    })?;
+    let parsed = parse_js_action_result_raw(value)?;
     if parsed.ok {
         Ok(parsed.value)
     } else {

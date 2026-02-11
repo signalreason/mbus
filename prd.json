@@ -272,10 +272,16 @@
         "Submit branch triggers Enter or form submit behavior when requested"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T212611Z-78463 completed",
+        "last_run_id": "20260211T212611Z-78463",
+        "last_update_utc": "2026-02-11T21:30:33Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Focus the element explicitly before input and keep submit logic deterministic."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-BROW-004",
       "title": "Implement type action execution with optional submit"
     },

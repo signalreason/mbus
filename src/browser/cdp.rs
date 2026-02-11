@@ -117,7 +117,8 @@ impl CdpSession {
 
         let mut handler_opt = self.handler_task.lock().await;
         if let Some(mut handle) = handler_opt.take() {
-            let mut shutdown_timer = tokio::time::sleep(Duration::from_secs(5));
+            let shutdown_timer = tokio::time::sleep(Duration::from_secs(5));
+            tokio::pin!(shutdown_timer);
             tokio::select! {
                 result = &mut handle => {
                     if let Err(err) = result {

@@ -1,0 +1,1 @@
+{"definition_of_done":["Type writes text into text-capable controls","Submit branch triggers Enter or form submit behavior when requested"],"model":"gpt-5.2-codex","recommended":{"approach":"Focus the element explicitly before input and keep submit logic deterministic."},"status":"unstarted","task_id":"M1-BROW-004","title":"Implement type action execution with optional submit"}
