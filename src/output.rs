@@ -212,8 +212,8 @@ mod tests {
         StepTimings {
             step_duration_ms: 1,
             llm_duration_ms: 1,
-            apply_duration_ms: None,
-            snapshot_duration_ms: None,
+            apply_duration_ms: 0,
+            snapshot_duration_ms: 0,
         }
     }
 

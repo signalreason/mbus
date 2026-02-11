@@ -42,10 +42,8 @@ impl ValidationOutcome {
 pub struct StepTimings {
     pub step_duration_ms: u64,
     pub llm_duration_ms: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub apply_duration_ms: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub snapshot_duration_ms: Option<u64>,
+    pub apply_duration_ms: u64,
+    pub snapshot_duration_ms: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

@@ -190,6 +190,8 @@ impl<B: Browser> AgentLoop<B> {
                     Err(err) => {
                         let duration = step_start.elapsed();
                         telemetry::record_step_duration(duration);
+                        telemetry::record_apply_duration(Duration::from_millis(0));
+                        telemetry::record_snapshot_duration(Duration::from_millis(0));
                         tracing::error!(
                             event = "llm_error",
                             error_code = err.code,
@@ -214,6 +216,8 @@ impl<B: Browser> AgentLoop<B> {
                     let mut result = validation_result(errors.clone());
                     result.new_state_hash = Some(observation.state_hash.clone());
                     let duration = step_start.elapsed();
+                    telemetry::record_apply_duration(Duration::from_millis(0));
+                    telemetry::record_snapshot_duration(Duration::from_millis(0));
                     self.memory.record_step(StepRecord {
                         action,
                         validation: ValidationOutcome::failure(errors),
@@ -222,8 +226,8 @@ impl<B: Browser> AgentLoop<B> {
                         timings: StepTimings {
                             step_duration_ms: duration_ms(duration),
                             llm_duration_ms: duration_ms(llm_duration),
-                            apply_duration_ms: None,
-                            snapshot_duration_ms: None,
+                            apply_duration_ms: 0,
+                            snapshot_duration_ms: 0,
                         },
                     });
                     let tier_after = self.router.record(StepOutcome::Failure);
@@ -241,6 +245,8 @@ impl<B: Browser> AgentLoop<B> {
                 if matches!(action, Action::Done { .. }) {
                     let result = done_result(&observation);
                     let duration = step_start.elapsed();
+                    telemetry::record_apply_duration(Duration::from_millis(0));
+                    telemetry::record_snapshot_duration(Duration::from_millis(0));
                     self.memory.record_step(StepRecord {
                         action: action.clone(),
                         validation: ValidationOutcome::success(),
@@ -249,8 +255,8 @@ impl<B: Browser> AgentLoop<B> {
                         timings: StepTimings {
                             step_duration_ms: duration_ms(duration),
                             llm_duration_ms: duration_ms(llm_duration),
-                            apply_duration_ms: None,
-                            snapshot_duration_ms: None,
+                            apply_duration_ms: 0,
+                            snapshot_duration_ms: 0,
                         },
                     });
                     telemetry::record_step_duration(duration);
@@ -269,6 +275,7 @@ impl<B: Browser> AgentLoop<B> {
                         telemetry::record_apply_duration(apply_duration);
                         let duration = step_start.elapsed();
                         telemetry::record_step_duration(duration);
+                        telemetry::record_snapshot_duration(Duration::from_millis(0));
                         tracing::error!(
                             event = "apply_error",
                             error_code = err.code,
@@ -323,8 +330,8 @@ impl<B: Browser> AgentLoop<B> {
                     timings: StepTimings {
                         step_duration_ms: duration_ms(duration),
                         llm_duration_ms: duration_ms(llm_duration),
-                        apply_duration_ms: Some(duration_ms(apply_duration)),
-                        snapshot_duration_ms: Some(duration_ms(snapshot_duration)),
+                        apply_duration_ms: duration_ms(apply_duration),
+                        snapshot_duration_ms: duration_ms(snapshot_duration),
                     },
                 });
                 self.memory.update_last_step_state_hash(new_hash);
