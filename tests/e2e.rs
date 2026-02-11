@@ -174,6 +174,27 @@ async fn wait_for_visible_text(
     panic!("expected visible text to include {needle}");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_snapshot_metadata() {
+    let server = TestServer::start().await;
+    let url = server.url("/harness");
+    let config = CdpConfig {
+        initial_url: url.clone(),
+        ..CdpConfig::default()
+    };
+    let browser = CdpBrowser::launch(config).await.expect("launch browser");
+
+    let snapshot = browser.snapshot().await.expect("snapshot");
+    assert_eq!(snapshot.url, url, "snapshot should report page url");
+    assert_eq!(snapshot.title, "mbus e2e", "snapshot should report title");
+    assert!(
+        snapshot.viewport[0] > 0 && snapshot.viewport[1] > 0,
+        "snapshot should report non-zero viewport"
+    );
+
+    browser.shutdown().await.expect("shutdown browser");
+    server.shutdown().await;
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn e2e_click_type_select() {
