@@ -3,11 +3,12 @@ use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
 use mbus::browser::{Browser, CdpBrowser, CdpConfig};
 use mbus::llm::client::{LlmClient, LlmError};
 use mbus::types::{Action, ElementRef, Observation};
-use mbus::verify::Validator;
+use mbus::verify::{Validator, ValidatorConfig};
 use async_trait::async_trait;
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
@@ -444,6 +445,139 @@ async fn e2e_click_type_select() {
     let error = step.error.expect("invalid select error");
     assert_eq!(error.code, "select_failed");
     assert_eq!(error.message, "invalid_option");
+
+    browser.shutdown().await.expect("shutdown browser");
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_select_updates_status_and_rejects_invalid_option() {
+    let server = TestServer::start().await;
+    let url = server.url("/harness");
+    let config = CdpConfig {
+        initial_url: url,
+        ..CdpConfig::default()
+    };
+    let browser = CdpBrowser::launch(config).await.expect("launch browser");
+    let validator = Validator::default();
+
+    let snapshot = browser.snapshot().await.expect("initial snapshot");
+    let select_id = find_element_by_roles(&snapshot, &["combobox", "listbox"], "Choice")
+        .id
+        .clone();
+
+    let select = Action::Select {
+        id: select_id.clone(),
+        value: "alpha".to_string(),
+    };
+    validator.validate(&select, &snapshot).expect("valid select");
+    let step = browser.apply(&select).await.expect("apply select");
+    assert!(step.ok);
+
+    let snapshot = wait_for_visible_text(&browser, "selected:alpha").await;
+    assert!(
+        snapshot.visible_text.contains("selected:alpha"),
+        "visible text should reflect select change"
+    );
+
+    let invalid_select = Action::Select {
+        id: select_id,
+        value: "delta".to_string(),
+    };
+    validator
+        .validate(&invalid_select, &snapshot)
+        .expect("valid select action");
+    let step = browser
+        .apply(&invalid_select)
+        .await
+        .expect("apply invalid select");
+    assert!(!step.ok, "invalid select should fail");
+    let error = step.error.expect("invalid select error");
+    assert_eq!(error.code, "select_failed");
+    assert_eq!(error.message, "invalid_option");
+
+    browser.shutdown().await.expect("shutdown browser");
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_scroll_within_bounds_and_rejects_out_of_bounds() {
+    let server = TestServer::start().await;
+    let url = server.url("/harness");
+    let config = CdpConfig {
+        initial_url: url,
+        max_scroll: 120,
+        ..CdpConfig::default()
+    };
+    let browser = CdpBrowser::launch(config).await.expect("launch browser");
+    let validator = Validator::new(ValidatorConfig {
+        max_scroll: 120,
+        ..ValidatorConfig::default()
+    });
+
+    let snapshot = browser.snapshot().await.expect("initial snapshot");
+    let scroll = Action::Scroll { dx: 0, dy: 80 };
+    validator.validate(&scroll, &snapshot).expect("valid scroll");
+    let step = browser.apply(&scroll).await.expect("apply scroll");
+    assert!(step.ok);
+    let coords = step.scroll.expect("scroll coords");
+    assert!(coords[1] > 0.0, "expected positive scroll y");
+
+    let invalid_scroll = Action::Scroll { dx: 0, dy: 240 };
+    let errors = validator
+        .validate(&invalid_scroll, &snapshot)
+        .expect_err("invalid scroll should be rejected");
+    assert_eq!(errors[0].code, "scroll_out_of_bounds");
+    let step = browser
+        .apply(&invalid_scroll)
+        .await
+        .expect("apply invalid scroll");
+    assert!(!step.ok, "out of bounds scroll should fail");
+    let error = step.error.expect("scroll error");
+    assert_eq!(error.code, "scroll_out_of_bounds");
+
+    browser.shutdown().await.expect("shutdown browser");
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_wait_within_bounds_and_rejects_out_of_bounds() {
+    let server = TestServer::start().await;
+    let url = server.url("/harness");
+    let config = CdpConfig {
+        initial_url: url,
+        max_wait_ms: 120,
+        ..CdpConfig::default()
+    };
+    let browser = CdpBrowser::launch(config).await.expect("launch browser");
+    let validator = Validator::new(ValidatorConfig {
+        max_wait_ms: 120,
+        ..ValidatorConfig::default()
+    });
+
+    let snapshot = browser.snapshot().await.expect("initial snapshot");
+    let wait = Action::Wait { ms: 80 };
+    validator.validate(&wait, &snapshot).expect("valid wait");
+    let start = Instant::now();
+    let step = browser.apply(&wait).await.expect("apply wait");
+    assert!(step.ok);
+    assert!(
+        start.elapsed() >= Duration::from_millis(80),
+        "expected wait to delay at least requested duration"
+    );
+
+    let invalid_wait = Action::Wait { ms: 220 };
+    let errors = validator
+        .validate(&invalid_wait, &snapshot)
+        .expect_err("invalid wait should be rejected");
+    assert_eq!(errors[0].code, "wait_too_long");
+    let step = browser
+        .apply(&invalid_wait)
+        .await
+        .expect("apply invalid wait");
+    assert!(!step.ok, "wait over max should fail");
+    let error = step.error.expect("wait error");
+    assert_eq!(error.code, "wait_too_long");
 
     browser.shutdown().await.expect("shutdown browser");
     server.shutdown().await;

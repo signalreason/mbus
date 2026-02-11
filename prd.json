@@ -861,10 +861,16 @@
         "Assertions include both success and bounded constraint behavior"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T230852Z-78463 completed",
+        "last_run_id": "20260211T230852Z-78463",
+        "last_update_utc": "2026-02-11T23:11:46Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Reuse shared harness fixtures and keep each test focused on one behavior."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-HARNESS-003",
       "title": "Add integration tests for select, scroll, and wait behavior"
     },
