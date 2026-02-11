@@ -410,6 +410,7 @@ fn validation_result(errors: Vec<ValidationError>) -> StepResult {
             message,
         }),
         new_state_hash: None,
+        scroll: None,
         extract: None,
     }
 }
@@ -431,6 +432,7 @@ fn done_result(observation: &Observation) -> StepResult {
         ok: true,
         error: None,
         new_state_hash: Some(observation.state_hash.clone()),
+        scroll: None,
         extract: None,
     }
 }
@@ -614,12 +616,14 @@ mod tests {
                     ok: true,
                     error: None,
                     new_state_hash: None,
+                    scroll: None,
                     extract: None,
                 },
                 StepResult {
                     ok: true,
                     error: None,
                     new_state_hash: None,
+                    scroll: None,
                     extract: None,
                 },
             ],
@@ -660,6 +664,7 @@ mod tests {
             ok: true,
             error: None,
             new_state_hash: None,
+            scroll: None,
             extract: None,
         };
 
@@ -677,6 +682,7 @@ mod tests {
             ok: true,
             error: None,
             new_state_hash: None,
+            scroll: None,
             extract: None,
         };
 
@@ -702,6 +708,7 @@ mod tests {
             ok: true,
             error: None,
             new_state_hash: None,
+            scroll: None,
             extract: None,
         };
 

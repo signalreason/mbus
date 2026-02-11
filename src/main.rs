@@ -435,7 +435,9 @@ async fn execute_agent(
     plan: Option<&str>,
     config: &mbus::config::AppConfig,
 ) -> Result<RunResult, Box<dyn Error>> {
-    let browser = CdpBrowser::start(config.browser.clone()).await?;
+    let mut browser_config = config.browser.clone();
+    browser_config.max_scroll = config.validator.max_scroll;
+    let browser = CdpBrowser::start(browser_config).await?;
     let clients = build_clients(&config.llm)?;
 
     let mut agent = AgentLoop::new(browser, clients, task.to_string())

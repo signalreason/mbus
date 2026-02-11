@@ -1,0 +1,1 @@
+{"definition_of_done":["Scroll applies dx and dy with configured bounds","Out-of-range values are blocked by validation"],"model":"gpt-5.2-codex","recommended":{"approach":"Validate bounds pre-execution and emit resulting scroll position where available."},"status":"unstarted","task_id":"M1-BROW-006","title":"Implement bounded scroll action execution"}

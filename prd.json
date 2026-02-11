@@ -310,10 +310,16 @@
         "Out-of-range values are blocked by validation"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T213313Z-78463 completed",
+        "last_run_id": "20260211T213313Z-78463",
+        "last_update_utc": "2026-02-11T21:38:53Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Validate bounds pre-execution and emit resulting scroll position where available."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-BROW-006",
       "title": "Implement bounded scroll action execution"
     },

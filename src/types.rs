@@ -117,6 +117,8 @@ pub struct StepResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_state_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub scroll: Option<[f64; 2]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub extract: Option<ExtractResult>,
 }
 
@@ -188,6 +190,7 @@ mod tests {
                 message: "missing id".to_string(),
             }),
             new_state_hash: None,
+            scroll: None,
             extract: None,
         };
         let value = serde_json::to_value(&result).expect("serialize step result");
@@ -201,6 +204,7 @@ mod tests {
             ok: true,
             error: None,
             new_state_hash: None,
+            scroll: None,
             extract: Some(ExtractResult {
                 query: "price".to_string(),
                 id: Some("el_4".to_string()),

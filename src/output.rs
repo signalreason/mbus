@@ -103,6 +103,7 @@ mod tests {
                 ok: true,
                 error: None,
                 new_state_hash: None,
+                scroll: None,
                 extract: None,
             },
         }];
@@ -122,6 +123,7 @@ mod tests {
                 ok: true,
                 error: None,
                 new_state_hash: None,
+                scroll: None,
                 extract: Some(ExtractResult {
                     query: "price".to_string(),
                     id: Some("el_9".to_string()),

@@ -1,4 +1,4 @@
-use crate::browser::act::{action_result_err, action_result_ok, ActionApplier, ActionError};
+use crate::browser::act::{action_result_err, action_result_ok_with, ActionApplier, ActionError};
 use crate::browser::observe::{Observer, ObserverConfig};
 use crate::browser::{Browser, BrowserError, BrowserResult};
 use crate::types::{Action, Observation, StepResult};
@@ -22,6 +22,7 @@ pub struct CdpConfig {
     pub action_timeout: Duration,
     pub max_elements: usize,
     pub max_text_len: usize,
+    pub max_scroll: i64,
 }
 
 impl Default for CdpConfig {
@@ -34,6 +35,7 @@ impl Default for CdpConfig {
             action_timeout: Duration::from_secs(10),
             max_elements: 50,
             max_text_len: 4000,
+            max_scroll: 2000,
         }
     }
 }
@@ -191,7 +193,7 @@ impl CdpBrowser {
         Self {
             session,
             observer,
-            applier: ActionApplier::new(),
+            applier: ActionApplier::new(config.max_scroll),
             timeouts: Timeouts {
                 snapshot: config.snapshot_timeout,
                 action: config.action_timeout,
@@ -229,7 +231,7 @@ impl Browser for CdpBrowser {
         let result =
             timeout(self.timeouts.action, self.applier.apply(&page, action, Some(&map))).await;
         let step = match result {
-            Ok(Ok(outcome)) => action_result_ok(outcome.extract),
+            Ok(Ok(outcome)) => action_result_ok_with(outcome),
             Ok(Err(err)) => action_result_err(err),
             Err(err) => action_result_err(ActionError::new(
                 "timeout",

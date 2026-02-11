@@ -15,16 +15,22 @@ use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
 
 #[derive(Clone, Debug)]
-pub struct ActionApplier;
+pub struct ActionApplier {
+    max_scroll: i64,
+}
 
 #[derive(Clone, Debug)]
 pub struct ApplyOutcome {
     pub extract: Option<ExtractResult>,
+    pub scroll: Option<[f64; 2]>,
 }
 
 impl ApplyOutcome {
     fn none() -> Self {
-        Self { extract: None }
+        Self {
+            extract: None,
+            scroll: None,
+        }
     }
 }
 
@@ -79,8 +85,8 @@ fn map_cdp_error(err: chromiumoxide::error::CdpError, context: &'static str) -> 
 }
 
 impl ActionApplier {
-    pub fn new() -> Self {
-        Self
+    pub fn new(max_scroll: i64) -> Self {
+        Self { max_scroll }
     }
 
     pub async fn apply(
@@ -103,9 +109,11 @@ impl ActionApplier {
                 ApplyOutcome::none()
             }
             Action::Scroll { dx, dy } => {
-                let script = format!("() => window.scrollBy({dx}, {dy})");
-                page.evaluate(script).await?;
-                ApplyOutcome::none()
+                let scroll = scroll_by(page, *dx, *dy, self.max_scroll).await?;
+                ApplyOutcome {
+                    extract: None,
+                    scroll: Some(scroll),
+                }
             }
             Action::Wait { ms } => {
                 sleep(Duration::from_millis(*ms)).await;
@@ -131,6 +139,7 @@ impl ActionApplier {
                         id: id.clone(),
                         value,
                     }),
+                    scroll: None,
                 }
             }
             Action::Done { .. } => ApplyOutcome::none(),
@@ -145,6 +154,7 @@ pub fn action_result_ok(extract: Option<ExtractResult>) -> StepResult {
         error: None,
         new_state_hash: None,
         extract,
+        scroll: None,
     }
 }
 
@@ -157,6 +167,39 @@ pub fn action_result_err(error: ActionError) -> StepResult {
         }),
         new_state_hash: None,
         extract: None,
+        scroll: None,
+    }
+}
+
+async fn scroll_by(
+    page: &Page,
+    dx: i64,
+    dy: i64,
+    max_scroll: i64,
+) -> Result<[f64; 2], ActionError> {
+    if dx.saturating_abs() > max_scroll || dy.saturating_abs() > max_scroll {
+        return Err(ActionError::new(
+            "scroll_out_of_bounds",
+            format!("scroll out of bounds: dx={dx}, dy={dy}, max={max_scroll}"),
+        ));
+    }
+    let script = format!("() => {{ window.scrollBy({dx}, {dy}); return [window.scrollX, window.scrollY]; }}");
+    let result = page.evaluate(script).await?;
+    let value = result
+        .into_value()
+        .map_err(|err| ActionError::new("js_error", format!("scroll: {err}")))?;
+    let coords: [f64; 2] = serde_json::from_value(value)
+        .map_err(|err| ActionError::new("js_error", format!("scroll: {err}")))?;
+    Ok(coords)
+}
+
+pub fn action_result_ok_with(outcome: ApplyOutcome) -> StepResult {
+    StepResult {
+        ok: true,
+        error: None,
+        new_state_hash: None,
+        extract: outcome.extract,
+        scroll: outcome.scroll,
     }
 }
 
