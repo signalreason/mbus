@@ -66,3 +66,4 @@
 - 2026-02-11 ROUTER-001 failure streak counter: `notes/2026-02-11-router-001-failure-streak.md`
 - 2026-02-11 ROUTER-002 no-progress streak counter: `notes/2026-02-11-router-002-no-progress-streak.md`
 - 2026-02-11 ROUTER-003 reset counters on progress: `notes/2026-02-11-router-003-reset-counters.md`
+- 2026-02-11 CLI-001 run task/max-steps flags: `notes/2026-02-11-cli-001-run-cli-task-max-steps.md`

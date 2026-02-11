@@ -709,10 +709,16 @@
         "Invalid arguments return actionable CLI errors"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T224340Z-78463 completed",
+        "last_run_id": "20260211T224340Z-78463",
+        "last_update_utc": "2026-02-11T22:46:24Z",
+        "run_attempts": 2
+      },
       "recommended": {
         "approach": "Define command options with clap and map directly to runtime config."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-CLI-001",
       "title": "Implement mbus run CLI command with task and step flags"
     },

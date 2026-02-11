@@ -35,13 +35,13 @@ enum Commands {
 
 #[derive(Args, Debug)]
 struct RunArgs {
-    #[arg(long)]
+    #[arg(long, required_unless_present = "task_file", conflicts_with = "task_file")]
     task: Option<String>,
-    #[arg(long)]
+    #[arg(long, required_unless_present = "task", conflicts_with = "task")]
     task_file: Option<PathBuf>,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "plan_file")]
     plan: Option<String>,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "plan")]
     plan_file: Option<PathBuf>,
     #[arg(long)]
     config: Option<PathBuf>,
@@ -51,7 +51,7 @@ struct RunArgs {
     initial_url: Option<String>,
     #[arg(long)]
     cdp_url: Option<String>,
-    #[arg(long)]
+    #[arg(long, value_parser = clap::value_parser!(usize).range(1..))]
     max_steps: Option<usize>,
     #[arg(long)]
     memory_max_observations: Option<usize>,
