@@ -1,0 +1,1 @@
+{"definition_of_done":["ElementRef exposes id, role, name, value, bounding box, and flags","ElementRef fields serialize without lossy conversions"],"model":"gpt-5.2-codex","recommended":{"approach":"Use explicit optional fields and avoid ad hoc map payloads."},"status":"unstarted","task_id":"M1-TYPES-002","title":"Define ElementRef type with stable id and interaction metadata"}

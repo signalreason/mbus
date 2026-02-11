@@ -29,8 +29,47 @@ pub struct ElementRef {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
     pub bbox: [f64; 4],
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub flags: Vec<String>,
+    #[serde(default, skip_serializing_if = "ElementFlags::is_empty")]
+    pub flags: ElementFlags,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ElementFlags {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub readonly: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focused: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checked: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expanded: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pressed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bbox_missing: Option<bool>,
+}
+
+impl ElementFlags {
+    fn is_empty(&self) -> bool {
+        self.disabled.is_none()
+            && self.readonly.is_none()
+            && self.required.is_none()
+            && self.focused.is_none()
+            && self.editable.is_none()
+            && self.checked.is_none()
+            && self.selected.is_none()
+            && self.expanded.is_none()
+            && self.pressed.is_none()
+            && self.bbox_missing.is_none()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -126,7 +165,10 @@ mod tests {
                 name: Some("Email".to_string()),
                 value: None,
                 bbox: [10.0, 120.0, 400.0, 36.0],
-                flags: vec!["focusable".to_string()],
+                flags: ElementFlags {
+                    focused: Some(true),
+                    ..ElementFlags::default()
+                },
             }],
         };
         let value = serde_json::to_value(&observation).expect("serialize observation");

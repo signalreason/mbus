@@ -1,5 +1,5 @@
 use crate::browser::{BrowserError, BrowserResult};
-use crate::types::{ElementRef, Observation};
+use crate::types::{ElementFlags, ElementRef, Observation};
 use chromiumoxide::page::Page;
 use chromiumoxide_cdp::cdp::browser_protocol::accessibility::{
     AxNode, AxProperty, AxPropertyName, AxValue, EnableParams, GetFullAxTreeParams,
@@ -90,7 +90,7 @@ struct ActionableElement {
     name: Option<String>,
     value: Option<String>,
     bbox: [f64; 4],
-    flags: Vec<String>,
+    flags: ElementFlags,
     signature: String,
 }
 
@@ -149,7 +149,7 @@ async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<Collecte
             continue;
         }
 
-        let mut flags = Vec::new();
+        let mut flags = ElementFlags::default();
         add_ax_flags(&node.properties, &mut flags);
 
         let name = ax_value_string(node.name.as_ref())
@@ -160,8 +160,8 @@ async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<Collecte
         let mut bbox = [0.0, 0.0, 0.0, 0.0];
         match backend_node_bbox(page, backend_id).await {
             Ok(Some(bounds)) => bbox = bounds,
-            Ok(None) => flags.push("bbox_missing".to_string()),
-            Err(_) => flags.push("bbox_missing".to_string()),
+            Ok(None) => flags.bbox_missing = Some(true),
+            Err(_) => flags.bbox_missing = Some(true),
         }
 
         let signature = stable_signature(&role, &name, backend_id);
@@ -253,33 +253,33 @@ fn ax_property_truthy(properties: &Option<Vec<AxProperty>>, name: AxPropertyName
         .unwrap_or(false)
 }
 
-fn add_ax_flags(properties: &Option<Vec<AxProperty>>, flags: &mut Vec<String>) {
+fn add_ax_flags(properties: &Option<Vec<AxProperty>>, flags: &mut ElementFlags) {
     if ax_property_truthy(properties, AxPropertyName::Disabled) {
-        flags.push("disabled".to_string());
+        flags.disabled = Some(true);
     }
     if ax_property_truthy(properties, AxPropertyName::Readonly) {
-        flags.push("readonly".to_string());
+        flags.readonly = Some(true);
     }
     if ax_property_truthy(properties, AxPropertyName::Required) {
-        flags.push("required".to_string());
+        flags.required = Some(true);
     }
     if ax_property_truthy(properties, AxPropertyName::Focused) {
-        flags.push("focused".to_string());
+        flags.focused = Some(true);
     }
     if ax_property_truthy(properties, AxPropertyName::Editable) {
-        flags.push("editable".to_string());
+        flags.editable = Some(true);
     }
     if ax_property_truthy(properties, AxPropertyName::Checked) {
-        flags.push("checked".to_string());
+        flags.checked = Some(true);
     }
     if ax_property_truthy(properties, AxPropertyName::Selected) {
-        flags.push("selected".to_string());
+        flags.selected = Some(true);
     }
     if ax_property_truthy(properties, AxPropertyName::Expanded) {
-        flags.push("expanded".to_string());
+        flags.expanded = Some(true);
     }
     if ax_property_truthy(properties, AxPropertyName::Pressed) {
-        flags.push("pressed".to_string());
+        flags.pressed = Some(true);
     }
 }
 
@@ -442,7 +442,7 @@ mod tests {
             name: Some("Save".to_string()),
             value: None,
             bbox: [0.0, 0.0, 10.0, 10.0],
-            flags: Vec::new(),
+            flags: ElementFlags::default(),
         }];
         let hash_a = compute_state_hash("https://a.example", "Title", &elements);
         let hash_b = compute_state_hash("https://b.example", "Title", &elements);

@@ -435,7 +435,7 @@ fn done_result(observation: &Observation) -> StepResult {
 mod tests {
     use super::*;
     use crate::browser::BrowserResult;
-    use crate::types::ElementRef;
+    use crate::types::{ElementFlags, ElementRef};
     use async_trait::async_trait;
     use std::collections::VecDeque;
     use tokio::sync::Mutex;
@@ -534,7 +534,7 @@ mod tests {
             name: Some("Submit".to_string()),
             value: None,
             bbox: [0.0, 0.0, 10.0, 10.0],
-            flags: vec![],
+            flags: ElementFlags::default(),
         }
     }
 

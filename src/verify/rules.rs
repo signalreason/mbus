@@ -164,7 +164,7 @@ fn validate_element_id(id: &str, element_ids: &HashSet<&str>, errors: &mut Vec<V
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{ElementRef, Observation};
+    use crate::types::{ElementFlags, ElementRef, Observation};
 
     fn sample_observation() -> Observation {
         Observation {
@@ -180,7 +180,7 @@ mod tests {
                 name: Some("Submit".to_string()),
                 value: None,
                 bbox: [0.0, 0.0, 10.0, 10.0],
-                flags: vec![],
+                flags: ElementFlags::default(),
             }],
         }
     }

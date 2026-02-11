@@ -177,10 +177,16 @@
         "ElementRef fields serialize without lossy conversions"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T210731Z-78463 completed",
+        "last_run_id": "20260211T210731Z-78463",
+        "last_update_utc": "2026-02-11T21:10:07Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Use explicit optional fields and avoid ad hoc map payloads."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-TYPES-002",
       "title": "Define ElementRef type with stable id and interaction metadata"
     },
