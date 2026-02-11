@@ -1,5 +1,5 @@
 use clap::{Args, Parser, Subcommand};
-use mbus::agent::r#loop::{AgentLoop, LlmClients, RunResult, RunStatus};
+use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
 use mbus::bench::{
     BenchObservedStatus, BenchReport, BenchServer, BenchTaskResult, actions_file_path,
     actions_work_dir, bench_task_limit, build_summary, evaluate_task, failure_buckets,
@@ -147,9 +147,83 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
     let config = load_config(config_path.as_deref(), cli_overrides)?;
 
     emit_json(&ConfigLog::from(&config))?;
-    let result = execute_agent(&task, plan.as_deref(), &config).await?;
-    emit_run_logs(&result)?;
-    write_extract_output(&task, &config, &result)?;
+    let execution = match execute_agent(&task, plan.as_deref(), &config).await {
+        Ok(execution) => execution,
+        Err(err) => {
+            let summary = mbus::output::build_run_summary(
+                mbus::output::TerminalState::Error,
+                &[],
+                vec![run_error_summary(
+                    "startup_error",
+                    err.to_string(),
+                    Some("startup"),
+                )],
+                Vec::new(),
+            );
+            emit_run_logs(&[], &summary, None, None)?;
+            return Err(err);
+        }
+    };
+
+    let RunExecution {
+        result,
+        steps,
+        final_observation,
+    } = execution;
+
+    let mut errors = Vec::new();
+    let mut output_artifacts = Vec::new();
+    let mut final_action = None;
+    let mut terminal_state = mbus::output::TerminalState::Error;
+    let mut return_error: Option<Box<dyn Error>> = None;
+
+    match result {
+        Ok(result) => {
+            terminal_state = match result.status {
+                RunStatus::Done => mbus::output::TerminalState::Done,
+                RunStatus::MaxSteps => mbus::output::TerminalState::MaxSteps,
+            };
+            final_action = Some(result.final_action);
+        }
+        Err(err) => {
+            errors.push(agent_error_summary(&err));
+            if return_error.is_none() {
+                return_error = Some(Box::new(err));
+            }
+        }
+    }
+
+    match write_extract_output(&task, &config, &steps) {
+        Ok(Some(artifact)) => output_artifacts.push(artifact),
+        Ok(None) => {}
+        Err(err) => {
+            errors.push(run_error_summary(
+                "output_error",
+                err.to_string(),
+                Some("output"),
+            ));
+            if return_error.is_none() {
+                return_error = Some(err);
+            }
+        }
+    }
+
+    let summary = mbus::output::build_run_summary(
+        terminal_state,
+        &steps,
+        errors,
+        output_artifacts,
+    );
+    emit_run_logs(
+        &steps,
+        &summary,
+        final_action.as_ref(),
+        final_observation.as_ref(),
+    )?;
+
+    if let Some(err) = return_error {
+        return Err(err);
+    }
 
     Ok(())
 }
@@ -210,23 +284,38 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
         let run = execute_agent(&task.task, task.plan.as_deref(), &task_config).await;
         let elapsed = started_at.elapsed().as_millis() as u64;
         let task_result = match run {
-            Ok(result) => {
-                let observed_status = match result.status {
-                    RunStatus::Done => BenchObservedStatus::Done,
-                    RunStatus::MaxSteps => BenchObservedStatus::MaxSteps,
-                };
-                let mut evaluated = evaluate_task(
-                    &task,
-                    observed_status,
-                    result.steps.len(),
-                    Some(&result.final_observation.url),
-                    Some(&result.final_observation.visible_text),
-                    step_limit,
-                    None,
-                );
-                evaluated.duration_ms = elapsed;
-                evaluated
-            }
+            Ok(execution) => match execution.result {
+                Ok(result) => {
+                    let observed_status = match result.status {
+                        RunStatus::Done => BenchObservedStatus::Done,
+                        RunStatus::MaxSteps => BenchObservedStatus::MaxSteps,
+                    };
+                    let mut evaluated = evaluate_task(
+                        &task,
+                        observed_status,
+                        result.steps.len(),
+                        Some(&result.final_observation.url),
+                        Some(&result.final_observation.visible_text),
+                        step_limit,
+                        None,
+                    );
+                    evaluated.duration_ms = elapsed;
+                    evaluated
+                }
+                Err(err) => {
+                    let mut evaluated = evaluate_task(
+                        &task,
+                        BenchObservedStatus::Error,
+                        execution.steps.len(),
+                        None,
+                        None,
+                        step_limit,
+                        Some(&err.to_string()),
+                    );
+                    evaluated.duration_ms = elapsed;
+                    evaluated
+                }
+            },
             Err(err) => {
                 let mut evaluated = evaluate_task(
                     &task,
@@ -430,11 +519,49 @@ fn build_clients(config: &LlmConfig) -> Result<LlmClients, Box<dyn Error>> {
     }
 }
 
+struct RunExecution {
+    result: Result<mbus::agent::r#loop::RunResult, mbus::agent::r#loop::AgentError>,
+    steps: Vec<mbus::agent::memory::StepRecord>,
+    final_observation: Option<mbus::types::Observation>,
+}
+
+fn run_error_summary(
+    code: impl Into<String>,
+    message: impl Into<String>,
+    kind: Option<&str>,
+) -> mbus::output::RunErrorSummary {
+    mbus::output::RunErrorSummary {
+        code: code.into(),
+        message: message.into(),
+        step_index: None,
+        field: None,
+        validation_code: None,
+        kind: kind.map(|value| value.to_string()),
+    }
+}
+
+fn agent_error_summary(
+    err: &mbus::agent::r#loop::AgentError,
+) -> mbus::output::RunErrorSummary {
+    match err {
+        mbus::agent::r#loop::AgentError::Browser(err) => run_error_summary(
+            err.code,
+            err.message.clone(),
+            Some("browser"),
+        ),
+        mbus::agent::r#loop::AgentError::Llm(err) => run_error_summary(
+            err.code,
+            err.message.clone(),
+            Some("llm"),
+        ),
+    }
+}
+
 async fn execute_agent(
     task: &str,
     plan: Option<&str>,
     config: &mbus::config::AppConfig,
-) -> Result<RunResult, Box<dyn Error>> {
+) -> Result<RunExecution, Box<dyn Error>> {
     let mut browser_config = config.browser.clone();
     browser_config.max_scroll = config.validator.max_scroll;
     browser_config.max_wait_ms = config.validator.max_wait_ms;
@@ -450,16 +577,31 @@ async fn execute_agent(
     }
 
     let run_result = agent.run().await;
+    let steps = agent.memory().steps().to_vec();
+    let final_observation = agent
+        .memory()
+        .observations()
+        .back()
+        .cloned();
     let shutdown_result = agent.shutdown().await;
     if let Err(err) = shutdown_result {
         eprintln!("shutdown error: {err}");
     }
 
-    Ok(run_result?)
+    Ok(RunExecution {
+        result: run_result,
+        steps,
+        final_observation,
+    })
 }
 
-fn emit_run_logs(result: &mbus::agent::r#loop::RunResult) -> Result<(), Box<dyn Error>> {
-    for (index, step) in result.steps.iter().enumerate() {
+fn emit_run_logs(
+    steps: &[mbus::agent::memory::StepRecord],
+    summary: &mbus::output::RunSummary,
+    final_action: Option<&mbus::types::Action>,
+    final_observation: Option<&mbus::types::Observation>,
+) -> Result<(), Box<dyn Error>> {
+    for (index, step) in steps.iter().enumerate() {
         emit_json(&StepLog {
             r#type: "step",
             index: index + 1,
@@ -470,23 +612,24 @@ fn emit_run_logs(result: &mbus::agent::r#loop::RunResult) -> Result<(), Box<dyn 
         })?;
     }
 
-    let status = match result.status {
-        RunStatus::Done => "done",
-        RunStatus::MaxSteps => "max_steps",
-    };
-
-    let counts = step_counts(&result.steps);
     emit_json(&SummaryLog {
         r#type: "summary",
-        status,
-        final_action: result.final_action.clone(),
-        steps: result.steps.len(),
-        validation_failures: counts.validation_failures,
-        apply_failures: counts.apply_failures,
-        apply_successes: counts.apply_successes,
-        done_steps: counts.done_steps,
-        final_url: result.final_observation.url.clone(),
-        final_title: result.final_observation.title.clone(),
+        status: match summary.terminal_state {
+            mbus::output::TerminalState::Done => "done",
+            mbus::output::TerminalState::MaxSteps => "max_steps",
+            mbus::output::TerminalState::Error => "error",
+        },
+        terminal_state: summary.terminal_state.clone(),
+        final_action: final_action.cloned(),
+        steps: summary.steps,
+        validation_failures: summary.validation_failures,
+        apply_failures: summary.apply_failures,
+        apply_successes: summary.apply_successes,
+        done_steps: summary.done_steps,
+        errors: summary.errors.clone(),
+        output_artifacts: summary.output_artifacts.clone(),
+        final_url: final_observation.map(|value| value.url.clone()),
+        final_title: final_observation.map(|value| value.title.clone()),
     })?;
 
     Ok(())
@@ -495,17 +638,23 @@ fn emit_run_logs(result: &mbus::agent::r#loop::RunResult) -> Result<(), Box<dyn 
 fn write_extract_output(
     task: &str,
     config: &mbus::config::AppConfig,
-    result: &mbus::agent::r#loop::RunResult,
-) -> Result<(), Box<dyn Error>> {
+    steps: &[mbus::agent::memory::StepRecord],
+) -> Result<Option<mbus::output::OutputArtifact>, Box<dyn Error>> {
     let Some(path) = config.output.extract_output.as_ref() else {
-        return Ok(());
+        return Ok(None);
     };
     let task_id = mbus::output::task_id_for(task);
     let timestamp = mbus::output::current_timestamp()?;
-    if let Some(output) = mbus::output::build_extract_output(task_id, timestamp, &result.steps) {
+    if let Some(output) = mbus::output::build_extract_output(task_id, timestamp, steps) {
+        let record_count = Some(output.extracts.len());
         mbus::output::write_extract_output(path, &output)?;
+        return Ok(Some(mbus::output::OutputArtifact {
+            kind: "extract_output".to_string(),
+            path: path.display().to_string(),
+            record_count,
+        }));
     }
-    Ok(())
+    Ok(None)
 }
 
 fn emit_json<T: Serialize>(value: &T) -> Result<(), Box<dyn Error>> {
@@ -530,42 +679,20 @@ struct SummaryLog {
     #[serde(rename = "type")]
     r#type: &'static str,
     status: &'static str,
-    final_action: mbus::types::Action,
+    terminal_state: mbus::output::TerminalState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    final_action: Option<mbus::types::Action>,
     steps: usize,
     validation_failures: usize,
     apply_failures: usize,
     apply_successes: usize,
     done_steps: usize,
-    final_url: String,
-    final_title: String,
-}
-
-#[derive(Default)]
-struct StepCounts {
-    validation_failures: usize,
-    apply_failures: usize,
-    apply_successes: usize,
-    done_steps: usize,
-}
-
-fn step_counts(steps: &[mbus::agent::memory::StepRecord]) -> StepCounts {
-    let mut counts = StepCounts::default();
-    for step in steps {
-        if !step.validation.ok {
-            counts.validation_failures += 1;
-            continue;
-        }
-        if matches!(step.action, mbus::types::Action::Done { .. }) {
-            counts.done_steps += 1;
-            continue;
-        }
-        if step.result.ok {
-            counts.apply_successes += 1;
-        } else {
-            counts.apply_failures += 1;
-        }
-    }
-    counts
+    errors: Vec<mbus::output::RunErrorSummary>,
+    output_artifacts: Vec<mbus::output::OutputArtifact>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    final_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    final_title: Option<String>,
 }
 
 #[derive(Serialize)]

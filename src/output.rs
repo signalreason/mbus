@@ -21,6 +21,48 @@ pub struct ExtractRecord {
     pub value: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalState {
+    Done,
+    MaxSteps,
+    Error,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct OutputArtifact {
+    pub kind: String,
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub record_count: Option<usize>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RunErrorSummary {
+    pub code: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub step_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RunSummary {
+    pub terminal_state: TerminalState,
+    pub steps: usize,
+    pub errors: Vec<RunErrorSummary>,
+    pub output_artifacts: Vec<OutputArtifact>,
+    pub validation_failures: usize,
+    pub apply_failures: usize,
+    pub apply_successes: usize,
+    pub done_steps: usize,
+}
+
 pub fn task_id_for(task: &str) -> String {
     let mut hasher = DefaultHasher::new();
     task.hash(&mut hasher);
@@ -78,6 +120,86 @@ pub fn write_extract_output(path: &Path, output: &ExtractOutput) -> io::Result<(
         .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
     std::fs::write(path, data)?;
     Ok(())
+}
+
+#[derive(Default)]
+struct StepCounts {
+    validation_failures: usize,
+    apply_failures: usize,
+    apply_successes: usize,
+    done_steps: usize,
+}
+
+fn step_counts(steps: &[StepRecord]) -> StepCounts {
+    let mut counts = StepCounts::default();
+    for step in steps {
+        if !step.validation.ok {
+            counts.validation_failures += 1;
+            continue;
+        }
+        if matches!(step.action, Action::Done { .. }) {
+            counts.done_steps += 1;
+            continue;
+        }
+        if step.result.ok {
+            counts.apply_successes += 1;
+        } else {
+            counts.apply_failures += 1;
+        }
+    }
+    counts
+}
+
+fn step_errors(steps: &[StepRecord]) -> Vec<RunErrorSummary> {
+    let mut errors = Vec::new();
+    for (index, step) in steps.iter().enumerate() {
+        let step_index = index + 1;
+        if !step.validation.ok {
+            for err in &step.validation.errors {
+                errors.push(RunErrorSummary {
+                    code: err.code.clone(),
+                    message: err.message.clone(),
+                    step_index: Some(step_index),
+                    field: err.field.clone(),
+                    validation_code: None,
+                    kind: Some("validation".to_string()),
+                });
+            }
+            continue;
+        }
+        if let Some(err) = step.result.error.as_ref() {
+            errors.push(RunErrorSummary {
+                code: err.code.clone(),
+                message: err.message.clone(),
+                step_index: Some(step_index),
+                field: None,
+                validation_code: err.validation_code.clone(),
+                kind: Some("apply".to_string()),
+            });
+        }
+    }
+    errors
+}
+
+pub fn build_run_summary(
+    terminal_state: TerminalState,
+    steps: &[StepRecord],
+    mut extra_errors: Vec<RunErrorSummary>,
+    output_artifacts: Vec<OutputArtifact>,
+) -> RunSummary {
+    let counts = step_counts(steps);
+    let mut errors = step_errors(steps);
+    errors.append(&mut extra_errors);
+    RunSummary {
+        terminal_state,
+        steps: steps.len(),
+        errors,
+        output_artifacts,
+        validation_failures: counts.validation_failures,
+        apply_failures: counts.apply_failures,
+        apply_successes: counts.apply_successes,
+        done_steps: counts.done_steps,
+    }
 }
 
 #[cfg(test)]
