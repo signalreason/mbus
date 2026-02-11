@@ -24,3 +24,7 @@
 - 2026-02-06 OpenAI config notes: `notes/2026-02-06-openai-config.md`
 - 2026-02-09 test runtime notes: `notes/2026-02-09-test-runtime.md`
 - 2026-02-09 BENCH-001 benchmark harness: `notes/2026-02-09-bench-001-harness.md`
+- 2026-02-10 challenge gap assessment: `notes/2026-02-10-challenge-gap-assessment.md`
+- 2026-02-11 next-step assessment: `notes/2026-02-11-next-step-assessment.md`
+- 2026-02-11 PRD M3 autonomous bench spec: `notes/2026-02-11-prd-m3-autonomous-bench-spec.md`
+- 2026-02-11 PRD JSON granular breakdown: `notes/2026-02-11-prd-json-granular-breakdown.md`

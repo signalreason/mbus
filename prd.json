@@ -1,433 +1,784 @@
 {
   "tasks": [
     {
-      "task_id": "SPIKE-001",
-      "title": "CDP snapshot feasibility",
-      "type": "spike",
-      "milestone": "M0",
-      "status": "completed",
-      "model": "gpt-5.2",
-      "summary": "Validate chromiumoxide snapshot + click on real pages.",
-      "details": "Create a small harness to open a page, list actionable elements, and click by node id.",
-      "acceptance_criteria": [
-        "Can list >= 10 actionable elements on a demo page",
-        "Can click one element without crashing",
-        "Logs include snapshot and click timings"
-      ],
-      "dependencies": [],
-      "risk": "medium",
-      "tags": [
-        "cdp",
-        "spike"
-      ]
-    },
-    {
-      "task_id": "SPIKE-002",
-      "title": "LLM schema round-trip",
-      "type": "spike",
-      "milestone": "M0",
-      "status": "completed",
-      "model": "gpt-5.2",
-      "summary": "Prove action JSON parsing and validation.",
-      "details": "Define action schema and parse sample payloads; reject malformed input.",
-      "acceptance_criteria": [
-        "Valid actions parse into types",
-        "Malformed actions fail with structured errors",
-        "Unit tests cover all action types"
-      ],
-      "dependencies": [],
-      "risk": "low",
-      "tags": [
-        "schema",
-        "spike"
-      ]
-    },
-    {
-      "task_id": "CORE-001",
-      "title": "Crate scaffold and module layout",
-      "type": "build",
-      "milestone": "M1",
-      "status": "completed",
+      "task_id": "M0-CDP-001",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Create the Rust crate and module skeleton aligned to the architecture.",
-      "details": "Set up Cargo project, modules, and placeholder traits; ensure project builds.",
-      "acceptance_criteria": [
-        "Cargo project builds successfully",
-        "Module layout matches documented structure"
+      "title": "Stand up a minimal Chromium CDP session",
+      "definition_of_done": [
+        "A small binary or test can launch headless Chromium and connect over CDP",
+        "Connection failures return structured errors instead of panicking"
       ],
-      "dependencies": [],
-      "verify": {
-        "cmd": "cargo test",
-        "cwd": "/Users/xwoj/src/mbus",
-        "timeout_seconds": 600
-      },
-      "risk": "low",
-      "tags": [
-        "scaffold",
-        "core"
-      ]
+      "recommended": {
+        "approach": "Create a thin bootstrap path in the browser adapter that only establishes and tears down a session."
+      }
     },
     {
-      "task_id": "TYPES-001",
-      "title": "Core types and schema",
-      "type": "build",
-      "milestone": "M1",
-      "status": "completed",
+      "task_id": "M0-CDP-002",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Define Observation/Action/StepResult and schema helpers.",
-      "details": "Add serde types and validation helpers for action JSON.",
-      "acceptance_criteria": [
-        "Types serialize and deserialize correctly",
-        "Schema validates sample actions"
+      "title": "Capture URL/title/viewport from the active page",
+      "definition_of_done": [
+        "Observation fields for URL, title, and viewport are populated from CDP",
+        "A test demonstrates these fields on a known page"
       ],
-      "dependencies": [
-        "CORE-001"
-      ],
-      "verify": {
-        "cmd": "cargo test",
-        "cwd": "/Users/xwoj/src/mbus",
-        "timeout_seconds": 600
-      },
-      "risk": "low",
-      "tags": [
-        "types",
-        "schema"
-      ]
+      "recommended": {
+        "approach": "Implement the minimum snapshot contract first, then extend with element extraction."
+      }
     },
     {
-      "task_id": "BROW-001",
-      "title": "Browser adapter (CDP)",
-      "type": "build",
-      "milestone": "M1",
-      "status": "completed",
+      "task_id": "M0-CDP-003",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Implement Browser trait with chromiumoxide.",
-      "details": "Provide snapshot/apply methods with timeouts and lifecycle management.",
-      "acceptance_criteria": [
-        "Snapshot returns valid Observation",
-        "Click and type actions work on demo page"
+      "title": "Extract actionable accessibility nodes from page snapshot",
+      "definition_of_done": [
+        "Snapshot returns actionable nodes with role and name metadata",
+        "At least one demo page yields 10 or more extracted nodes"
       ],
-      "dependencies": [
-        "SPIKE-001",
-        "CORE-001",
-        "TYPES-001"
-      ],
-      "risk": "medium",
-      "tags": [
-        "browser",
-        "cdp"
-      ]
+      "recommended": {
+        "approach": "Use accessibility tree queries and filter to interactive roles for compactness."
+      }
     },
     {
-      "task_id": "OBS-001",
-      "title": "Observation builder and state hash",
-      "type": "build",
-      "milestone": "M1",
-      "status": "completed",
+      "task_id": "M0-CDP-004",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Generate stable element refs and progress hash.",
-      "details": "Use accessibility roles/names and compute hash from URL/title/top elements.",
-      "acceptance_criteria": [
-        "Element ids stable across snapshots",
-        "Hash changes on navigation"
+      "title": "Execute one click against an extracted element",
+      "definition_of_done": [
+        "A selected element id from snapshot can be clicked through CDP",
+        "The click path reports success or a typed error"
       ],
-      "dependencies": [
-        "TYPES-001",
-        "BROW-001"
-      ],
-      "risk": "medium",
-      "tags": [
-        "observation",
-        "hash"
-      ]
+      "recommended": {
+        "approach": "Map element refs to backend node ids and implement one deterministic click flow."
+      }
     },
     {
-      "task_id": "ACT-001",
-      "title": "Action executor",
-      "type": "build",
-      "milestone": "M1",
-      "status": "completed",
+      "task_id": "M0-SCHEMA-001",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Map actions to CDP operations.",
-      "details": "Implement click/type/select/scroll/wait/navigate/back/extract/done execution.",
-      "acceptance_criteria": [
-        "Actions execute on local test pages",
-        "Errors return structured StepResult"
+      "title": "Define Action enum with strict serde tagging",
+      "definition_of_done": [
+        "Action JSON supports the required action types using explicit type tags",
+        "Unknown action types fail deserialization"
       ],
-      "dependencies": [
-        "TYPES-001",
-        "BROW-001"
-      ],
-      "risk": "medium",
-      "tags": [
-        "actions",
-        "executor"
-      ]
+      "recommended": {
+        "approach": "Use an internally tagged enum and avoid permissive fallback variants."
+      }
     },
     {
-      "task_id": "VERIFY-001",
-      "title": "Action validator",
-      "type": "build",
-      "milestone": "M1",
-      "status": "completed",
+      "task_id": "M0-SCHEMA-002",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Reject invalid actions before execution.",
-      "details": "Check ids, bounds, and type constraints with structured errors.",
-      "acceptance_criteria": [
-        "Invalid actions rejected deterministically",
-        "Validation errors are structured"
+      "title": "Add golden tests for valid action payloads",
+      "definition_of_done": [
+        "One passing test exists per supported action type",
+        "Round-trip serialize and deserialize is stable for golden payloads"
       ],
-      "dependencies": [
-        "TYPES-001"
-      ],
-      "verify": {
-        "cmd": "cargo test",
-        "cwd": "/Users/xwoj/src/mbus",
-        "timeout_seconds": 600
-      },
-      "risk": "low",
-      "tags": [
-        "validation"
-      ]
+      "recommended": {
+        "approach": "Store canonical JSON examples and assert strict parsing behavior."
+      }
     },
     {
-      "task_id": "ROUTE-001",
-      "title": "Model router",
-      "type": "build",
-      "milestone": "M1",
-      "status": "completed",
+      "task_id": "M0-SCHEMA-003",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Implement fast->mid->strong escalation policy.",
-      "details": "Track failure/no-progress counters and select tier; expose thresholds in config.",
-      "acceptance_criteria": [
-        "Tier changes on thresholds",
-        "Counters reset on progress"
+      "title": "Add failure tests for malformed action payloads",
+      "definition_of_done": [
+        "Malformed payloads fail with explicit parse or validation codes",
+        "Test cases include missing fields, wrong types, and unknown actions"
       ],
-      "dependencies": [
-        "TYPES-001",
-        "SPIKE-002"
-      ],
-      "risk": "low",
-      "tags": [
-        "router",
-        "llm"
-      ]
+      "recommended": {
+        "approach": "Cover the highest-frequency schema errors before wiring any LLM client."
+      }
     },
     {
-      "task_id": "AGENT-001",
-      "title": "Agent loop",
-      "type": "build",
-      "milestone": "M1",
-      "status": "completed",
+      "task_id": "M1-CORE-001",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Orchestrated snapshot->propose->validate->apply loop.",
-      "details": "Implemented max-step loop with history, progress detection, and Done termination.",
-      "acceptance_criteria": [
-        "Simple task completes within max steps",
-        "History records each action"
+      "title": "Finalize crate module boundaries for agent, browser, llm, and telemetry",
+      "definition_of_done": [
+        "Module tree compiles with explicit trait boundaries",
+        "No cross-module circular dependencies remain"
       ],
-      "dependencies": [
-        "OBS-001",
-        "ACT-001",
-        "VERIFY-001",
-        "ROUTE-001"
-      ],
-      "risk": "medium",
-      "tags": [
-        "agent",
-        "loop"
-      ]
+      "recommended": {
+        "approach": "Define trait-first contracts and keep implementations behind module-private internals."
+      }
     },
     {
-      "task_id": "CLI-001",
-      "title": "CLI and config",
-      "type": "build",
-      "milestone": "M1",
-      "status": "completed",
+      "task_id": "M1-TYPES-001",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Add CLI entrypoint and config file support.",
-      "details": "Use clap; support env vars and config file overrides.",
-      "acceptance_criteria": [
-        "`mbus run` executes a task",
-        "Config overrides are applied correctly"
+      "title": "Define Observation type with required snapshot fields",
+      "definition_of_done": [
+        "Observation includes URL, title, viewport, focused element, visible text, state hash, and elements",
+        "Observation serialization is covered by unit tests"
       ],
-      "dependencies": [
-        "AGENT-001"
-      ],
-      "risk": "low",
-      "tags": [
-        "cli",
-        "config"
-      ]
+      "recommended": {
+        "approach": "Keep Observation compact and stable, with explicit field semantics documented in code."
+      }
     },
     {
-      "task_id": "TELE-001",
-      "title": "Telemetry (logs + metrics)",
-      "type": "build",
-      "milestone": "M1",
-      "status": "completed",
+      "task_id": "M1-TYPES-002",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Structured logs, traces, and metrics for each step.",
-      "details": "Add tracing spans and metric counters for steps and LLM calls.",
-      "acceptance_criteria": [
-        "Structured logs include action + outcome",
-        "Metrics counters increment per step"
+      "title": "Define ElementRef type with stable id and interaction metadata",
+      "definition_of_done": [
+        "ElementRef exposes id, role, name, value, bounding box, and flags",
+        "ElementRef fields serialize without lossy conversions"
       ],
-      "dependencies": [
-        "AGENT-001"
-      ],
-      "risk": "low",
-      "tags": [
-        "telemetry",
-        "metrics"
-      ]
+      "recommended": {
+        "approach": "Use explicit optional fields and avoid ad hoc map payloads."
+      }
     },
     {
-      "task_id": "TEST-001",
-      "title": "Schema and validator unit tests",
-      "type": "build",
-      "milestone": "M1",
-      "status": "completed",
+      "task_id": "M1-TYPES-003",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Unit tests for schema parsing and validation rules.",
-      "details": "Cover all action types and invalid cases.",
-      "acceptance_criteria": [
-        "All action types covered by tests",
-        "Invalid cases fail as expected"
+      "title": "Define StepResult contract for action outcomes",
+      "definition_of_done": [
+        "StepResult includes ok status, structured error, and new state hash when available",
+        "All action executors return StepResult consistently"
       ],
-      "dependencies": [
-        "VERIFY-001"
-      ],
-      "verify": {
-        "cmd": "cargo test",
-        "cwd": "/Users/xwoj/src/mbus",
-        "timeout_seconds": 600
-      },
-      "risk": "low",
-      "tags": [
-        "tests",
-        "unit"
-      ]
+      "recommended": {
+        "approach": "Standardize success and failure envelopes before implementing advanced actions."
+      }
     },
     {
-      "task_id": "E2E-001",
-      "title": "Local E2E harness",
-      "type": "build",
-      "milestone": "M1",
-      "status": "completed",
+      "task_id": "M1-BROW-001",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Integration tests against local static pages.",
-      "details": "Serve simple HTML pages and verify click/type/select behaviors.",
-      "acceptance_criteria": [
-        "E2E tests pass on local pages",
-        "Action results are validated"
+      "title": "Implement browser lifecycle management with warm session reuse",
+      "definition_of_done": [
+        "Agent can launch or connect to Chromium and reuse a session across steps",
+        "Browser shutdown is graceful and deterministic"
       ],
-      "dependencies": [
-        "BROW-001",
-        "CLI-001"
-      ],
-      "verify": {
-        "cmd": "cargo test",
-        "cwd": "/Users/xwoj/src/mbus",
-        "timeout_seconds": 600
-      },
-      "risk": "medium",
-      "tags": [
-        "tests",
-        "integration"
-      ]
+      "recommended": {
+        "approach": "Separate session initialization from per-step action execution."
+      }
     },
     {
-      "task_id": "REPAIR-001",
-      "title": "Schema repair on invalid output",
-      "type": "build",
-      "milestone": "M2",
-      "status": "completed",
+      "task_id": "M1-BROW-002",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Repair malformed LLM outputs before escalation.",
-      "details": "Add small repair step and measure repair success rate.",
-      "acceptance_criteria": [
-        "Malformed samples repaired to valid actions",
-        "Repair attempts counted in metrics"
+      "title": "Implement navigate action with scheme restrictions",
+      "definition_of_done": [
+        "Navigate supports http and https by default",
+        "Non-allowed schemes are rejected with structured validation errors"
       ],
-      "dependencies": [
-        "VERIFY-001",
-        "ROUTE-001"
-      ],
-      "risk": "medium",
-      "tags": [
-        "repair",
-        "llm"
-      ]
+      "recommended": {
+        "approach": "Enforce URL policy in validator before browser calls."
+      }
     },
     {
-      "task_id": "PROGRESS-001",
-      "title": "Improved no-progress heuristics",
-      "type": "build",
-      "milestone": "M2",
-      "status": "completed",
+      "task_id": "M1-BROW-003",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Detect and handle stagnation cases more robustly.",
-      "details": "Add heuristics for unchanged DOM and low-actionability pages.",
-      "acceptance_criteria": [
-        "Escalation triggers after configured no-progress threshold",
-        "Heuristics logged for debugging"
+      "title": "Implement click action execution",
+      "definition_of_done": [
+        "Click targets existing element ids from the latest observation",
+        "Detached or stale nodes return structured execution errors"
       ],
-      "dependencies": [
-        "OBS-001",
-        "ROUTE-001"
-      ],
-      "risk": "medium",
-      "tags": [
-        "heuristics",
-        "progress"
-      ]
+      "recommended": {
+        "approach": "Resolve id-to-node mapping at execution time and fail loudly on mismatches."
+      }
     },
     {
-      "task_id": "EXTRACT-001",
-      "title": "Structured extraction output",
-      "type": "build",
-      "milestone": "M2",
-      "status": "completed",
+      "task_id": "M1-BROW-004",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "summary": "Persist structured extraction results to JSON.",
-      "details": "Implement extract action output file with schema.",
-      "acceptance_criteria": [
-        "Extract results written to JSON file",
-        "Output includes task id and timestamp"
+      "title": "Implement type action execution with optional submit",
+      "definition_of_done": [
+        "Type writes text into text-capable controls",
+        "Submit branch triggers Enter or form submit behavior when requested"
       ],
-      "dependencies": [
-        "TYPES-001",
-        "AGENT-001"
-      ],
-      "risk": "low",
-      "tags": [
-        "extract",
-        "output"
-      ]
+      "recommended": {
+        "approach": "Focus the element explicitly before input and keep submit logic deterministic."
+      }
     },
     {
-      "task_id": "DOCS-001",
-      "title": "Usage and operations guide",
-      "type": "docs",
-      "milestone": "M2",
-      "status": "completed",
+      "task_id": "M1-BROW-005",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement select action execution",
+      "definition_of_done": [
+        "Select can choose an option by value or visible label",
+        "Invalid options return structured errors"
+      ],
+      "recommended": {
+        "approach": "Resolve options from DOM at runtime and verify selected state post-action."
+      }
+    },
+    {
+      "task_id": "M1-BROW-006",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement bounded scroll action execution",
+      "definition_of_done": [
+        "Scroll applies dx and dy with configured bounds",
+        "Out-of-range values are blocked by validation"
+      ],
+      "recommended": {
+        "approach": "Validate bounds pre-execution and emit resulting scroll position where available."
+      }
+    },
+    {
+      "task_id": "M1-BROW-007",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement wait action with max duration guard",
+      "definition_of_done": [
+        "Wait pauses execution for allowed durations only",
+        "Duration above configured max is rejected"
+      ],
+      "recommended": {
+        "approach": "Treat wait as a first-class action so timing appears in logs and metrics."
+      }
+    },
+    {
+      "task_id": "M1-BROW-008",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement back navigation action",
+      "definition_of_done": [
+        "Back triggers browser history navigation",
+        "No-history cases return a non-panicking structured error"
+      ],
+      "recommended": {
+        "approach": "Use browser history APIs and confirm URL/title change in follow-up snapshot."
+      }
+    },
+    {
+      "task_id": "M1-BROW-009",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement extract action output contract",
+      "definition_of_done": [
+        "Extract produces a structured payload in StepResult",
+        "Extraction outputs are schema-stable across runs"
+      ],
+      "recommended": {
+        "approach": "Define extraction payload shape in core types and keep it deterministic."
+      }
+    },
+    {
+      "task_id": "M1-OBS-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Compute deterministic state hash from compact snapshot features",
+      "definition_of_done": [
+        "Equivalent page states produce identical hashes",
+        "Navigation or meaningful DOM changes alter the hash"
+      ],
+      "recommended": {
+        "approach": "Hash URL, title, and a stable subset of actionable elements in normalized order."
+      }
+    },
+    {
+      "task_id": "M1-OBS-002",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Stabilize element id generation across snapshots",
+      "definition_of_done": [
+        "Repeated snapshots of static pages keep the same element ids",
+        "Id assignment remains deterministic after minor layout shifts"
+      ],
+      "recommended": {
+        "approach": "Base ids on stable DOM/accessibility identity rather than snapshot index positions."
+      }
+    },
+    {
+      "task_id": "M1-OBS-003",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement compact visible_text extraction policy",
+      "definition_of_done": [
+        "Observation includes meaningful visible text without full-page dumps",
+        "Extraction avoids sensitive form values by default"
+      ],
+      "recommended": {
+        "approach": "Prioritize text from visible interactive and nearby content, with length caps."
+      }
+    },
+    {
+      "task_id": "M1-VALID-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Validate action id presence against current observation",
+      "definition_of_done": [
+        "Actions requiring ids fail if the id does not exist in current elements",
+        "Error payload includes a machine-readable validation code"
+      ],
+      "recommended": {
+        "approach": "Centralize id checks in validator so executors assume validated inputs."
+      }
+    },
+    {
+      "task_id": "M1-VALID-002",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Validate type text length constraints",
+      "definition_of_done": [
+        "Type action text above max length is rejected",
+        "Boundary lengths are covered by unit tests"
+      ],
+      "recommended": {
+        "approach": "Enforce text limits in validator with explicit error metadata."
+      }
+    },
+    {
+      "task_id": "M1-VALID-003",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Validate wait duration constraints",
+      "definition_of_done": [
+        "Wait durations above maximum are rejected",
+        "Validation behavior is deterministic across platforms"
+      ],
+      "recommended": {
+        "approach": "Normalize duration units and compare against one configured ceiling."
+      }
+    },
+    {
+      "task_id": "M1-VALID-004",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Validate scroll delta bounds",
+      "definition_of_done": [
+        "Scroll dx and dy outside bounds are rejected",
+        "Bounds are configurable and tested"
+      ],
+      "recommended": {
+        "approach": "Apply symmetric positive and negative limits in a shared numeric guard."
+      }
+    },
+    {
+      "task_id": "M1-VALID-005",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Validate navigate URL policy and allow_insecure override",
+      "definition_of_done": [
+        "By default only http and https are accepted",
+        "Explicit allow_insecure config enables additional schemes"
+      ],
+      "recommended": {
+        "approach": "Separate policy evaluation from parsing so errors clearly explain the rejection reason."
+      }
+    },
+    {
+      "task_id": "M1-LLM-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement OpenAI-compatible LLM client trait adapter",
+      "definition_of_done": [
+        "LLM provider can request one action decision from observation context",
+        "Timeout and transport errors are surfaced as typed failures"
+      ],
+      "recommended": {
+        "approach": "Hide provider-specific HTTP details behind a small client trait."
+      }
+    },
+    {
+      "task_id": "M1-LLM-002",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Enforce single-action JSON response contract from LLM",
+      "definition_of_done": [
+        "Each LLM step yields exactly one parsed action",
+        "Non-JSON or multi-action outputs produce structured errors"
+      ],
+      "recommended": {
+        "approach": "Constrain prompt format and parse with strict schema validation."
+      }
+    },
+    {
+      "task_id": "M1-ROUTER-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement failure streak counter for model escalation",
+      "definition_of_done": [
+        "Consecutive step failures increment a dedicated counter",
+        "Counter threshold transitions model tier"
+      ],
+      "recommended": {
+        "approach": "Track failures independently from no-progress to keep escalation reasons explicit."
+      }
+    },
+    {
+      "task_id": "M1-ROUTER-002",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement no-progress streak counter for model escalation",
+      "definition_of_done": [
+        "Unchanged state hash increments no-progress counter",
+        "Configured threshold escalates model tier"
+      ],
+      "recommended": {
+        "approach": "Use state hash comparisons at the loop boundary to keep behavior deterministic."
+      }
+    },
+    {
+      "task_id": "M1-ROUTER-003",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Reset router counters on confirmed progress",
+      "definition_of_done": [
+        "Failure and no-progress counters reset when progress is detected",
+        "Unit tests cover reset behavior after mixed outcomes"
+      ],
+      "recommended": {
+        "approach": "Define one progress predicate and reuse it in router and loop code paths."
+      }
+    },
+    {
+      "task_id": "M1-AGENT-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement deterministic max-step agent loop",
+      "definition_of_done": [
+        "Loop terminates on done action or max step limit",
+        "Termination state is explicit in the final result object"
+      ],
+      "recommended": {
+        "approach": "Implement a linear state machine: snapshot, propose, validate, apply, record."
+      }
+    },
+    {
+      "task_id": "M1-AGENT-002",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Persist per-step action history in memory",
+      "definition_of_done": [
+        "History records action input, validation outcome, apply result, and timings",
+        "Final summary includes history-derived counts"
+      ],
+      "recommended": {
+        "approach": "Use a single append-only step record type shared by logging and summaries."
+      }
+    },
+    {
+      "task_id": "M1-AGENT-003",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Retain rolling window of recent observations for context",
+      "definition_of_done": [
+        "Agent keeps the configured last N observations",
+        "Window is provided to LLM prompt builder in stable order"
+      ],
+      "recommended": {
+        "approach": "Use a bounded deque and avoid retaining full raw DOM snapshots."
+      }
+    },
+    {
+      "task_id": "M1-AGENT-004",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement final machine-readable run summary",
+      "definition_of_done": [
+        "Summary includes terminal state, step count, errors, and output artifacts",
+        "Summary object is emitted even on failure paths"
+      ],
+      "recommended": {
+        "approach": "Build final summary from history records rather than ad hoc state flags."
+      }
+    },
+    {
+      "task_id": "M1-CLI-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement mbus run CLI command with task and step flags",
+      "definition_of_done": [
+        "CLI accepts task string and max step parameters",
+        "Invalid arguments return actionable CLI errors"
+      ],
+      "recommended": {
+        "approach": "Define command options with clap and map directly to runtime config."
+      }
+    },
+    {
+      "task_id": "M1-CLI-002",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Load configuration from file and environment variables",
+      "definition_of_done": [
+        "Config file values are read and merged with env overrides",
+        "Secret values are not printed in startup logs"
+      ],
+      "recommended": {
+        "approach": "Apply a deterministic config precedence order and redact sensitive keys in logs."
+      }
+    },
+    {
+      "task_id": "M1-CLI-003",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Emit newline-delimited JSON logs per step",
+      "definition_of_done": [
+        "Each step outputs one structured JSON line",
+        "Output includes action, outcome, and timing fields"
+      ],
+      "recommended": {
+        "approach": "Define one step log schema and keep field names stable for downstream parsers."
+      }
+    },
+    {
+      "task_id": "M1-OBSERV-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Instrument snapshot and apply duration metrics",
+      "definition_of_done": [
+        "snapshot_duration_ms and apply_duration_ms are emitted for each step",
+        "Metrics labels remain low-cardinality"
+      ],
+      "recommended": {
+        "approach": "Emit metrics in one telemetry module and call from loop boundaries only."
+      }
+    },
+    {
+      "task_id": "M1-OBSERV-002",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Instrument LLM latency and failure counters",
+      "definition_of_done": [
+        "llm_duration_ms and llm_failures_total metrics are emitted",
+        "Failures are tagged by structured error code"
+      ],
+      "recommended": {
+        "approach": "Wrap client calls with timing and outcome capture in a single adapter layer."
+      }
+    },
+    {
+      "task_id": "M1-OBSERV-003",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Add tracing spans for snapshot, llm, validation, and apply",
+      "definition_of_done": [
+        "Each major step stage is wrapped in a trace span",
+        "Trace metadata includes step index and chosen model tier"
+      ],
+      "recommended": {
+        "approach": "Create a canonical span naming convention and apply it consistently in the loop."
+      }
+    },
+    {
+      "task_id": "M1-HARNESS-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Create local static pages for click/type/select coverage",
+      "definition_of_done": [
+        "Harness includes deterministic pages for core action types",
+        "Pages are version-controlled and runnable in CI"
+      ],
+      "recommended": {
+        "approach": "Keep pages intentionally simple with stable selectors and expected outcomes."
+      }
+    },
+    {
+      "task_id": "M1-HARNESS-002",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Add integration tests for click and type action success paths",
+      "definition_of_done": [
+        "Integration tests verify click and type produce expected page state changes",
+        "Tests fail deterministically when action execution regresses"
+      ],
+      "recommended": {
+        "approach": "Drive tests through public action APIs instead of private helper calls."
+      }
+    },
+    {
+      "task_id": "M1-HARNESS-003",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Add integration tests for select, scroll, and wait behavior",
+      "definition_of_done": [
+        "Select, scroll, and wait actions have dedicated integration coverage",
+        "Assertions include both success and bounded constraint behavior"
+      ],
+      "recommended": {
+        "approach": "Reuse shared harness fixtures and keep each test focused on one behavior."
+      }
+    },
+    {
+      "task_id": "M2-REPAIR-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Implement narrow JSON repair pass for malformed LLM outputs",
+      "definition_of_done": [
+        "Common malformed outputs can be repaired into valid single actions",
+        "Unrepairable outputs preserve original error context"
+      ],
+      "recommended": {
+        "approach": "Restrict repair to deterministic transformations to avoid changing action intent."
+      }
+    },
+    {
+      "task_id": "M2-REPAIR-002",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Track repair attempt and success metrics",
+      "definition_of_done": [
+        "Telemetry exposes counts for repair attempts, successes, and failures",
+        "Per-run summary includes repair contribution"
+      ],
+      "recommended": {
+        "approach": "Emit repair metrics at parser boundary and include fields in final run summary."
+      }
+    },
+    {
+      "task_id": "M2-PROGRESS-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Add no-progress heuristic for repeated state hash",
+      "definition_of_done": [
+        "Repeated identical state hash streak is tracked in loop state",
+        "Streak contributes to escalation and termination decisions"
+      ],
+      "recommended": {
+        "approach": "Implement hash streak as an explicit loop state variable with test coverage."
+      }
+    },
+    {
+      "task_id": "M2-PROGRESS-002",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Add low-actionability heuristic for sparse interactive pages",
+      "definition_of_done": [
+        "Observation with too few actionable nodes triggers heuristic signal",
+        "Heuristic signal is logged and influences escalation policy"
+      ],
+      "recommended": {
+        "approach": "Compute actionability score from element count and role distribution."
+      }
+    },
+    {
+      "task_id": "M2-EXTRACT-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Write extract action outputs to JSON artifact",
+      "definition_of_done": [
+        "Extracted payloads are persisted to a configurable file path",
+        "Output schema includes task metadata and timestamps"
+      ],
+      "recommended": {
+        "approach": "Keep extraction artifact schema versioned and append-safe for repeated runs."
+      }
+    },
+    {
+      "task_id": "M2-DOCS-001",
+      "status": "unstarted",
       "model": "gpt-5.1-codex-mini",
-      "summary": "Document setup, config, and troubleshooting.",
-      "details": "Create a guide covering install, run, common errors, and runbook.",
-      "acceptance_criteria": [
-        "Docs include install, run, config, and troubleshooting",
-        "Runbook section describes verification and rollback"
+      "title": "Document install and quickstart workflow",
+      "definition_of_done": [
+        "Docs cover prerequisites, install, and first successful run",
+        "Commands are validated against current CLI behavior"
       ],
-      "dependencies": [
-        "CLI-001",
-        "TELE-001"
+      "recommended": {
+        "approach": "Add a concise quickstart path first, then extend with optional configuration detail."
+      }
+    },
+    {
+      "task_id": "M2-DOCS-002",
+      "status": "unstarted",
+      "model": "gpt-5.1-codex-mini",
+      "title": "Document operations runbook and troubleshooting",
+      "definition_of_done": [
+        "Docs include common error modes and recovery steps",
+        "Runbook includes verification and rollback instructions"
       ],
-      "risk": "low",
-      "tags": [
-        "docs",
-        "runbook"
-      ]
+      "recommended": {
+        "approach": "Map troubleshooting sections directly to structured error codes and log fields."
+      }
+    },
+    {
+      "task_id": "M3-BENCH-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Add benchmark LLM mode selection for scripted and openai",
+      "definition_of_done": [
+        "mbus bench accepts llm-mode flag or config with scripted and openai values",
+        "No hardcoded scripted override remains in benchmark execution"
+      ],
+      "recommended": {
+        "approach": "Thread llm-mode from CLI/config into benchmark runtime selection logic."
+      }
+    },
+    {
+      "task_id": "M3-BENCH-002",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Preserve benchmark gate checks across both benchmark modes",
+      "definition_of_done": [
+        "required_passes and step limits are enforced for scripted and openai",
+        "Gate outcome is included in benchmark report artifacts"
+      ],
+      "recommended": {
+        "approach": "Share one gate evaluation function across all benchmark modes."
+      }
+    },
+    {
+      "task_id": "M3-BENCH-003",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Collect per-task token usage from openai benchmark runs",
+      "definition_of_done": [
+        "Per-task prompt, completion, and total token counts are captured",
+        "Missing usage data is handled with explicit null or error fields"
+      ],
+      "recommended": {
+        "approach": "Capture provider usage metadata at LLM call boundaries and aggregate by task."
+      }
+    },
+    {
+      "task_id": "M3-BENCH-004",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Aggregate benchmark token totals and estimated USD cost",
+      "definition_of_done": [
+        "Report includes aggregate prompt, completion, total tokens, and estimated cost",
+        "Cost computation uses configurable per-1M input/output pricing"
+      ],
+      "recommended": {
+        "approach": "Implement a pure aggregation module with unit-tested cost math."
+      }
+    },
+    {
+      "task_id": "M3-BENCH-005",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Extend benchmark report artifact schema with mode and economics",
+      "definition_of_done": [
+        "Report includes llm mode, model names, gate result, duration, token totals, and cost totals",
+        "Report fields are stable and versioned for reproducibility"
+      ],
+      "recommended": {
+        "approach": "Evolve report schema with backward-compatible additions and explicit version metadata."
+      }
+    },
+    {
+      "task_id": "M3-BENCH-006",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Add benchmark tests for mode parsing and token-cost aggregation",
+      "definition_of_done": [
+        "Unit tests cover llm-mode parsing and pricing math edge cases",
+        "Integration coverage exists for scripted mode and mocked openai usage path"
+      ],
+      "recommended": {
+        "approach": "Test pure config and aggregation modules independently from live provider calls."
+      }
+    },
+    {
+      "task_id": "M3-BENCH-007",
+      "status": "unstarted",
+      "model": "human",
+      "title": "Run autonomous openai benchmark on 10-task harness and capture artifact",
+      "definition_of_done": [
+        "A reproducible openai benchmark run artifact is checked in or archived",
+        "Artifact confirms gate result, duration, token totals, and cost totals"
+      ],
+      "recommended": {
+        "approach": "Execute bench with pinned config and store report with timestamp and model identifiers."
+      }
     }
   ]
 }

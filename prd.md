@@ -161,6 +161,21 @@ Validation rules and invariants:
 - Show a run where a malformed action is repaired and execution continues.
 - Show extraction of a value into a structured output.
 
+### Milestone 3: Autonomous benchmark proof
+- Validate harness performance with autonomous model decisions, not scripted fixture playback.
+- Add benchmark reporting for LLM token usage and estimated token cost.
+- Preserve deterministic benchmark gating while adding an autonomous execution mode.
+#### Acceptance criteria:
+- `mbus bench` supports `scripted` and `openai` modes through config/CLI, with no hardcoded scripted override.
+- In `openai` mode, benchmark report includes per-task and aggregate token usage (`prompt_tokens`, `completion_tokens`, `total_tokens`).
+- Report includes aggregate USD cost using configurable per-1M-token pricing for input and output tokens.
+- Benchmark gate remains enforced (`required_passes`, step limit) and is reported for both modes.
+- A reproducible run artifact captures mode, model names, timing, gate result, and token/cost totals.
+#### Demo checklist:
+- Run `mbus bench` in `openai` mode on the 10-task harness and produce a report artifact.
+- Show gate result plus aggregate duration, token totals, and estimated cost.
+- Run `mbus bench` in `scripted` mode to confirm backward compatibility.
+
 ## Task List for Engineering (engineer-ready)
 
 ### Milestone M0
@@ -344,6 +359,19 @@ Validation rules and invariants:
 | Acceptance criteria  | Docs cover install, run, and troubleshooting sections. |
 | Test notes           | Doc review only.                                       |
 | Observability notes  | None.                                                  |
+
+### Milestone M3
+
+17. [Build] Autonomous benchmark mode + cost telemetry
+
+| Field                | Value                                                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Goal/Rationale       | Close the final validation gap by proving harness success under autonomous LLM decisions and publishing operational run economics.  |
+| Implementation notes | Remove scripted-only forcing in bench path; add bench LLM mode selection (`scripted` or `openai`), usage/cost aggregation, and report schema updates. |
+| Dependencies         | Tasks 9, 10, 11, 12                                                                                                                  |
+| Acceptance criteria  | `mbus bench --llm-mode openai` runs end-to-end, enforces existing gate, and writes a report containing pass/fail, duration, token totals, and cost totals. |
+| Test notes           | Unit tests for report aggregation math and config parsing; integration benchmark test in scripted mode plus mocked-usage openai path. |
+| Observability notes  | Emit benchmark-level metrics/log fields for usage and cost, with explicit currency and pricing config used for the run.             |
 
 ## Open Questions / Assumptions
 ### Questions blocking execution:
