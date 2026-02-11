@@ -1,13 +1,30 @@
 use crate::browser::{BrowserError, BrowserResult};
 use crate::types::{ElementRef, Observation};
-use chromiumoxide::element::Element;
 use chromiumoxide::page::Page;
-use chromiumoxide_cdp::cdp::browser_protocol::dom::BackendNodeId;
-use serde::Deserialize;
+use chromiumoxide_cdp::cdp::browser_protocol::accessibility::{
+    AxNode, AxProperty, AxPropertyName, AxValue, EnableParams, GetFullAxTreeParams,
+};
+use chromiumoxide_cdp::cdp::browser_protocol::dom::{BackendNodeId, GetBoxModelParams};
 use std::collections::{HashMap, HashSet};
 
-const ACTIONABLE_SELECTOR: &str = "a[href], button, input, select, textarea, \
-[role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [role=combobox]";
+const ACTIONABLE_ROLES: &[&str] = &[
+    "button",
+    "link",
+    "checkbox",
+    "radio",
+    "textbox",
+    "searchbox",
+    "combobox",
+    "listbox",
+    "option",
+    "tab",
+    "switch",
+    "slider",
+    "spinbutton",
+    "menuitem",
+    "menuitemcheckbox",
+    "menuitemradio",
+];
 
 #[derive(Clone, Debug)]
 pub struct Observer {
@@ -83,12 +100,6 @@ struct CollectedElements {
     element_map: HashMap<String, BackendNodeId>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-struct JsElementInfo {
-    text: Option<String>,
-    value: Option<String>,
-}
-
 async fn viewport(page: &Page) -> BrowserResult<[u32; 2]> {
     let metrics = page.layout_metrics().await?;
     let width = metrics.css_layout_viewport.client_width.max(0) as u32;
@@ -113,59 +124,47 @@ async fn visible_text(page: &Page, max_len: usize) -> BrowserResult<String> {
 }
 
 async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<CollectedElements> {
-    let candidates = page.find_elements(ACTIONABLE_SELECTOR).await?;
+    let nodes = fetch_ax_nodes(page).await?;
     let mut seen = HashSet::new();
     let mut out = Vec::new();
 
-    for element in candidates {
-        let backend_id = element.backend_node_id;
+    for node in nodes {
+        if node.ignored {
+            continue;
+        }
+
+        let Some(backend_id) = node.backend_dom_node_id else {
+            continue;
+        };
+
         if !seen.insert(*backend_id.inner()) {
             continue;
         }
 
-        let node = element.description().await?;
-        let attrs = attrs_to_map(node.attributes);
-        let mut flags = Vec::new();
-
-        let js_info = match fetch_js_info(&element).await {
-            Ok(info) => info,
-            Err(_err) => {
-                flags.push("js_info_missing".to_string());
-                JsElementInfo::default()
-            }
+        let Some(role) = ax_value_string(node.role.as_ref()) else {
+            continue;
         };
-
-        let disabled = attrs.contains_key("disabled")
-            || attrs
-                .get("aria-disabled")
-                .map(|value| value == "true")
-                .unwrap_or(false);
-        if disabled {
-            flags.push("disabled".to_string());
+        let role = role.to_lowercase();
+        if !is_actionable_role(&role) {
+            continue;
         }
 
-        let name = derive_name(&attrs, &js_info);
-        let role = attrs
-            .get("role")
-            .cloned()
-            .unwrap_or_else(|| node.node_name.to_lowercase());
+        let mut flags = Vec::new();
+        add_ax_flags(&node.properties, &mut flags);
 
-        let value = js_info
-            .value
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
+        let name = ax_value_string(node.name.as_ref())
+            .or_else(|| ax_value_string(node.description.as_ref()))
+            .or_else(|| ax_value_string(node.value.as_ref()));
+        let value = ax_value_string(node.value.as_ref());
 
         let mut bbox = [0.0, 0.0, 0.0, 0.0];
-        match element.bounding_box().await {
-            Ok(bounds) => {
-                bbox = [bounds.x, bounds.y, bounds.width, bounds.height];
-            }
-            Err(_) => {
-                flags.push("bbox_missing".to_string());
-            }
+        match backend_node_bbox(page, backend_id).await {
+            Ok(Some(bounds)) => bbox = bounds,
+            Ok(None) => flags.push("bbox_missing".to_string()),
+            Err(_) => flags.push("bbox_missing".to_string()),
         }
 
-        let signature = stable_signature(&role, &name, &node.node_name, &attrs);
+        let signature = stable_signature(&role, &name, backend_id);
 
         out.push(ActionableElement {
             backend_id,
@@ -204,95 +203,125 @@ async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<Collecte
     Ok(CollectedElements { elements, element_map })
 }
 
-fn attrs_to_map(attrs: Option<Vec<String>>) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    if let Some(attrs) = attrs {
-        for chunk in attrs.chunks(2) {
-            if let [name, value] = chunk {
-                map.insert(name.to_string(), value.to_string());
-            }
-        }
-    }
-    map
-}
-
-async fn fetch_js_info(element: &Element) -> BrowserResult<JsElementInfo> {
-    let result = element
-        .call_js_fn(
-            "function() {\n\
-                const text = (this.innerText || this.textContent || '').trim();\n\
-                let value = '';\n\
-                if ('value' in this) {\n\
-                    try { value = String(this.value); } catch (_) { value = ''; }\n\
-                }\n\
-                return { text, value };\n\
-            }",
-            false,
-        )
+async fn fetch_ax_nodes(page: &Page) -> BrowserResult<Vec<AxNode>> {
+    page.execute(EnableParams::default()).await?;
+    let response = page
+        .execute(GetFullAxTreeParams::builder().build())
         .await?;
-    let Some(value) = result.result.value else {
-        return Ok(JsElementInfo::default());
+    Ok(response.result.nodes)
+}
+
+fn is_actionable_role(role: &str) -> bool {
+    ACTIONABLE_ROLES.iter().any(|value| role == *value)
+}
+
+fn ax_value_string(value: Option<&AxValue>) -> Option<String> {
+    let value = value?.value.as_ref()?;
+    let raw = match value {
+        serde_json::Value::String(text) => text.trim().to_string(),
+        serde_json::Value::Number(number) => number.to_string(),
+        serde_json::Value::Bool(value) => value.to_string(),
+        _ => return None,
     };
-    serde_json::from_value(value)
-        .map_err(|err| BrowserError::new("js_error", format!("element info: {err}")))
-}
-
-fn derive_name(attrs: &HashMap<String, String>, js_info: &JsElementInfo) -> Option<String> {
-    let candidate = attrs
-        .get("aria-label")
-        .or_else(|| attrs.get("title"))
-        .or_else(|| attrs.get("alt"))
-        .or_else(|| attrs.get("name"))
-        .or_else(|| attrs.get("id"))
-        .or_else(|| attrs.get("placeholder"))
-        .cloned();
-
-    if let Some(candidate) = candidate {
-        let trimmed = candidate.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
-        }
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
     }
-
-    js_info
-        .text
-        .as_ref()
-        .map(|text| text.trim().to_string())
-        .filter(|text| !text.is_empty())
 }
 
-fn stable_signature(
-    role: &str,
-    name: &Option<String>,
-    node_name: &str,
-    attrs: &HashMap<String, String>,
-) -> String {
-    let mut parts = Vec::new();
-    parts.push(role.trim().to_lowercase());
-    parts.push(node_name.trim().to_lowercase());
+fn ax_value_truthy(value: &AxValue) -> bool {
+    match value.value.as_ref() {
+        Some(serde_json::Value::Bool(value)) => *value,
+        Some(serde_json::Value::Number(number)) => number.as_i64().unwrap_or(0) != 0,
+        Some(serde_json::Value::String(text)) => {
+            matches!(text.to_lowercase().as_str(), "true" | "mixed" | "on")
+        }
+        _ => false,
+    }
+}
 
+fn ax_property_truthy(properties: &Option<Vec<AxProperty>>, name: AxPropertyName) -> bool {
+    let Some(properties) = properties else {
+        return false;
+    };
+    properties
+        .iter()
+        .find(|prop| prop.name == name)
+        .map(|prop| ax_value_truthy(&prop.value))
+        .unwrap_or(false)
+}
+
+fn add_ax_flags(properties: &Option<Vec<AxProperty>>, flags: &mut Vec<String>) {
+    if ax_property_truthy(properties, AxPropertyName::Disabled) {
+        flags.push("disabled".to_string());
+    }
+    if ax_property_truthy(properties, AxPropertyName::Readonly) {
+        flags.push("readonly".to_string());
+    }
+    if ax_property_truthy(properties, AxPropertyName::Required) {
+        flags.push("required".to_string());
+    }
+    if ax_property_truthy(properties, AxPropertyName::Focused) {
+        flags.push("focused".to_string());
+    }
+    if ax_property_truthy(properties, AxPropertyName::Editable) {
+        flags.push("editable".to_string());
+    }
+    if ax_property_truthy(properties, AxPropertyName::Checked) {
+        flags.push("checked".to_string());
+    }
+    if ax_property_truthy(properties, AxPropertyName::Selected) {
+        flags.push("selected".to_string());
+    }
+    if ax_property_truthy(properties, AxPropertyName::Expanded) {
+        flags.push("expanded".to_string());
+    }
+    if ax_property_truthy(properties, AxPropertyName::Pressed) {
+        flags.push("pressed".to_string());
+    }
+}
+
+async fn backend_node_bbox(
+    page: &Page,
+    backend_node_id: BackendNodeId,
+) -> BrowserResult<Option<[f64; 4]>> {
+    let model = page
+        .execute(
+            GetBoxModelParams::builder()
+                .backend_node_id(backend_node_id)
+                .build(),
+        )
+        .await?
+        .result
+        .model;
+    Ok(quad_bbox(model.border.inner()))
+}
+
+fn quad_bbox(quad: &[f64]) -> Option<[f64; 4]> {
+    if quad.len() != 8 {
+        return None;
+    }
+    let xs = [quad[0], quad[2], quad[4], quad[6]];
+    let ys = [quad[1], quad[3], quad[5], quad[7]];
+    let (min_x, max_x) = xs.iter().fold((xs[0], xs[0]), |acc, x| {
+        (acc.0.min(*x), acc.1.max(*x))
+    });
+    let (min_y, max_y) = ys.iter().fold((ys[0], ys[0]), |acc, y| {
+        (acc.0.min(*y), acc.1.max(*y))
+    });
+    Some([min_x, min_y, max_x - min_x, max_y - min_y])
+}
+
+fn stable_signature(role: &str, name: &Option<String>, backend_id: BackendNodeId) -> String {
+    let mut parts = Vec::new();
+    parts.push("ax".to_string());
+    parts.push(role.trim().to_lowercase());
     if let Some(name) = name.as_ref().map(|value| value.trim()).filter(|v| !v.is_empty()) {
         parts.push(name.to_string());
     }
-
-    for key in [
-        "id",
-        "name",
-        "type",
-        "href",
-        "aria-label",
-        "title",
-        "alt",
-        "placeholder",
-    ] {
-        if let Some(value) = attrs.get(key) {
-            let trimmed = value.trim();
-            if !trimmed.is_empty() {
-                parts.push(format!("{key}={trimmed}"));
-            }
-        }
-    }
-
+    parts.push(format!("backend={}", backend_id.inner()));
     parts.join("|")
 }
 
@@ -357,28 +386,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn attrs_to_map_pairs_values() {
-        let attrs = Some(vec![
-            "role".to_string(),
-            "button".to_string(),
-            "aria-label".to_string(),
-            "Save".to_string(),
-        ]);
-        let map = attrs_to_map(attrs);
-        assert_eq!(map.get("role").unwrap(), "button");
-        assert_eq!(map.get("aria-label").unwrap(), "Save");
+    fn ax_value_string_reads_value() {
+        let value = AxValue::builder()
+            .r#type(chromiumoxide_cdp::cdp::browser_protocol::accessibility::AxValueType::String)
+            .value("Save")
+            .build()
+            .expect("value");
+        assert_eq!(ax_value_string(Some(&value)), Some("Save".to_string()));
     }
 
     #[test]
-    fn derive_name_prefers_aria_label() {
-        let mut attrs = HashMap::new();
-        attrs.insert("aria-label".to_string(), "Add".to_string());
-        attrs.insert("title".to_string(), "Other".to_string());
-        let info = JsElementInfo {
-            text: Some("Fallback".to_string()),
-            value: None,
-        };
-        assert_eq!(derive_name(&attrs, &info), Some("Add".to_string()));
+    fn ax_property_truthy_detects_flags() {
+        let value = AxValue::builder()
+            .r#type(chromiumoxide_cdp::cdp::browser_protocol::accessibility::AxValueType::String)
+            .value(true)
+            .build()
+            .expect("value");
+        let prop = AxProperty::builder()
+            .name(AxPropertyName::Disabled)
+            .value(value)
+            .build()
+            .expect("prop");
+        let props = Some(vec![prop]);
+        assert!(ax_property_truthy(&props, AxPropertyName::Disabled));
     }
 
     #[test]

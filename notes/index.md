@@ -30,3 +30,4 @@
 - 2026-02-11 PRD JSON granular breakdown: `notes/2026-02-11-prd-json-granular-breakdown.md`
 - 2026-02-11 CDP-001 bootstrap session: `notes/2026-02-11-cdp-001-bootstrap.md`
 - 2026-02-11 CDP-002 snapshot metadata: `notes/2026-02-11-cdp-002-snapshot-metadata.md`
+- 2026-02-11 CDP-003 accessibility actionable nodes: `notes/2026-02-11-cdp-003-accessibility-actionable.md`

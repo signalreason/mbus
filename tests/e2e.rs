@@ -8,11 +8,15 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
-const HARNESS_HTML: &str = r#"<!doctype html>
+const HARNESS_HTML: &str = r##"<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
   <title>mbus e2e</title>
+  <style>
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .card { padding: 6px; border: 1px solid #ddd; }
+  </style>
 </head>
 <body>
   <h1>Harness</h1>
@@ -26,6 +30,16 @@ const HARNESS_HTML: &str = r#"<!doctype html>
     <option value="alpha">Alpha</option>
     <option value="beta">Beta</option>
   </select>
+  <div class="grid">
+    <button id="extra-btn-1">Extra 1</button>
+    <button id="extra-btn-2">Extra 2</button>
+    <button id="extra-btn-3">Extra 3</button>
+    <a id="extra-link-1" href="#">Link One</a>
+    <a id="extra-link-2" href="#">Link Two</a>
+    <label class="card"><input type="checkbox" aria-label="Agree" /> Agree</label>
+    <label class="card"><input type="radio" name="group" aria-label="Pick A" /> Pick A</label>
+    <label class="card"><input type="radio" name="group" aria-label="Pick B" /> Pick B</label>
+  </div>
   <script>
     const status = document.getElementById('status');
     document.getElementById('click-btn').addEventListener('click', () => {
@@ -40,7 +54,7 @@ const HARNESS_HTML: &str = r#"<!doctype html>
   </script>
 </body>
 </html>
-"#;
+"##;
 
 struct TestServer {
     addr: SocketAddr,
@@ -160,6 +174,25 @@ fn find_element<'a>(
         .unwrap_or_else(|| panic!("missing element role={role} name={name}"))
 }
 
+fn find_element_by_roles<'a>(
+    observation: &'a Observation,
+    roles: &[&str],
+    name: &str,
+) -> &'a ElementRef {
+    observation
+        .elements
+        .iter()
+        .find(|element| {
+            roles.iter().any(|role| element.role.eq_ignore_ascii_case(role))
+                && element
+                    .name
+                    .as_deref()
+                    .map(|value| value.eq_ignore_ascii_case(name))
+                    .unwrap_or(false)
+        })
+        .unwrap_or_else(|| panic!("missing element roles={roles:?} name={name}"))
+}
+
 async fn wait_for_visible_text(
     browser: &CdpBrowser,
     needle: &str,
@@ -197,6 +230,27 @@ async fn e2e_snapshot_metadata() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_snapshot_actionable_nodes() {
+    let server = TestServer::start().await;
+    let url = server.url("/harness");
+    let config = CdpConfig {
+        initial_url: url,
+        ..CdpConfig::default()
+    };
+    let browser = CdpBrowser::launch(config).await.expect("launch browser");
+
+    let snapshot = browser.snapshot().await.expect("snapshot");
+    assert!(
+        snapshot.elements.len() >= 10,
+        "expected at least 10 actionable elements, got {}",
+        snapshot.elements.len()
+    );
+
+    browser.shutdown().await.expect("shutdown browser");
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn e2e_click_type_select() {
     let server = TestServer::start().await;
     let url = server.url("/harness");
@@ -220,7 +274,9 @@ async fn e2e_click_type_select() {
         "visible text should reflect click"
     );
 
-    let type_id = find_element(&snapshot, "input", "Name").id.clone();
+    let type_id = find_element_by_roles(&snapshot, &["textbox", "searchbox"], "Name")
+        .id
+        .clone();
     let focus = Action::Click { id: type_id.clone() };
     validator.validate(&focus, &snapshot).expect("valid focus");
     let step = browser.apply(&focus).await.expect("apply focus");
@@ -237,7 +293,9 @@ async fn e2e_click_type_select() {
 
     let snapshot = wait_for_visible_text(&browser, "typed:Ada Lovelace").await;
 
-    let select_id = find_element(&snapshot, "select", "Choice").id.clone();
+    let select_id = find_element_by_roles(&snapshot, &["combobox", "listbox"], "Choice")
+        .id
+        .clone();
     let select = Action::Select {
         id: select_id,
         value: "beta".to_string(),
