@@ -106,6 +106,7 @@ impl Default for OutputConfig {
 #[derive(Clone, Debug, Default)]
 pub struct CliOverrides {
     pub max_steps: Option<usize>,
+    pub max_no_progress_steps: Option<usize>,
     pub memory_max_observations: Option<usize>,
     pub memory_max_history: Option<usize>,
     pub headless: Option<bool>,
@@ -220,6 +221,9 @@ impl FileConfig {
             if let Some(max_steps) = agent.max_steps {
                 config.agent.max_steps = max_steps;
             }
+            if let Some(max_no_progress_steps) = agent.max_no_progress_steps {
+                config.agent.max_no_progress_steps = max_no_progress_steps;
+            }
             if let Some(memory) = agent.memory.as_ref() {
                 if let Some(max_obs) = memory.max_observations {
                     config.agent.memory.max_observations = max_obs;
@@ -328,6 +332,7 @@ impl FileConfig {
 #[derive(Clone, Debug, Default, Deserialize)]
 struct FileAgentConfig {
     max_steps: Option<usize>,
+    max_no_progress_steps: Option<usize>,
     #[serde(default)]
     memory: Option<FileMemoryConfig>,
 }
@@ -408,6 +413,9 @@ impl EnvOverrides {
             }
             match key.as_str() {
                 "MBUS_MAX_STEPS" => overrides.max_steps = Some(parse_usize(&key, &value)?),
+                "MBUS_MAX_NO_PROGRESS_STEPS" => {
+                    overrides.max_no_progress_steps = Some(parse_usize(&key, &value)?)
+                }
                 "MBUS_MEMORY_MAX_OBSERVATIONS" => {
                     overrides.memory_max_observations = Some(parse_usize(&key, &value)?)
                 }
@@ -480,6 +488,9 @@ impl CliOverrides {
     fn apply(&self, config: &mut AppConfig) -> Result<(), ConfigError> {
         if let Some(max_steps) = self.max_steps {
             config.agent.max_steps = max_steps;
+        }
+        if let Some(max_no_progress_steps) = self.max_no_progress_steps {
+            config.agent.max_no_progress_steps = max_no_progress_steps;
         }
         if let Some(value) = self.memory_max_observations {
             config.agent.memory.max_observations = value;
@@ -644,6 +655,7 @@ mod tests {
         let file = FileConfig {
             agent: Some(FileAgentConfig {
                 max_steps: Some(10),
+                max_no_progress_steps: Some(12),
                 memory: None,
             }),
             ..FileConfig::default()
@@ -653,17 +665,22 @@ mod tests {
         let env = EnvOverrides::from_pairs(vec![(
             "MBUS_MAX_STEPS".to_string(),
             "20".to_string(),
+        ), (
+            "MBUS_MAX_NO_PROGRESS_STEPS".to_string(),
+            "22".to_string(),
         )])
         .expect("env overrides");
         env.apply(&mut config).expect("env apply");
 
         let cli = CliOverrides {
             max_steps: Some(30),
+            max_no_progress_steps: Some(32),
             ..CliOverrides::default()
         };
         cli.apply(&mut config).expect("cli apply");
 
         assert_eq!(config.agent.max_steps, 30);
+        assert_eq!(config.agent.max_no_progress_steps, 32);
     }
 
     #[test]

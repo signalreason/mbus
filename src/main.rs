@@ -51,8 +51,10 @@ struct RunArgs {
     initial_url: Option<String>,
     #[arg(long)]
     cdp_url: Option<String>,
-    #[arg(long, value_parser = clap::value_parser!(usize).range(1..))]
+    #[arg(long, value_parser = clap::value_parser!(usize))]
     max_steps: Option<usize>,
+    #[arg(long, value_parser = clap::value_parser!(usize))]
+    max_no_progress_steps: Option<usize>,
     #[arg(long)]
     memory_max_observations: Option<usize>,
     #[arg(long)]
@@ -185,6 +187,7 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
             terminal_state = match result.status {
                 RunStatus::Done => mbus::output::TerminalState::Done,
                 RunStatus::MaxSteps => mbus::output::TerminalState::MaxSteps,
+                RunStatus::NoProgress => mbus::output::TerminalState::NoProgress,
             };
             final_action = Some(result.final_action);
         }
@@ -294,6 +297,7 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
                     let observed_status = match result.status {
                         RunStatus::Done => BenchObservedStatus::Done,
                         RunStatus::MaxSteps => BenchObservedStatus::MaxSteps,
+                        RunStatus::NoProgress => BenchObservedStatus::NoProgress,
                     };
                     let mut evaluated = evaluate_task(
                         &task,
@@ -448,6 +452,7 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
 
     Ok(CliOverrides {
         max_steps: args.max_steps,
+        max_no_progress_steps: args.max_no_progress_steps,
         memory_max_observations: args.memory_max_observations,
         memory_max_history: args.memory_max_history,
         headless: args.headless,
@@ -639,6 +644,7 @@ fn emit_run_logs(
         status: match summary.terminal_state {
             mbus::output::TerminalState::Done => "done",
             mbus::output::TerminalState::MaxSteps => "max_steps",
+            mbus::output::TerminalState::NoProgress => "no_progress",
             mbus::output::TerminalState::Error => "error",
         },
         terminal_state: summary.terminal_state.clone(),
@@ -758,6 +764,7 @@ impl From<&mbus::config::AppConfig> for ConfigLog {
             r#type: "config",
             agent: AgentLog {
                 max_steps: config.agent.max_steps,
+                max_no_progress_steps: config.agent.max_no_progress_steps,
                 memory_max_observations: config.agent.memory.max_observations,
                 memory_max_history: config.agent.memory.max_history,
             },
@@ -826,6 +833,7 @@ fn redact_url(value: &str) -> String {
 #[derive(Serialize)]
 struct AgentLog {
     max_steps: usize,
+    max_no_progress_steps: usize,
     memory_max_observations: usize,
     memory_max_history: usize,
 }

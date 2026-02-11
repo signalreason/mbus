@@ -40,6 +40,7 @@ impl LlmClients {
 pub enum RunStatus {
     Done,
     MaxSteps,
+    NoProgress,
 }
 
 #[derive(Clone, Debug)]
@@ -87,6 +88,31 @@ pub struct AgentLoop<B: Browser> {
     policy: AgentPolicy,
     memory: Memory,
     task: String,
+}
+
+#[derive(Debug)]
+struct LoopState {
+    last_state_hash: String,
+    state_hash_streak: u32,
+}
+
+impl LoopState {
+    fn new(initial_hash: String) -> Self {
+        Self {
+            last_state_hash: initial_hash,
+            state_hash_streak: 0,
+        }
+    }
+
+    fn update_hash(&mut self, new_hash: &str) -> u32 {
+        if new_hash == self.last_state_hash {
+            self.state_hash_streak = self.state_hash_streak.saturating_add(1);
+        } else {
+            self.state_hash_streak = 0;
+        }
+        self.last_state_hash = new_hash.to_string();
+        self.state_hash_streak
+    }
 }
 
 impl<B: Browser> AgentLoop<B> {
@@ -138,7 +164,7 @@ impl<B: Browser> AgentLoop<B> {
     pub async fn run(&mut self) -> Result<RunResult, AgentError> {
         enum StepControl {
             Continue,
-            Done(Action),
+            Done(Action, RunStatus),
         }
 
         let snapshot_start = Instant::now();
@@ -164,6 +190,7 @@ impl<B: Browser> AgentLoop<B> {
             }
         };
         self.memory.record_observation(observation.clone());
+        let mut loop_state = LoopState::new(observation.state_hash.clone());
 
         for step_index in 0..self.policy.max_steps {
             let tier = self.router.tier();
@@ -284,7 +311,7 @@ impl<B: Browser> AgentLoop<B> {
                         event = "done",
                         step_duration_ms = duration.as_millis() as u64
                     );
-                    return Ok(StepControl::Done(action));
+                    return Ok(StepControl::Done(action, RunStatus::Done));
                 }
 
                 let apply_start = Instant::now();
@@ -344,8 +371,10 @@ impl<B: Browser> AgentLoop<B> {
                 self.memory.record_observation(next_observation.clone());
                 let new_hash = next_observation.state_hash.clone();
                 result.new_state_hash = Some(new_hash.clone());
+                let state_hash_streak = loop_state.update_hash(&new_hash);
 
-                let (outcome, heuristics) = step_outcome(&result, &observation, &next_observation);
+                let (outcome, heuristics) =
+                    step_outcome(&result, &observation, &next_observation, state_hash_streak);
                 let log_outcome = match outcome {
                     StepOutcome::Failure => StepOutcomeLog::ApplyFailed,
                     StepOutcome::NoProgress => StepOutcomeLog::NoProgress,
@@ -387,6 +416,7 @@ impl<B: Browser> AgentLoop<B> {
                     step_duration_ms = duration.as_millis() as u64,
                     new_state_hash = ?result.new_state_hash,
                     state_hash_unchanged = heuristics.state_hash_unchanged,
+                    state_hash_streak = state_hash_streak,
                     actionables_unchanged = heuristics.actionables_unchanged,
                     low_actionability = heuristics.low_actionability,
                     prev_actionables = heuristics.prev_actionables,
@@ -394,14 +424,29 @@ impl<B: Browser> AgentLoop<B> {
                 );
 
                 observation = next_observation;
+
+                if self.policy.max_no_progress_steps > 0
+                    && state_hash_streak as usize >= self.policy.max_no_progress_steps
+                {
+                    let final_action = Action::Done {
+                        summary: format!("no progress after {} steps", state_hash_streak),
+                    };
+                    tracing::warn!(
+                        event = "no_progress_termination",
+                        state_hash_streak = state_hash_streak,
+                        max_no_progress_steps = self.policy.max_no_progress_steps
+                    );
+                    return Ok(StepControl::Done(final_action, RunStatus::NoProgress));
+                }
+
                 Ok(StepControl::Continue)
             }
             .instrument(step_span)
             .await?;
 
-            if let StepControl::Done(action) = step_result {
+            if let StepControl::Done(action, status) = step_result {
                 return Ok(RunResult {
-                    status: RunStatus::Done,
+                    status,
                     final_action: action,
                     steps: self.memory.steps().to_vec(),
                     final_observation: observation,
@@ -694,6 +739,63 @@ mod tests {
         assert_eq!(applied.len(), 2);
     }
 
+    #[tokio::test]
+    async fn stops_on_no_progress_streak() {
+        let obs_a = sample_observation("obs1", "hash1", vec![element("el_1")]);
+        let obs_b = sample_observation("obs2", "hash1", vec![element("el_1")]);
+        let obs_c = sample_observation("obs3", "hash1", vec![element("el_1")]);
+        let browser = FakeBrowser::new(
+            vec![obs_a.clone(), obs_b.clone(), obs_c.clone()],
+            vec![
+                StepResult {
+                    ok: true,
+                    error: None,
+                    new_state_hash: None,
+                    scroll: None,
+                    extract: None,
+                },
+                StepResult {
+                    ok: true,
+                    error: None,
+                    new_state_hash: None,
+                    scroll: None,
+                    extract: None,
+                },
+            ],
+        );
+        let llm = ScriptedLlm::new(vec![
+            Action::Click {
+                id: "el_1".to_string(),
+            },
+            Action::Click {
+                id: "el_1".to_string(),
+            },
+        ]);
+        let clients = LlmClients::new(
+            Box::new(llm),
+            Box::new(ScriptedLlm::new(vec![])),
+            Box::new(ScriptedLlm::new(vec![])),
+        );
+        let mut agent = AgentLoop::new(browser, clients, "task").with_policy(AgentPolicy {
+            max_steps: 5,
+            max_no_progress_steps: 2,
+            ..AgentPolicy::default()
+        });
+
+        let result = agent.run().await.expect("run");
+        assert_eq!(result.status, RunStatus::NoProgress);
+        assert_eq!(
+            result.final_action,
+            Action::Done {
+                summary: "no progress after 2 steps".to_string()
+            }
+        );
+        assert_eq!(agent.memory().history().len(), 2);
+        assert_eq!(agent.memory().steps().len(), 2);
+        let applied = agent.browser.applied().await;
+        assert_eq!(applied.len(), 2);
+    }
+
     #[test]
     fn step_outcome_marks_no_progress_when_state_hash_unchanged() {
         let prev = sample_observation("obs1", "hash1", vec![element("el_1"), element("el_2")]);
@@ -706,7 +808,7 @@ mod tests {
             extract: None,
         };
 
-        let (outcome, heuristics) = step_outcome(&result, &prev, &next);
+        let (outcome, heuristics) = step_outcome(&result, &prev, &next, 1);
         assert_eq!(outcome, StepOutcome::NoProgress);
         assert!(heuristics.state_hash_unchanged);
     }
@@ -731,7 +833,7 @@ mod tests {
             extract: None,
         };
 
-        let (outcome, heuristics) = step_outcome(&result, &prev, &next);
+        let (outcome, heuristics) = step_outcome(&result, &prev, &next, 0);
         assert_eq!(outcome, StepOutcome::Progress);
         assert!(!heuristics.state_hash_unchanged);
     }

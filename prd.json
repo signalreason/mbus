@@ -918,10 +918,16 @@
         "Streak contributes to escalation and termination decisions"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T232121Z-78463 completed",
+        "last_run_id": "20260211T232121Z-78463",
+        "last_update_utc": "2026-02-11T23:32:22Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Implement hash streak as an explicit loop state variable with test coverage."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M2-PROGRESS-001",
       "title": "Add no-progress heuristic for repeated state hash"
     },

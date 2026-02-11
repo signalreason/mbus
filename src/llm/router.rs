@@ -67,6 +67,7 @@ pub fn step_outcome(
     result: &StepResult,
     previous: &Observation,
     next: &Observation,
+    state_hash_streak: u32,
 ) -> (StepOutcome, ProgressHeuristics) {
     let heuristics = evaluate_progress(previous, next);
 
@@ -74,7 +75,7 @@ pub fn step_outcome(
         return (StepOutcome::Failure, heuristics);
     }
 
-    let outcome = if heuristics.state_hash_unchanged {
+    let outcome = if state_hash_streak > 0 {
         StepOutcome::NoProgress
     } else {
         StepOutcome::Progress
@@ -266,7 +267,7 @@ mod tests {
         router.record(StepOutcome::NoProgress);
         router.record(StepOutcome::NoProgress);
         assert_eq!(router.tier(), Tier::Strong);
-        assert_eq!(router.counters(), RouterCounters { failures: 1, no_progress: 2 });
+        assert_eq!(router.counters(), RouterCounters { failures: 0, no_progress: 2 });
         assert_eq!(router.record(StepOutcome::Progress), Tier::Fast);
         assert_eq!(router.counters(), RouterCounters { failures: 0, no_progress: 0 });
     }
@@ -284,17 +285,17 @@ mod tests {
         let same = sample_observation("hash1");
         let changed = sample_observation("hash2");
 
-        let (outcome, _) = step_outcome(&sample_result(true), &prev, &same);
+        let (outcome, _) = step_outcome(&sample_result(true), &prev, &same, 1);
         assert_eq!(outcome, StepOutcome::NoProgress);
         router.record(outcome);
 
-        let (outcome, _) = step_outcome(&sample_result(false), &same, &changed);
+        let (outcome, _) = step_outcome(&sample_result(false), &same, &changed, 0);
         assert_eq!(outcome, StepOutcome::Failure);
         router.record(outcome);
 
         assert_eq!(router.counters(), RouterCounters { failures: 1, no_progress: 1 });
 
-        let (outcome, _) = step_outcome(&sample_result(true), &same, &changed);
+        let (outcome, _) = step_outcome(&sample_result(true), &same, &changed, 0);
         assert_eq!(outcome, StepOutcome::Progress);
         router.record(outcome);
 

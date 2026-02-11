@@ -26,6 +26,7 @@ pub struct ExtractRecord {
 pub enum TerminalState {
     Done,
     MaxSteps,
+    NoProgress,
     Error,
 }
 

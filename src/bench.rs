@@ -56,6 +56,7 @@ fn default_done_status() -> BenchExpectedStatus {
 pub enum BenchObservedStatus {
     Done,
     MaxSteps,
+    NoProgress,
     Error,
 }
 

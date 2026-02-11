@@ -681,8 +681,7 @@ mod tests {
 
     #[test]
     fn resolve_backend_node_id_falls_back_to_parse() {
-        let map = HashMap::new();
-        let resolved = resolve_backend_node_id("el_42", Some(&map)).expect("resolve id");
+        let resolved = resolve_backend_node_id("el_42", None).expect("resolve id");
         assert_eq!(*resolved.inner(), 42);
     }
 
