@@ -70,6 +70,7 @@
 - 2026-02-11 ROUTER-002 no-progress streak counter: `notes/2026-02-11-router-002-no-progress-streak.md`
 - 2026-02-11 ROUTER-003 reset counters on progress: `notes/2026-02-11-router-003-reset-counters.md`
 - 2026-02-11 PROGRESS-002 hash streak: `notes/2026-02-11-progress-002-hash-streak.md`
+- 2026-02-11 PROGRESS-003 low-actionability heuristic: `notes/2026-02-11-progress-003-low-actionability.md`
 - 2026-02-11 REPAIR-002 narrow JSON repair pass: `notes/2026-02-11-repair-002-narrow-json-repair.md`
 - 2026-02-11 REPAIR-003 repair metrics in run summary: `notes/2026-02-11-repair-003-run-metrics-summary.md`
 - 2026-02-11 CLI-001 run task/max-steps flags: `notes/2026-02-11-cli-001-run-cli-task-max-steps.md`

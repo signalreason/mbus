@@ -396,7 +396,7 @@ impl<B: Browser> AgentLoop<B> {
                 });
                 self.memory.update_last_step_state_hash(new_hash);
 
-                let tier_after = self.router.record(outcome);
+                let tier_after = self.router.record_with_heuristics(outcome, Some(&heuristics));
                 telemetry::set_no_progress_streak(self.router.counters().no_progress);
 
                 let error_code = result
@@ -419,6 +419,8 @@ impl<B: Browser> AgentLoop<B> {
                     state_hash_streak = state_hash_streak,
                     actionables_unchanged = heuristics.actionables_unchanged,
                     low_actionability = heuristics.low_actionability,
+                    actionability_score = heuristics.actionability_score,
+                    too_few_actionables = heuristics.too_few_actionables,
                     prev_actionables = heuristics.prev_actionables,
                     next_actionables = heuristics.next_actionables
                 );
