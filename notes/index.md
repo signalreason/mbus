@@ -38,3 +38,4 @@
 - 2026-02-11 CORE-002 module boundaries cleanup: `notes/2026-02-11-core-002-module-boundaries.md`
 - 2026-02-11 TYPES-001 observation fields: `notes/2026-02-11-types-001-observation.md`
 - 2026-02-11 TYPES-002 ElementRef flags shape: `notes/2026-02-11-types-002-elementref.md`
+- 2026-02-11 TYPES-003 StepResult contract: `notes/2026-02-11-types-003-stepresult-contract.md`

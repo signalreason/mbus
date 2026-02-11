@@ -206,7 +206,8 @@ impl<B: Browser> AgentLoop<B> {
                 if let Err(errors) = self.validator.validate(&action, &observation) {
                     let error_count = errors.len();
                     telemetry::inc_validation_failure();
-                    let result = validation_result(errors);
+                    let mut result = validation_result(errors);
+                    result.new_state_hash = Some(observation.state_hash.clone());
                     self.memory.record_step(action, result);
                     let tier_after = self.router.record(StepOutcome::Failure);
                     telemetry::set_no_progress_streak(self.router.counters().no_progress);
@@ -234,7 +235,7 @@ impl<B: Browser> AgentLoop<B> {
                 }
 
                 let apply_start = Instant::now();
-                let result = match self.browser.apply(&action).await {
+                let mut result = match self.browser.apply(&action).await {
                     Ok(result) => result,
                     Err(err) => {
                         let apply_duration = apply_start.elapsed();
@@ -277,6 +278,9 @@ impl<B: Browser> AgentLoop<B> {
                 let snapshot_duration = snapshot_start.elapsed();
                 telemetry::record_snapshot_duration(snapshot_duration);
                 self.memory.record_observation(next_observation.clone());
+                let new_hash = next_observation.state_hash.clone();
+                result.new_state_hash = Some(new_hash.clone());
+                self.memory.update_last_step_state_hash(new_hash);
 
                 let (outcome, heuristics) = step_outcome(&result, &observation, &next_observation);
                 let tier_after = self.router.record(outcome);

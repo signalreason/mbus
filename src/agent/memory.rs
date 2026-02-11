@@ -70,6 +70,12 @@ impl Memory {
         }
     }
 
+    pub fn update_last_step_state_hash(&mut self, new_state_hash: String) {
+        if let Some(step) = self.steps.last_mut() {
+            step.result.new_state_hash = Some(new_state_hash);
+        }
+    }
+
     pub fn history(&self) -> &[Action] {
         &self.history
     }
