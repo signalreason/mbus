@@ -538,10 +538,16 @@
         "Timeout and transport errors are surfaced as typed failures"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T220927Z-78463 completed",
+        "last_run_id": "20260211T220927Z-78463",
+        "last_update_utc": "2026-02-11T22:12:08Z",
+        "run_attempts": 2
+      },
       "recommended": {
         "approach": "Hide provider-specific HTTP details behind a small client trait."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-LLM-001",
       "title": "Implement OpenAI-compatible LLM client trait adapter"
     },

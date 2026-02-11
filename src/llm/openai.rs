@@ -153,7 +153,7 @@ impl LlmClient for OpenAiClient {
                 .json(&body)
                 .send()
                 .await
-                .map_err(|err| LlmError::new("http_error", err.to_string()))?;
+                .map_err(map_reqwest_error)?;
 
             if !response.status().is_success() {
                 let status = response.status();
@@ -170,7 +170,7 @@ impl LlmClient for OpenAiClient {
             let payload: ChatResponse = response
                 .json()
                 .await
-                .map_err(|err| LlmError::new("http_error", err.to_string()))?;
+                .map_err(map_reqwest_error)?;
             let content = payload
                 .choices
                 .get(0)
@@ -208,6 +208,16 @@ struct Choice {
 #[derive(Debug, Deserialize)]
 struct Message {
     content: Option<Value>,
+}
+
+fn map_reqwest_error(err: reqwest::Error) -> LlmError {
+    if err.is_timeout() {
+        LlmError::new("timeout", err.to_string())
+    } else if err.is_connect() {
+        LlmError::new("transport_error", err.to_string())
+    } else {
+        LlmError::new("http_error", err.to_string())
+    }
 }
 
 fn extract_content(value: &Value) -> LlmResult<String> {
