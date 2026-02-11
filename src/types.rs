@@ -93,6 +93,20 @@ mod tests {
     }
 
     #[test]
+    fn action_rejects_unknown_type() {
+        let value = json!({"type": "teleport", "id": "el_1"});
+        let parsed: Result<Action, _> = serde_json::from_value(value);
+        assert!(parsed.is_err(), "expected unknown action type to fail");
+    }
+
+    #[test]
+    fn action_requires_type_tag() {
+        let value = json!({"id": "el_1"});
+        let parsed: Result<Action, _> = serde_json::from_value(value);
+        assert!(parsed.is_err(), "expected missing type tag to fail");
+    }
+
+    #[test]
     fn observation_round_trip() {
         let observation = Observation {
             url: "https://example.com".to_string(),

@@ -1,0 +1,1 @@
+{"definition_of_done":["Action JSON supports the required action types using explicit type tags","Unknown action types fail deserialization"],"model":"gpt-5.2-codex","recommended":{"approach":"Use an internally tagged enum and avoid permissive fallback variants."},"status":"unstarted","task_id":"M0-SCHEMA-001","title":"Define Action enum with strict serde tagging"}
