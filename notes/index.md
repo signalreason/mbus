@@ -73,3 +73,4 @@
 - 2026-02-11 CLI-002 config file + env merge: `notes/2026-02-11-cli-002-config-env-merge.md`
 - 2026-02-11 CLI-003 step NDJSON logs: `notes/2026-02-11-cli-003-step-ndjson.md`
 - 2026-02-11 HARNESS-001 static pages: `notes/2026-02-11-harness-001-static-pages.md`
+- 2026-02-11 HARNESS-002 click/type integration tests: `notes/2026-02-11-harness-002-click-type-integration.md`

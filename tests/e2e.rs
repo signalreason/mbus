@@ -1,10 +1,17 @@
+use mbus::agent::policy::AgentPolicy;
+use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
 use mbus::browser::{Browser, CdpBrowser, CdpConfig};
+use mbus::llm::client::{LlmClient, LlmError};
 use mbus::types::{Action, ElementRef, Observation};
 use mbus::verify::Validator;
+use async_trait::async_trait;
+use std::collections::VecDeque;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
@@ -171,6 +178,135 @@ async fn wait_for_visible_text(
         sleep(Duration::from_millis(100)).await;
     }
     panic!("expected visible text to include {needle}");
+}
+
+#[derive(Clone, Copy, Debug)]
+enum HarnessMode {
+    Click,
+    Type,
+}
+
+#[derive(Clone, Debug)]
+struct HarnessLlm {
+    mode: HarnessMode,
+    step: Arc<Mutex<usize>>,
+}
+
+impl HarnessLlm {
+    fn new(mode: HarnessMode) -> Self {
+        Self {
+            mode,
+            step: Arc::new(Mutex::new(0)),
+        }
+    }
+}
+
+#[async_trait]
+impl LlmClient for HarnessLlm {
+    async fn propose_action(
+        &self,
+        _task: &str,
+        _plan: Option<&str>,
+        observation: &Observation,
+        _observations: &VecDeque<Observation>,
+        _history: &[Action],
+    ) -> Result<Action, LlmError> {
+        let mut guard = self.step.lock().await;
+        let action = match (self.mode, *guard) {
+            (HarnessMode::Click, 0) => {
+                let id = find_element(observation, "button", "Click Button")
+                    .id
+                    .clone();
+                Action::Click { id }
+            }
+            (HarnessMode::Type, 0) => {
+                let id = find_element_by_roles(observation, &["textbox", "searchbox"], "Name")
+                    .id
+                    .clone();
+                Action::Type {
+                    id,
+                    text: "Ada Lovelace".to_string(),
+                    submit: Some(false),
+                }
+            }
+            _ => Action::Done {
+                summary: "done".to_string(),
+            },
+        };
+        *guard += 1;
+        Ok(action)
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_click_updates_status_via_agent_loop() {
+    let server = TestServer::start().await;
+    let url = server.url("/harness");
+    let config = CdpConfig {
+        initial_url: url,
+        ..CdpConfig::default()
+    };
+    let browser = CdpBrowser::launch(config).await.expect("launch browser");
+    let llm = HarnessLlm::new(HarnessMode::Click);
+    let clients = LlmClients::new(
+        Box::new(llm.clone()),
+        Box::new(llm.clone()),
+        Box::new(llm),
+    );
+    let mut agent = AgentLoop::new(browser, clients, "click test").with_policy(AgentPolicy {
+        max_steps: 2,
+        ..AgentPolicy::default()
+    });
+
+    let result = agent.run().await.expect("run");
+    assert_eq!(result.status, RunStatus::Done);
+    assert_eq!(result.steps.len(), 2);
+    assert!(result.steps[0].result.ok);
+    assert!(matches!(result.steps[0].action, Action::Click { .. }));
+    assert!(
+        result.final_observation.visible_text.contains("clicked"),
+        "expected status to show click outcome"
+    );
+
+    agent.shutdown().await.expect("shutdown browser");
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_type_updates_status_via_agent_loop() {
+    let server = TestServer::start().await;
+    let url = server.url("/harness");
+    let config = CdpConfig {
+        initial_url: url,
+        ..CdpConfig::default()
+    };
+    let browser = CdpBrowser::launch(config).await.expect("launch browser");
+    let llm = HarnessLlm::new(HarnessMode::Type);
+    let clients = LlmClients::new(
+        Box::new(llm.clone()),
+        Box::new(llm.clone()),
+        Box::new(llm),
+    );
+    let mut agent = AgentLoop::new(browser, clients, "type test").with_policy(AgentPolicy {
+        max_steps: 2,
+        ..AgentPolicy::default()
+    });
+
+    let result = agent.run().await.expect("run");
+    assert_eq!(result.status, RunStatus::Done);
+    assert_eq!(result.steps.len(), 2);
+    assert!(result.steps[0].result.ok);
+    assert!(matches!(result.steps[0].action, Action::Type { .. }));
+    assert!(
+        result
+            .final_observation
+            .visible_text
+            .contains("typed:Ada Lovelace"),
+        "expected status to show typed value"
+    );
+
+    agent.shutdown().await.expect("shutdown browser");
+    server.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
