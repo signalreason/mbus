@@ -1,4 +1,6 @@
 use crate::types::{Action, Observation, StepResult};
+use crate::verify::rules::ValidationError;
+use serde::Serialize;
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug)]
@@ -16,10 +18,42 @@ impl Default for MemoryConfig {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ValidationOutcome {
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<ValidationError>,
+}
+
+impl ValidationOutcome {
+    pub fn success() -> Self {
+        Self {
+            ok: true,
+            errors: Vec::new(),
+        }
+    }
+
+    pub fn failure(errors: Vec<ValidationError>) -> Self {
+        Self { ok: false, errors }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct StepTimings {
+    pub step_duration_ms: u64,
+    pub llm_duration_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub apply_duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot_duration_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct StepRecord {
     pub action: Action,
+    pub validation: ValidationOutcome,
     pub result: StepResult,
+    pub timings: StepTimings,
 }
 
 #[derive(Clone, Debug)]
@@ -57,9 +91,9 @@ impl Memory {
         }
     }
 
-    pub fn record_step(&mut self, action: Action, result: StepResult) {
-        self.history.push(action.clone());
-        self.steps.push(StepRecord { action, result });
+    pub fn record_step(&mut self, record: StepRecord) {
+        self.history.push(record.action.clone());
+        self.steps.push(record);
         if self.history.len() > self.config.max_history {
             let drain = self.history.len() - self.config.max_history;
             self.history.drain(0..drain);

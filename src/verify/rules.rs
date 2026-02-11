@@ -1,6 +1,7 @@
 use crate::limits::exceeds_symmetric_limit_i64;
 use crate::types::{Action, Observation};
 use reqwest::Url;
+use serde::Serialize;
 use std::collections::HashSet;
 use std::time::Duration;
 
@@ -28,7 +29,7 @@ impl Default for ValidatorConfig {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ValidationError {
     pub code: String,
     pub field: Option<String>,

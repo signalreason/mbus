@@ -83,7 +83,17 @@ pub fn write_extract_output(path: &Path, output: &ExtractOutput) -> io::Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::memory::{StepTimings, ValidationOutcome};
     use crate::types::{Action, ExtractResult, StepResult};
+
+    fn timings() -> StepTimings {
+        StepTimings {
+            step_duration_ms: 1,
+            llm_duration_ms: 1,
+            apply_duration_ms: None,
+            snapshot_duration_ms: None,
+        }
+    }
 
     #[test]
     fn task_id_is_deterministic() {
@@ -98,6 +108,7 @@ mod tests {
             action: Action::Click {
                 id: "el_1".to_string(),
             },
+            validation: ValidationOutcome::success(),
             result: StepResult {
                 ok: true,
                 error: None,
@@ -105,6 +116,7 @@ mod tests {
                 scroll: None,
                 extract: None,
             },
+            timings: timings(),
         }];
 
         let output = build_extract_output("task_1", "now", &steps);
@@ -118,6 +130,7 @@ mod tests {
                 query: "price".to_string(),
                 id: Some("el_9".to_string()),
             },
+            validation: ValidationOutcome::success(),
             result: StepResult {
                 ok: true,
                 error: None,
@@ -129,6 +142,7 @@ mod tests {
                     value: "$10".to_string(),
                 }),
             },
+            timings: timings(),
         }];
 
         let output = build_extract_output("task_1", "now", &steps).expect("output");

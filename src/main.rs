@@ -464,7 +464,9 @@ fn emit_run_logs(result: &mbus::agent::r#loop::RunResult) -> Result<(), Box<dyn 
             r#type: "step",
             index: index + 1,
             action: step.action.clone(),
+            validation: step.validation.clone(),
             result: step.result.clone(),
+            timings: step.timings.clone(),
         })?;
     }
 
@@ -473,11 +475,16 @@ fn emit_run_logs(result: &mbus::agent::r#loop::RunResult) -> Result<(), Box<dyn 
         RunStatus::MaxSteps => "max_steps",
     };
 
+    let counts = step_counts(&result.steps);
     emit_json(&SummaryLog {
         r#type: "summary",
         status,
         final_action: result.final_action.clone(),
         steps: result.steps.len(),
+        validation_failures: counts.validation_failures,
+        apply_failures: counts.apply_failures,
+        apply_successes: counts.apply_successes,
+        done_steps: counts.done_steps,
         final_url: result.final_observation.url.clone(),
         final_title: result.final_observation.title.clone(),
     })?;
@@ -513,7 +520,9 @@ struct StepLog {
     r#type: &'static str,
     index: usize,
     action: mbus::types::Action,
+    validation: mbus::agent::memory::ValidationOutcome,
     result: mbus::types::StepResult,
+    timings: mbus::agent::memory::StepTimings,
 }
 
 #[derive(Serialize)]
@@ -523,8 +532,40 @@ struct SummaryLog {
     status: &'static str,
     final_action: mbus::types::Action,
     steps: usize,
+    validation_failures: usize,
+    apply_failures: usize,
+    apply_successes: usize,
+    done_steps: usize,
     final_url: String,
     final_title: String,
+}
+
+#[derive(Default)]
+struct StepCounts {
+    validation_failures: usize,
+    apply_failures: usize,
+    apply_successes: usize,
+    done_steps: usize,
+}
+
+fn step_counts(steps: &[mbus::agent::memory::StepRecord]) -> StepCounts {
+    let mut counts = StepCounts::default();
+    for step in steps {
+        if !step.validation.ok {
+            counts.validation_failures += 1;
+            continue;
+        }
+        if matches!(step.action, mbus::types::Action::Done { .. }) {
+            counts.done_steps += 1;
+            continue;
+        }
+        if step.result.ok {
+            counts.apply_successes += 1;
+        } else {
+            counts.apply_failures += 1;
+        }
+    }
+    counts
 }
 
 #[derive(Serialize)]
