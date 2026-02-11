@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id", "outcome", "dod_met", "summary", "tests", "notes", "blockers"],
+  "properties": {
+    "task_id": { "type": "string" },
+    "outcome": { "type": "string", "enum": ["completed", "blocked", "started"] },
+    "dod_met": { "type": "boolean" },
+    "summary": { "type": "string" },
+    "tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ran", "commands", "passed"],
+      "properties": {
+        "ran": { "type": "boolean" },
+        "commands": { "type": "array", "items": { "type": "string" } },
+        "passed": { "type": "boolean" }
+      }
+    },
+    "notes": { "type": "string" },
+    "blockers": { "type": "array", "items": { "type": "string" } }
+  }
+}

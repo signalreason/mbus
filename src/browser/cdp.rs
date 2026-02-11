@@ -53,6 +53,12 @@ pub struct CdpBrowser {
 }
 
 impl CdpBrowser {
+    pub async fn bootstrap(config: CdpConfig) -> BrowserResult<()> {
+        let browser = Self::launch(config).await?;
+        browser.shutdown().await?;
+        Ok(())
+    }
+
     pub async fn launch(config: CdpConfig) -> BrowserResult<Self> {
         let mut builder = BrowserConfig::builder();
         if config.headful {
@@ -61,14 +67,21 @@ impl CdpBrowser {
         let browser_config = builder
             .build()
             .map_err(|err| BrowserError::new("config_error", err))?;
-        let (browser, mut handler) = ChromiumBrowser::launch(browser_config).await?;
+        let (browser, mut handler) = ChromiumBrowser::launch(browser_config)
+            .await
+            .map_err(|err| BrowserError::new("cdp_launch_failed", err.to_string()))?;
         let handler_task = tokio::spawn(async move {
             while let Some(_event) = handler.next().await {}
         });
 
-        let page = browser.new_page("about:blank").await?;
+        let page = browser
+            .new_page("about:blank")
+            .await
+            .map_err(|err| BrowserError::new("cdp_page_failed", err.to_string()))?;
         if !config.initial_url.is_empty() && config.initial_url != "about:blank" {
-            page.goto(config.initial_url.as_str()).await?;
+            page.goto(config.initial_url.as_str())
+                .await
+                .map_err(|err| BrowserError::new("cdp_nav_failed", err.to_string()))?;
         }
 
         let observer = Observer::new(ObserverConfig {
