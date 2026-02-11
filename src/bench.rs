@@ -85,12 +85,23 @@ pub struct BenchSummary {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct BenchGate {
+    pub total_tasks: usize,
+    pub passed_tasks: usize,
+    pub required_passes: usize,
+    pub passed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct BenchReport {
     pub timestamp: String,
     pub tasks_dir: String,
     pub report_path: String,
     pub max_steps_per_task: usize,
     pub required_passes: usize,
+    pub gate: BenchGate,
     pub summary: BenchSummary,
     pub results: Vec<BenchTaskResult>,
 }
@@ -231,7 +242,29 @@ pub fn evaluate_task(
     }
 }
 
-pub fn build_summary(results: &[BenchTaskResult], required_passes: usize) -> BenchSummary {
+pub fn evaluate_gate(results: &[BenchTaskResult], required_passes: usize) -> BenchGate {
+    let total = results.len();
+    let passed = results.iter().filter(|result| result.passed).count();
+    let gate_passed = passed >= required_passes;
+    let reason = if gate_passed {
+        None
+    } else {
+        Some(format!(
+            "passed {} of {} tasks (required {})",
+            passed, total, required_passes
+        ))
+    };
+
+    BenchGate {
+        total_tasks: total,
+        passed_tasks: passed,
+        required_passes,
+        passed: gate_passed,
+        reason,
+    }
+}
+
+pub fn build_summary(results: &[BenchTaskResult], gate: &BenchGate) -> BenchSummary {
     let total = results.len();
     let passed = results.iter().filter(|result| result.passed).count();
     let completion_rate = if total == 0 {
@@ -252,11 +285,11 @@ pub fn build_summary(results: &[BenchTaskResult], required_passes: usize) -> Ben
     BenchSummary {
         total_tasks: total,
         passed_tasks: passed,
-        required_passes,
+        required_passes: gate.required_passes,
         completion_rate,
         median_steps_success,
         p95_steps_success,
-        gate_passed: passed >= required_passes,
+        gate_passed: gate.passed,
     }
 }
 
@@ -486,6 +519,20 @@ pub fn sleep_between_tasks() -> Duration {
 mod tests {
     use super::*;
 
+    fn sample_task() -> BenchTask {
+        BenchTask {
+            id: "bench-task-01".to_string(),
+            task: "sample".to_string(),
+            plan: None,
+            start_path: "/bench/start".to_string(),
+            max_steps: None,
+            actions: vec![Action::Done {
+                summary: "ok".to_string(),
+            }],
+            expect: BenchExpectations::default(),
+        }
+    }
+
     #[test]
     fn join_base_url_normalizes_slashes() {
         let url = join_base_url("http://127.0.0.1:4000/", "/bench/start");
@@ -504,5 +551,52 @@ mod tests {
     #[test]
     fn percentile_handles_empty() {
         assert_eq!(percentile_rounded(&[], 95), None);
+    }
+
+    #[test]
+    fn evaluate_task_fails_when_step_limit_exceeded() {
+        let task = sample_task();
+        let result = evaluate_task(
+            &task,
+            BenchObservedStatus::Done,
+            3,
+            Some("http://127.0.0.1/bench/task-01"),
+            Some("BENCH TASK 01 READY"),
+            2,
+            None,
+        );
+        assert!(!result.passed);
+        assert!(result
+            .failure_reason
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("step_limit_exceeded"));
+    }
+
+    #[test]
+    fn evaluate_gate_reports_pass_and_failure_reason() {
+        let passed = BenchTaskResult {
+            task_id: "t1".to_string(),
+            passed: true,
+            status: BenchObservedStatus::Done,
+            steps: 2,
+            duration_ms: 1,
+            failure_reason: None,
+        };
+        let failed = BenchTaskResult {
+            task_id: "t2".to_string(),
+            passed: false,
+            status: BenchObservedStatus::Error,
+            steps: 1,
+            duration_ms: 1,
+            failure_reason: Some("run_error: boom".to_string()),
+        };
+        let gate = evaluate_gate(&[passed.clone(), failed.clone()], 1);
+        assert!(gate.passed);
+        assert!(gate.reason.is_none());
+
+        let gate = evaluate_gate(&[passed, failed], 2);
+        assert!(!gate.passed);
+        assert!(gate.reason.unwrap_or_default().contains("required 2"));
     }
 }

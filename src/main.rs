@@ -2,9 +2,10 @@ use clap::{Args, Parser, Subcommand};
 use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
 use mbus::bench::{
     BenchObservedStatus, BenchReport, BenchServer, BenchTaskResult, actions_file_path,
-    actions_work_dir, bench_task_limit, build_summary, evaluate_task, failure_buckets,
-    join_base_url, load_tasks, now_timestamp, render_actions, report_path_default,
-    sleep_between_tasks, tasks_dir_default, write_actions_file, write_report,
+    actions_work_dir, bench_task_limit, build_summary, evaluate_gate, evaluate_task,
+    failure_buckets, join_base_url, load_tasks, now_timestamp, render_actions,
+    report_path_default, sleep_between_tasks, tasks_dir_default, write_actions_file,
+    write_report,
 };
 use mbus::browser::CdpBrowser;
 use mbus::config::{CliOverrides, ConfigError, LlmConfig, LlmMode, load_config};
@@ -370,13 +371,15 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
         sleep(sleep_between_tasks()).await;
     }
 
-    let summary = build_summary(&results, required_passes);
+    let gate = evaluate_gate(&results, required_passes);
+    let summary = build_summary(&results, &gate);
     let report = BenchReport {
         timestamp: now_timestamp().map_err(|err| format!("bench timestamp: {err}"))?,
         tasks_dir: tasks_dir.display().to_string(),
         report_path: report_path.display().to_string(),
         max_steps_per_task,
         required_passes,
+        gate: gate.clone(),
         summary: summary.clone(),
         results,
     };
@@ -398,12 +401,11 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
 
     server.shutdown().await;
 
-    if !summary.gate_passed {
-        return Err(format!(
-            "benchmark gate failed: passed {} of {} tasks (required {})",
-            summary.passed_tasks, summary.total_tasks, summary.required_passes
-        )
-        .into());
+    if !gate.passed {
+        let reason = gate
+            .reason
+            .unwrap_or_else(|| "benchmark gate failed".to_string());
+        return Err(reason.into());
     }
 
     Ok(())

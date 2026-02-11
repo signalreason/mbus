@@ -1032,10 +1032,16 @@
         "Gate outcome is included in benchmark report artifacts"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T234942Z-78463 completed",
+        "last_run_id": "20260211T234942Z-78463",
+        "last_update_utc": "2026-02-11T23:53:25Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Share one gate evaluation function across all benchmark modes."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M3-BENCH-002",
       "title": "Preserve benchmark gate checks across both benchmark modes"
     },
