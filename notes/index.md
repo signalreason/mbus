@@ -33,3 +33,4 @@
 - 2026-02-11 CDP-003 accessibility actionable nodes: `notes/2026-02-11-cdp-003-accessibility-actionable.md`
 - 2026-02-11 CDP-004 click action: `notes/2026-02-11-cdp-004-click.md`
 - 2026-02-11 M0-SCHEMA-001 action tagging: `notes/2026-02-11-m0-schema-001-action-tagging.md`
+- 2026-02-11 M0-SCHEMA-002 golden action payloads: `notes/2026-02-11-m0-schema-002-golden-actions.md`

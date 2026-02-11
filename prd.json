@@ -101,10 +101,16 @@
         "Round-trip serialize and deserialize is stable for golden payloads"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T205822Z-78463 completed",
+        "last_run_id": "20260211T205822Z-78463",
+        "last_update_utc": "2026-02-11T21:00:09Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Store canonical JSON examples and assert strict parsing behavior."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M0-SCHEMA-002",
       "title": "Add golden tests for valid action payloads"
     },

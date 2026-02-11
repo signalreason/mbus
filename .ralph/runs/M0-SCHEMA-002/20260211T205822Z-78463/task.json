@@ -1,0 +1,1 @@
+{"definition_of_done":["One passing test exists per supported action type","Round-trip serialize and deserialize is stable for golden payloads"],"model":"gpt-5.2-codex","recommended":{"approach":"Store canonical JSON examples and assert strict parsing behavior."},"status":"unstarted","task_id":"M0-SCHEMA-002","title":"Add golden tests for valid action payloads"}
