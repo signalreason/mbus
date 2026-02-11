@@ -405,10 +405,16 @@
         "Id assignment remains deterministic after minor layout shifts"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T214852Z-78463 completed",
+        "last_run_id": "20260211T214852Z-78463",
+        "last_update_utc": "2026-02-11T21:51:41Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Base ids on stable DOM/accessibility identity rather than snapshot index positions."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-OBS-002",
       "title": "Stabilize element id generation across snapshots"
     },

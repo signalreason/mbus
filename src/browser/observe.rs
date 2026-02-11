@@ -164,7 +164,7 @@ async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<Collecte
             Err(_) => flags.bbox_missing = Some(true),
         }
 
-        let signature = stable_signature(&role, &name, backend_id);
+        let signature = stable_signature(&role, &name, node.node_id.inner(), node.frame_id.as_ref());
 
         out.push(ActionableElement {
             backend_id,
@@ -181,14 +181,11 @@ async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<Collecte
         }
     }
 
-    let mut counts: HashMap<String, usize> = HashMap::new();
     let mut elements = Vec::new();
     let mut element_map = HashMap::new();
 
     for element in out {
-        let count = counts.entry(element.signature.clone()).or_insert(0);
-        *count += 1;
-        let id = stable_element_id(&element.signature, *count);
+        let id = stable_element_id(&element.signature);
         element_map.insert(id.clone(), element.backend_id);
         elements.push(ElementRef {
             id,
@@ -314,19 +311,27 @@ fn quad_bbox(quad: &[f64]) -> Option<[f64; 4]> {
     Some([min_x, min_y, max_x - min_x, max_y - min_y])
 }
 
-fn stable_signature(role: &str, name: &Option<String>, backend_id: BackendNodeId) -> String {
+fn stable_signature(
+    role: &str,
+    name: &Option<String>,
+    ax_node_id: &str,
+    frame_id: Option<&chromiumoxide_cdp::cdp::browser_protocol::page::FrameId>,
+) -> String {
     let mut parts = Vec::new();
     parts.push("ax".to_string());
     parts.push(role.trim().to_lowercase());
     if let Some(name) = name.as_ref().map(|value| value.trim()).filter(|v| !v.is_empty()) {
         parts.push(name.to_string());
     }
-    parts.push(format!("backend={}", backend_id.inner()));
+    if let Some(frame_id) = frame_id {
+        parts.push(format!("frame={}", frame_id.inner()));
+    }
+    parts.push(format!("node={}", ax_node_id));
     parts.join("|")
 }
 
-fn stable_element_id(signature: &str, occurrence: usize) -> String {
-    format!("el_{}_{}", hash_hex(signature), occurrence)
+fn stable_element_id(signature: &str) -> String {
+    format!("el_{}", hash_hex(signature))
 }
 
 fn compute_state_hash(url: &str, title: &str, elements: &[ElementRef]) -> String {
@@ -495,16 +500,16 @@ mod tests {
     #[test]
     fn stable_element_id_is_deterministic() {
         let signature = "button|button|Save|id=save-btn";
-        let id_a = stable_element_id(signature, 1);
-        let id_b = stable_element_id(signature, 1);
+        let id_a = stable_element_id(signature);
+        let id_b = stable_element_id(signature);
         assert_eq!(id_a, id_b);
     }
 
     #[test]
-    fn stable_element_id_distinguishes_occurrence() {
+    fn stable_element_id_distinguishes_signature() {
         let signature = "button|button|Save|id=save-btn";
-        let id_a = stable_element_id(signature, 1);
-        let id_b = stable_element_id(signature, 2);
+        let id_a = stable_element_id(signature);
+        let id_b = stable_element_id("button|button|Cancel|id=cancel-btn");
         assert_ne!(id_a, id_b);
     }
 
