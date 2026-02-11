@@ -76,37 +76,18 @@ impl OpenAiClient {
     }
 
     fn parse_content(&self, content: &str) -> LlmResult<Action> {
-        let value = self.parse_json_value(content)?;
-        self.reject_multi_action(&value)?;
+        let value = match self.parse_json_value(content) {
+            Ok(value) => value,
+            Err(err) => return self.attempt_repair(err, content),
+        };
+
+        if let Err(err) = self.reject_multi_action(&value) {
+            return self.attempt_repair(err, content);
+        }
 
         match self.parse_value_strict(value.clone()) {
             Ok(action) => Ok(action),
-            Err(err) => {
-                if !matches!(value, Value::Object(_)) {
-                    return Err(err);
-                }
-                telemetry::inc_repair_attempt();
-                match repair_action(content, &self.schema) {
-                    Ok(action) => {
-                        telemetry::inc_repair_success();
-                        tracing::info!(
-                            event = "repair_success",
-                            error_code = err.code,
-                            repaired = true
-                        );
-                        Ok(action)
-                    }
-                    Err(repair_err) => {
-                        let message = format!("{}; repair_failed: {}", err.message, repair_err);
-                        tracing::warn!(
-                            event = "repair_failed",
-                            error_code = err.code,
-                            repair_error = %repair_err
-                        );
-                        Err(LlmError::new("repair_failed", message))
-                    }
-                }
-            }
+            Err(err) => self.attempt_repair(err, content),
         }
     }
 
@@ -158,6 +139,30 @@ impl OpenAiClient {
                 }
             }
             _ => Ok(()),
+        }
+    }
+
+    fn attempt_repair(&self, err: LlmError, content: &str) -> LlmResult<Action> {
+        telemetry::inc_repair_attempt();
+        match repair_action(content, &self.schema) {
+            Ok(action) => {
+                telemetry::inc_repair_success();
+                tracing::info!(
+                    event = "repair_success",
+                    error_code = err.code,
+                    repaired = true
+                );
+                Ok(action)
+            }
+            Err(repair_err) => {
+                let message = format!("{}; repair_failed: {}", err.message, repair_err);
+                tracing::warn!(
+                    event = "repair_failed",
+                    error_code = err.code,
+                    repair_error = %repair_err
+                );
+                Err(LlmError::new(err.code, message))
+            }
         }
     }
 }
@@ -265,7 +270,7 @@ fn map_reqwest_error(err: reqwest::Error) -> LlmError {
 }
 
 #[cfg(test)]
-mod tests {
+mod prompt_tests {
     use super::*;
     use std::collections::VecDeque;
     use std::time::Duration;
@@ -339,7 +344,7 @@ fn extract_content(value: &Value) -> LlmResult<String> {
 }
 
 #[cfg(test)]
-mod tests {
+mod parse_tests {
     use super::*;
     use std::time::Duration;
 
@@ -390,8 +395,10 @@ mod tests {
     #[test]
     fn parse_content_rejects_action_arrays() {
         let client = test_client();
+        let payload =
+            r#"[{"type":"done","summary":"ok"},{"type":"done","summary":"two"}]"#;
         let err = client
-            .parse_content(r#"[{"type":"done","summary":"ok"}]"#)
+            .parse_content(payload)
             .expect_err("expected multi action error");
         assert_eq!(err.code, "multi_action");
     }
@@ -399,10 +406,54 @@ mod tests {
     #[test]
     fn parse_content_rejects_action_wrapper_arrays() {
         let client = test_client();
-        let payload = r#"{"action":[{"type":"done","summary":"ok"}]}"#;
+        let payload = r#"{"action":[{"type":"done","summary":"ok"},{"type":"done","summary":"two"}]}"#;
         let err = client
             .parse_content(payload)
             .expect_err("expected multi action error");
         assert_eq!(err.code, "multi_action");
+    }
+
+    #[test]
+    fn parse_content_repairs_single_item_array() {
+        let client = test_client();
+        let action = client
+            .parse_content(r#"[{"type":"done","summary":"ok"}]"#)
+            .expect("repair single action array");
+        assert_eq!(
+            action,
+            Action::Done {
+                summary: "ok".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_content_repairs_action_wrapper() {
+        let client = test_client();
+        let payload = r#"{"action":{"type":"click","id":"el_1"}}"#;
+        let action = client
+            .parse_content(payload)
+            .expect("repair action wrapper");
+        assert_eq!(action, Action::Click { id: "el_1".to_string() });
+    }
+
+    #[test]
+    fn parse_content_repairs_code_fence() {
+        let client = test_client();
+        let payload = "```json\n{\"type\":\"wait\",\"ms\":200}\n```";
+        let action = client
+            .parse_content(payload)
+            .expect("repair fenced action");
+        assert_eq!(action, Action::Wait { ms: 200 });
+    }
+
+    #[test]
+    fn parse_content_repairs_json_string() {
+        let client = test_client();
+        let payload = r#""{\"type\":\"click\",\"id\":\"el_9\"}""#;
+        let action = client
+            .parse_content(payload)
+            .expect("repair json string");
+        assert_eq!(action, Action::Click { id: "el_9".to_string() });
     }
 }

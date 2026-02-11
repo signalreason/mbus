@@ -151,23 +151,37 @@ fn normalize_value(value: Value) -> (Value, bool) {
         }
     }
 
-    if let Value::Object(mut map) = current {
-        if let Some(inner) = map.remove("action") {
-            current = inner;
-            repaired = true;
+    if let Value::Object(map) = current {
+        if let Some(inner) = map.get("action").cloned() {
+            if let Some(unwrapped) = unwrap_single_action(inner) {
+                current = unwrapped;
+                repaired = true;
+            } else {
+                current = Value::Object(map);
+            }
+        } else if let Some(inner) = map.get("actions").cloned() {
+            if let Some(unwrapped) = unwrap_single_action(inner) {
+                current = unwrapped;
+                repaired = true;
+            } else {
+                current = Value::Object(map);
+            }
         } else {
             current = Value::Object(map);
         }
     }
 
-    if let Value::Array(items) = current {
-        if let Some(first) = items.into_iter().next() {
-            current = first;
-            repaired = true;
-        } else {
-            current = Value::Array(Vec::new());
+    current = match current {
+        Value::Array(items) => {
+            if items.len() == 1 {
+                repaired = true;
+                items.into_iter().next().unwrap()
+            } else {
+                Value::Array(items)
+            }
         }
-    }
+        other => other,
+    };
 
     if let Value::Object(map) = current {
         let (value, changed) = normalize_action_value(Value::Object(map));
@@ -176,6 +190,14 @@ fn normalize_value(value: Value) -> (Value, bool) {
     }
 
     (current, repaired)
+}
+
+fn unwrap_single_action(value: Value) -> Option<Value> {
+    match value {
+        Value::Object(_) => Some(value),
+        Value::Array(items) if items.len() == 1 => items.into_iter().next(),
+        _ => None,
+    }
 }
 
 fn normalize_action_value(value: Value) -> (Value, bool) {
@@ -382,6 +404,16 @@ mod tests {
                 summary: "ok".to_string()
             }
         );
+    }
+
+    #[test]
+    fn rejects_multi_action_array() {
+        let payload = "[{\"type\":\"done\",\"summary\":\"one\"},{\"type\":\"done\",\"summary\":\"two\"}]";
+        let err = repair_action(payload, &schema()).expect_err("expected error");
+        match err {
+            RepairError::SchemaViolation(_) => {}
+            other => panic!("unexpected error: {other}"),
+        }
     }
 
     #[test]
