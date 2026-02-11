@@ -31,3 +31,4 @@
 - 2026-02-11 CDP-001 bootstrap session: `notes/2026-02-11-cdp-001-bootstrap.md`
 - 2026-02-11 CDP-002 snapshot metadata: `notes/2026-02-11-cdp-002-snapshot-metadata.md`
 - 2026-02-11 CDP-003 accessibility actionable nodes: `notes/2026-02-11-cdp-003-accessibility-actionable.md`
+- 2026-02-11 CDP-004 click action: `notes/2026-02-11-cdp-004-click.md`
