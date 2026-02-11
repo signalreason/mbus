@@ -134,6 +134,19 @@ impl ActionApplier {
                 ApplyOutcome::none()
             }
             Action::Back => {
+                let result = page.evaluate("() => history.length").await?;
+                let value = result
+                    .into_value()
+                    .map_err(|err| ActionError::new("js_error", format!("history: {err}")))?;
+                let history_len: i64 = serde_json::from_value(value).map_err(|err| {
+                    ActionError::new("js_error", format!("history length: {err}"))
+                })?;
+                if history_len <= 1 {
+                    return Err(ActionError::new(
+                        "no_history",
+                        "history has no previous entry",
+                    ));
+                }
                 page.evaluate("() => history.back()").await?;
                 ApplyOutcome::none()
             }
