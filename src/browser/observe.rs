@@ -330,24 +330,94 @@ fn stable_element_id(signature: &str, occurrence: usize) -> String {
 }
 
 fn compute_state_hash(url: &str, title: &str, elements: &[ElementRef]) -> String {
-    const TOP_ELEMENTS: usize = 10;
+    const TOP_ELEMENTS: usize = 20;
     let mut signature = String::new();
-    signature.push_str(url.trim());
+    signature.push_str("url=");
+    signature.push_str(&normalize_text(url));
     signature.push('\n');
-    signature.push_str(title.trim());
+    signature.push_str("title=");
+    signature.push_str(&normalize_text(title));
 
-    for element in elements.iter().take(TOP_ELEMENTS) {
+    let mut element_signatures: Vec<String> = elements
+        .iter()
+        .map(element_signature_for_hash)
+        .collect();
+    element_signatures.sort();
+
+    for element_signature in element_signatures.into_iter().take(TOP_ELEMENTS) {
         signature.push('\n');
-        signature.push_str(&element.id);
-        signature.push('|');
-        signature.push_str(&element.role);
-        if let Some(name) = element.name.as_ref() {
-            signature.push('|');
-            signature.push_str(name);
-        }
+        signature.push_str(&element_signature);
     }
 
     hash_hex(&signature)
+}
+
+fn element_signature_for_hash(element: &ElementRef) -> String {
+    let mut out = String::new();
+    out.push_str("role=");
+    out.push_str(&normalize_text(&element.role));
+
+    if let Some(name) = element
+        .name
+        .as_ref()
+        .map(|value| normalize_text(value))
+        .filter(|value| !value.is_empty())
+    {
+        out.push('|');
+        out.push_str("name=");
+        out.push_str(&name);
+    }
+
+    if let Some(value) = element
+        .value
+        .as_ref()
+        .map(|value| normalize_text(value))
+        .filter(|value| !value.is_empty())
+    {
+        out.push('|');
+        out.push_str("value=");
+        out.push_str(&value);
+    }
+
+    let mut flags = Vec::new();
+    if element.flags.disabled.unwrap_or(false) {
+        flags.push("disabled");
+    }
+    if element.flags.readonly.unwrap_or(false) {
+        flags.push("readonly");
+    }
+    if element.flags.required.unwrap_or(false) {
+        flags.push("required");
+    }
+    if element.flags.focused.unwrap_or(false) {
+        flags.push("focused");
+    }
+    if element.flags.editable.unwrap_or(false) {
+        flags.push("editable");
+    }
+    if element.flags.checked.unwrap_or(false) {
+        flags.push("checked");
+    }
+    if element.flags.selected.unwrap_or(false) {
+        flags.push("selected");
+    }
+    if element.flags.expanded.unwrap_or(false) {
+        flags.push("expanded");
+    }
+    if element.flags.pressed.unwrap_or(false) {
+        flags.push("pressed");
+    }
+    if element.flags.bbox_missing.unwrap_or(false) {
+        flags.push("bbox_missing");
+    }
+
+    if !flags.is_empty() {
+        out.push('|');
+        out.push_str("flags=");
+        out.push_str(&flags.join(","));
+    }
+
+    out
 }
 
 fn hash_hex(input: &str) -> String {
@@ -379,6 +449,10 @@ fn truncate_text(value: &str, max_chars: usize) -> String {
     }
     out.push_str("...");
     out
+}
+
+fn normalize_text(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
@@ -446,6 +520,46 @@ mod tests {
         }];
         let hash_a = compute_state_hash("https://a.example", "Title", &elements);
         let hash_b = compute_state_hash("https://b.example", "Title", &elements);
+        assert_ne!(hash_a, hash_b);
+    }
+
+    #[test]
+    fn state_hash_is_order_insensitive() {
+        let element_a = ElementRef {
+            id: "el_a".to_string(),
+            role: "button".to_string(),
+            name: Some("Save".to_string()),
+            value: None,
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            flags: ElementFlags::default(),
+        };
+        let element_b = ElementRef {
+            id: "el_b".to_string(),
+            role: "textbox".to_string(),
+            name: Some("Email".to_string()),
+            value: Some("me@example.com".to_string()),
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            flags: ElementFlags::default(),
+        };
+        let hash_a = compute_state_hash("https://a.example", "Title", &[element_a.clone(), element_b.clone()]);
+        let hash_b = compute_state_hash("https://a.example", "Title", &[element_b, element_a]);
+        assert_eq!(hash_a, hash_b);
+    }
+
+    #[test]
+    fn state_hash_changes_with_value_change() {
+        let element = ElementRef {
+            id: "el_a".to_string(),
+            role: "textbox".to_string(),
+            name: Some("Email".to_string()),
+            value: Some("me@example.com".to_string()),
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            flags: ElementFlags::default(),
+        };
+        let mut updated = element.clone();
+        updated.value = Some("me+alt@example.com".to_string());
+        let hash_a = compute_state_hash("https://a.example", "Title", &[element]);
+        let hash_b = compute_state_hash("https://a.example", "Title", &[updated]);
         assert_ne!(hash_a, hash_b);
     }
 }

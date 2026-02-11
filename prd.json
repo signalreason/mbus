@@ -386,10 +386,16 @@
         "Navigation or meaningful DOM changes alter the hash"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T214640Z-78463 completed",
+        "last_run_id": "20260211T214640Z-78463",
+        "last_update_utc": "2026-02-11T21:48:52Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Hash URL, title, and a stable subset of actionable elements in normalized order."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-OBS-001",
       "title": "Compute deterministic state hash from compact snapshot features"
     },
