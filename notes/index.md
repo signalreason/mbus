@@ -56,3 +56,4 @@
 - 2026-02-11 VALID-002 type text length validation: `notes/2026-02-11-valid-002-type-text-length.md`
 - 2026-02-11 VALID-003 wait duration validation: `notes/2026-02-11-valid-003-wait-duration.md`
 - 2026-02-11 VALID-004 scroll delta bounds validation: `notes/2026-02-11-valid-004-scroll-delta-bounds.md`
+- 2026-02-11 VALID-005 navigate URL policy parsing: `notes/2026-02-11-valid-005-navigate-policy.md`

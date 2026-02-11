@@ -1,5 +1,6 @@
 use crate::limits::exceeds_symmetric_limit_i64;
 use crate::types::{Action, Observation};
+use reqwest::Url;
 use std::collections::HashSet;
 use std::time::Duration;
 
@@ -112,22 +113,15 @@ impl Validator {
                 }
             }
             Action::Navigate { url } => {
-                let trimmed = url.trim();
-                if trimmed.is_empty() {
-                    errors.push(ValidationError::new(
-                        "missing_url",
-                        Some("url"),
-                        "navigate url is required",
-                    ));
-                } else if !self.config.allow_insecure {
-                    let normalized = trimmed.to_ascii_lowercase();
-                    if !(normalized.starts_with("http://") || normalized.starts_with("https://")) {
-                        errors.push(ValidationError::new(
-                            "insecure_url",
-                            Some("url"),
-                            format!("unsupported url scheme for {trimmed}"),
-                        ));
+                match parse_navigate_url(url) {
+                    Ok(parsed) => {
+                        if let Some(error) =
+                            evaluate_url_policy(&parsed, self.config.allow_insecure)
+                        {
+                            errors.push(error);
+                        }
                     }
+                    Err(error) => errors.push(error),
                 }
             }
             Action::Back => {}
@@ -168,6 +162,39 @@ fn validate_element_id(id: &str, element_ids: &HashSet<&str>, errors: &mut Vec<V
 
 fn wait_exceeds_max(ms: u64, max_wait_ms: u64) -> bool {
     Duration::from_millis(ms) > Duration::from_millis(max_wait_ms)
+}
+
+fn parse_navigate_url(raw: &str) -> Result<Url, ValidationError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(ValidationError::new(
+            "missing_url",
+            Some("url"),
+            "navigate url is required",
+        ));
+    }
+    Url::parse(trimmed).map_err(|err| {
+        ValidationError::new(
+            "invalid_url",
+            Some("url"),
+            format!("invalid url {trimmed}: {err}"),
+        )
+    })
+}
+
+fn evaluate_url_policy(url: &Url, allow_insecure: bool) -> Option<ValidationError> {
+    if allow_insecure {
+        return None;
+    }
+
+    match url.scheme() {
+        "http" | "https" => None,
+        other => Some(ValidationError::new(
+            "insecure_url",
+            Some("url"),
+            format!("unsupported url scheme '{other}'"),
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -398,6 +425,17 @@ mod tests {
         };
         let errors = validator.validate(&action, &obs).expect_err("expected errors");
         assert_eq!(errors[0].code, "insecure_url");
+    }
+
+    #[test]
+    fn rejects_invalid_url() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Navigate {
+            url: "http://exa mple.com".to_string(),
+        };
+        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        assert_eq!(errors[0].code, "invalid_url");
     }
 
     #[test]
