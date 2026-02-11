@@ -215,10 +215,16 @@
         "Browser shutdown is graceful and deterministic"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T211354Z-78463 completed",
+        "last_run_id": "20260211T211354Z-78463",
+        "last_update_utc": "2026-02-11T21:20:40Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Separate session initialization from per-step action execution."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-BROW-001",
       "title": "Implement browser lifecycle management with warm session reuse"
     },

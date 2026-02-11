@@ -110,6 +110,7 @@ pub struct CliOverrides {
     pub memory_max_history: Option<usize>,
     pub headless: Option<bool>,
     pub initial_url: Option<String>,
+    pub cdp_url: Option<String>,
     pub snapshot_timeout_ms: Option<u64>,
     pub action_timeout_ms: Option<u64>,
     pub max_elements: Option<usize>,
@@ -234,6 +235,9 @@ impl FileConfig {
             if let Some(initial_url) = browser.initial_url.as_ref() {
                 config.browser.initial_url = initial_url.to_string();
             }
+            if let Some(cdp_url) = browser.cdp_url.as_ref() {
+                config.browser.cdp_url = Some(cdp_url.to_string());
+            }
             if let Some(timeout_ms) = browser.snapshot_timeout_ms {
                 config.browser.snapshot_timeout = Duration::from_millis(timeout_ms);
             }
@@ -339,6 +343,7 @@ struct FileBrowserConfig {
     headless: Option<bool>,
     headful: Option<bool>,
     initial_url: Option<String>,
+    cdp_url: Option<String>,
     snapshot_timeout_ms: Option<u64>,
     action_timeout_ms: Option<u64>,
     max_elements: Option<usize>,
@@ -411,6 +416,7 @@ impl EnvOverrides {
                 }
                 "MBUS_HEADLESS" => overrides.headless = Some(parse_bool(&key, &value)?),
                 "MBUS_INITIAL_URL" => overrides.initial_url = Some(value),
+                "MBUS_CDP_URL" => overrides.cdp_url = Some(value),
                 "MBUS_SNAPSHOT_TIMEOUT_MS" => {
                     overrides.snapshot_timeout_ms = Some(parse_u64(&key, &value)?)
                 }
@@ -484,6 +490,9 @@ impl CliOverrides {
         apply_headless(&mut config.browser, self.headless, None)?;
         if let Some(initial_url) = self.initial_url.as_ref() {
             config.browser.initial_url = initial_url.to_string();
+        }
+        if let Some(cdp_url) = self.cdp_url.as_ref() {
+            config.browser.cdp_url = Some(cdp_url.to_string());
         }
         if let Some(timeout_ms) = self.snapshot_timeout_ms {
             config.browser.snapshot_timeout = Duration::from_millis(timeout_ms);

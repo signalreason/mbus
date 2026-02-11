@@ -50,6 +50,8 @@ struct RunArgs {
     #[arg(long)]
     initial_url: Option<String>,
     #[arg(long)]
+    cdp_url: Option<String>,
+    #[arg(long)]
     max_steps: Option<usize>,
     #[arg(long)]
     memory_max_observations: Option<usize>,
@@ -340,6 +342,7 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
         memory_max_history: args.memory_max_history,
         headless: args.headless,
         initial_url: args.initial_url.clone(),
+        cdp_url: args.cdp_url.clone(),
         snapshot_timeout_ms: args.snapshot_timeout_ms,
         action_timeout_ms: args.action_timeout_ms,
         max_elements: args.max_elements,
@@ -432,7 +435,7 @@ async fn execute_agent(
     plan: Option<&str>,
     config: &mbus::config::AppConfig,
 ) -> Result<RunResult, Box<dyn Error>> {
-    let browser = CdpBrowser::launch(config.browser.clone()).await?;
+    let browser = CdpBrowser::start(config.browser.clone()).await?;
     let clients = build_clients(&config.llm)?;
 
     let mut agent = AgentLoop::new(browser, clients, task.to_string())
@@ -545,6 +548,7 @@ impl From<&mbus::config::AppConfig> for ConfigLog {
             browser: BrowserLog {
                 headful: config.browser.headful,
                 initial_url: config.browser.initial_url.clone(),
+                cdp_url: config.browser.cdp_url.clone(),
                 snapshot_timeout_ms: config.browser.snapshot_timeout.as_millis() as u64,
                 action_timeout_ms: config.browser.action_timeout.as_millis() as u64,
                 max_elements: config.browser.max_elements,
@@ -600,6 +604,7 @@ struct AgentLog {
 struct BrowserLog {
     headful: bool,
     initial_url: String,
+    cdp_url: Option<String>,
     snapshot_timeout_ms: u64,
     action_timeout_ms: u64,
     max_elements: usize,
