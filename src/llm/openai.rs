@@ -57,9 +57,12 @@ impl OpenAiClient {
         task: &str,
         plan: Option<&str>,
         observation: &Observation,
+        observations: &std::collections::VecDeque<Observation>,
         history: &[Action],
     ) -> LlmResult<String> {
         let observation_json = serde_json::to_string(observation)
+            .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
+        let observations_json = serde_json::to_string(observations)
             .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
         let history_json = serde_json::to_string(history)
             .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
@@ -68,7 +71,7 @@ impl OpenAiClient {
         let plan_text = plan.unwrap_or("(none)");
 
         Ok(format!(
-            "Task: {task}\nPlan: {plan_text}\nObservation: {observation_json}\nHistory: {history_json}\nSchema: {schema_json}\nReturn exactly one JSON action object matching the schema and nothing else.",
+            "Task: {task}\nPlan: {plan_text}\nObservation: {observation_json}\nRecentObservations: {observations_json}\nHistory: {history_json}\nSchema: {schema_json}\nReturn exactly one JSON action object matching the schema and nothing else.",
         ))
     }
 
@@ -166,13 +169,14 @@ impl LlmClient for OpenAiClient {
         task: &str,
         plan: Option<&str>,
         observation: &Observation,
+        observations: &std::collections::VecDeque<Observation>,
         history: &[Action],
     ) -> LlmResult<Action> {
         telemetry::inc_llm_call();
         let start = Instant::now();
         let span = tracing::info_span!("llm_call", model = %self.config.model);
         let result = async {
-            let prompt = self.build_prompt(task, plan, observation, history)?;
+            let prompt = self.build_prompt(task, plan, observation, observations, history)?;
             let mut body = json!({
                 "model": self.config.model,
                 "messages": [
@@ -257,6 +261,57 @@ fn map_reqwest_error(err: reqwest::Error) -> LlmError {
         LlmError::new("transport_error", err.to_string())
     } else {
         LlmError::new("http_error", err.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+    use std::time::Duration;
+
+    fn sample_observation(hash: &str) -> Observation {
+        Observation {
+            url: "https://example.com".to_string(),
+            title: "Example".to_string(),
+            viewport: [1280, 800],
+            focused: None,
+            visible_text: "Hello".to_string(),
+            state_hash: hash.to_string(),
+            elements: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn prompt_includes_recent_observations_in_order() {
+        let client = OpenAiClient::new(OpenAiConfig {
+            api_key: "test-key".to_string(),
+            base_url: "http://localhost".to_string(),
+            model: "test".to_string(),
+            timeout: Duration::from_secs(1),
+            temperature: 0.0,
+            max_tokens: None,
+        })
+        .expect("client");
+
+        let mut observations = VecDeque::new();
+        observations.push_back(sample_observation("hash-1"));
+        observations.push_back(sample_observation("hash-2"));
+        let current = sample_observation("hash-2");
+
+        let prompt = client
+            .build_prompt("task", None, &current, &observations, &[])
+            .expect("prompt");
+
+        let line = prompt
+            .lines()
+            .find(|line| line.starts_with("RecentObservations: "))
+            .expect("recent observations line");
+        let payload = line.trim_start_matches("RecentObservations: ");
+        let parsed: Vec<Observation> = serde_json::from_str(payload).expect("parse observations");
+
+        let hashes: Vec<String> = parsed.into_iter().map(|obs| obs.state_hash).collect();
+        assert_eq!(hashes, vec!["hash-1".to_string(), "hash-2".to_string()]);
     }
 }
 

@@ -1,5 +1,6 @@
 use crate::types::{Action, Observation};
 use async_trait::async_trait;
+use std::collections::VecDeque;
 use std::fmt;
 
 pub type LlmResult<T> = Result<T, LlmError>;
@@ -34,6 +35,7 @@ pub trait LlmClient: Send + Sync {
         task: &str,
         plan: Option<&str>,
         observation: &Observation,
+        observations: &VecDeque<Observation>,
         history: &[Action],
     ) -> LlmResult<Action>;
 }

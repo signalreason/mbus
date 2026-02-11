@@ -30,6 +30,7 @@
 - 2026-02-11 PRD JSON granular breakdown: `notes/2026-02-11-prd-json-granular-breakdown.md`
 - 2026-02-11 AGENT-001 max-step loop check: `notes/2026-02-11-agent-001-max-step-loop.md`
 - 2026-02-11 AGENT-002 step history record: `notes/2026-02-11-agent-002-step-history.md`
+- 2026-02-11 AGENT-003 observation window: `notes/2026-02-11-agent-003-observation-window.md`
 - 2026-02-11 CDP-001 bootstrap session: `notes/2026-02-11-cdp-001-bootstrap.md`
 - 2026-02-11 CDP-002 snapshot metadata: `notes/2026-02-11-cdp-002-snapshot-metadata.md`
 - 2026-02-11 CDP-003 accessibility actionable nodes: `notes/2026-02-11-cdp-003-accessibility-actionable.md`

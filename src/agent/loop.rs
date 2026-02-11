@@ -179,6 +179,7 @@ impl<B: Browser> AgentLoop<B> {
                         &self.task,
                         self.memory.plan(),
                         &observation,
+                        self.memory.observations(),
                         self.memory.history(),
                     )
                     .await
@@ -489,6 +490,7 @@ mod tests {
             _task: &str,
             _plan: Option<&str>,
             _observation: &Observation,
+            _observations: &VecDeque<Observation>,
             _history: &[Action],
         ) -> Result<Action, LlmError> {
             let mut guard = self.actions.lock().await;

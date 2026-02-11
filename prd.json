@@ -671,10 +671,16 @@
         "Window is provided to LLM prompt builder in stable order"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T223244Z-78463 completed",
+        "last_run_id": "20260211T223244Z-78463",
+        "last_update_utc": "2026-02-11T22:35:51Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Use a bounded deque and avoid retaining full raw DOM snapshots."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-AGENT-003",
       "title": "Retain rolling window of recent observations for context"
     },

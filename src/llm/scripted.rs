@@ -28,6 +28,7 @@ impl LlmClient for StubLlm {
         _task: &str,
         _plan: Option<&str>,
         _observation: &crate::types::Observation,
+        _observations: &VecDeque<crate::types::Observation>,
         _history: &[Action],
     ) -> LlmResult<Action> {
         telemetry::inc_llm_call();
@@ -69,6 +70,7 @@ impl LlmClient for ScriptedLlm {
         _task: &str,
         _plan: Option<&str>,
         _observation: &crate::types::Observation,
+        _observations: &VecDeque<crate::types::Observation>,
         _history: &[Action],
     ) -> LlmResult<Action> {
         telemetry::inc_llm_call();
