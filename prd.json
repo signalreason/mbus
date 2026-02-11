@@ -614,10 +614,16 @@
         "Unit tests cover reset behavior after mixed outcomes"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T222206Z-78463 completed",
+        "last_run_id": "20260211T222206Z-78463",
+        "last_update_utc": "2026-02-11T22:24:20Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Define one progress predicate and reuse it in router and loop code paths."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-ROUTER-003",
       "title": "Reset router counters on confirmed progress"
     },

@@ -1,3 +1,5 @@
+use crate::types::{Observation, StepResult};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tier {
     Fast,
@@ -16,6 +18,15 @@ pub enum StepOutcome {
 pub struct RouterCounters {
     pub failures: u32,
     pub no_progress: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ProgressHeuristics {
+    pub state_hash_unchanged: bool,
+    pub actionables_unchanged: bool,
+    pub low_actionability: bool,
+    pub prev_actionables: usize,
+    pub next_actionables: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -48,6 +59,28 @@ impl Default for Router {
     fn default() -> Self {
         Self::new(RouterConfig::default())
     }
+}
+
+const LOW_ACTIONABILITY_THRESHOLD: usize = 2;
+
+pub fn step_outcome(
+    result: &StepResult,
+    previous: &Observation,
+    next: &Observation,
+) -> (StepOutcome, ProgressHeuristics) {
+    let heuristics = evaluate_progress(previous, next);
+
+    if !result.ok {
+        return (StepOutcome::Failure, heuristics);
+    }
+
+    let outcome = if heuristics.state_hash_unchanged {
+        StepOutcome::NoProgress
+    } else {
+        StepOutcome::Progress
+    };
+
+    (outcome, heuristics)
 }
 
 impl Router {
@@ -126,9 +159,59 @@ fn max_tier(left: Tier, right: Tier) -> Tier {
     }
 }
 
+fn evaluate_progress(previous: &Observation, next: &Observation) -> ProgressHeuristics {
+    let prev_actionables = previous.elements.len();
+    let next_actionables = next.elements.len();
+    let state_hash_unchanged = previous.state_hash == next.state_hash;
+    let actionables_unchanged = actionable_signature(previous) == actionable_signature(next);
+    let low_actionability = prev_actionables <= LOW_ACTIONABILITY_THRESHOLD
+        && next_actionables <= LOW_ACTIONABILITY_THRESHOLD;
+
+    ProgressHeuristics {
+        state_hash_unchanged,
+        actionables_unchanged,
+        low_actionability,
+        prev_actionables,
+        next_actionables,
+    }
+}
+
+fn actionable_signature(observation: &Observation) -> Vec<String> {
+    let mut ids: Vec<String> = observation
+        .elements
+        .iter()
+        .map(|element| element.id.clone())
+        .collect();
+    ids.sort();
+    ids
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{Observation, StepResult};
+
+    fn sample_observation(hash: &str) -> Observation {
+        Observation {
+            url: "https://example.com".to_string(),
+            title: "Example".to_string(),
+            viewport: [1280, 800],
+            focused: None,
+            visible_text: "Hello".to_string(),
+            state_hash: hash.to_string(),
+            elements: Vec::new(),
+        }
+    }
+
+    fn sample_result(ok: bool) -> StepResult {
+        StepResult {
+            ok,
+            error: None,
+            new_state_hash: None,
+            scroll: None,
+            extract: None,
+        }
+    }
 
     #[test]
     fn escalates_on_failure_thresholds() {
@@ -185,6 +268,36 @@ mod tests {
         assert_eq!(router.tier(), Tier::Strong);
         assert_eq!(router.counters(), RouterCounters { failures: 1, no_progress: 2 });
         assert_eq!(router.record(StepOutcome::Progress), Tier::Fast);
+        assert_eq!(router.counters(), RouterCounters { failures: 0, no_progress: 0 });
+    }
+
+    #[test]
+    fn resets_counters_on_progress_after_mixed_outcomes() {
+        let mut router = Router::new(RouterConfig {
+            failures_to_mid: 1,
+            failures_to_strong: 2,
+            no_progress_to_mid: 1,
+            no_progress_to_strong: 2,
+        });
+
+        let prev = sample_observation("hash1");
+        let same = sample_observation("hash1");
+        let changed = sample_observation("hash2");
+
+        let (outcome, _) = step_outcome(&sample_result(true), &prev, &same);
+        assert_eq!(outcome, StepOutcome::NoProgress);
+        router.record(outcome);
+
+        let (outcome, _) = step_outcome(&sample_result(false), &same, &changed);
+        assert_eq!(outcome, StepOutcome::Failure);
+        router.record(outcome);
+
+        assert_eq!(router.counters(), RouterCounters { failures: 1, no_progress: 1 });
+
+        let (outcome, _) = step_outcome(&sample_result(true), &same, &changed);
+        assert_eq!(outcome, StepOutcome::Progress);
+        router.record(outcome);
+
         assert_eq!(router.counters(), RouterCounters { failures: 0, no_progress: 0 });
     }
 }

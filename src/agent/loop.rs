@@ -2,7 +2,7 @@ use crate::agent::memory::{Memory, StepRecord};
 use crate::agent::policy::AgentPolicy;
 use crate::browser::{Browser, BrowserError};
 use crate::llm::client::{LlmClient, LlmError};
-use crate::llm::router::{Router, StepOutcome, Tier};
+use crate::llm::router::{step_outcome, Router, StepOutcome, Tier};
 use crate::telemetry;
 use crate::types::{Action, Observation, StepError, StepResult};
 use crate::verify::rules::{ValidationError, Validator};
@@ -337,64 +337,6 @@ impl<B: Browser> AgentLoop<B> {
             final_observation: observation,
         })
     }
-}
-
-const LOW_ACTIONABILITY_THRESHOLD: usize = 2;
-
-#[derive(Clone, Copy, Debug)]
-struct ProgressHeuristics {
-    state_hash_unchanged: bool,
-    actionables_unchanged: bool,
-    low_actionability: bool,
-    prev_actionables: usize,
-    next_actionables: usize,
-}
-
-fn step_outcome(
-    result: &StepResult,
-    previous: &Observation,
-    next: &Observation,
-) -> (StepOutcome, ProgressHeuristics) {
-    let heuristics = evaluate_progress(previous, next);
-
-    if !result.ok {
-        return (StepOutcome::Failure, heuristics);
-    }
-
-    let outcome = if heuristics.state_hash_unchanged {
-        StepOutcome::NoProgress
-    } else {
-        StepOutcome::Progress
-    };
-
-    (outcome, heuristics)
-}
-
-fn evaluate_progress(previous: &Observation, next: &Observation) -> ProgressHeuristics {
-    let prev_actionables = previous.elements.len();
-    let next_actionables = next.elements.len();
-    let state_hash_unchanged = previous.state_hash == next.state_hash;
-    let actionables_unchanged = actionable_signature(previous) == actionable_signature(next);
-    let low_actionability = prev_actionables <= LOW_ACTIONABILITY_THRESHOLD
-        && next_actionables <= LOW_ACTIONABILITY_THRESHOLD;
-
-    ProgressHeuristics {
-        state_hash_unchanged,
-        actionables_unchanged,
-        low_actionability,
-        prev_actionables,
-        next_actionables,
-    }
-}
-
-fn actionable_signature(observation: &Observation) -> Vec<String> {
-    let mut ids: Vec<String> = observation
-        .elements
-        .iter()
-        .map(|element| element.id.clone())
-        .collect();
-    ids.sort();
-    ids
 }
 
 fn validation_result(errors: Vec<ValidationError>) -> StepResult {
