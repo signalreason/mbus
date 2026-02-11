@@ -60,3 +60,4 @@
 - 2026-02-11 LLM-001 OpenAI adapter errors: `notes/2026-02-11-llm-001-openai-adapter.md`
 - 2026-02-11 LLM-002 single-action JSON contract: `notes/2026-02-11-llm-002-single-action-contract.md`
 - 2026-02-11 ROUTER-001 failure streak counter: `notes/2026-02-11-router-001-failure-streak.md`
+- 2026-02-11 ROUTER-002 no-progress streak counter: `notes/2026-02-11-router-002-no-progress-streak.md`

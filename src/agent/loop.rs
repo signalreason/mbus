@@ -361,11 +361,7 @@ fn step_outcome(
         return (StepOutcome::Failure, heuristics);
     }
 
-    let no_progress = heuristics.state_hash_unchanged
-        || heuristics.actionables_unchanged
-        || heuristics.low_actionability;
-
-    let outcome = if no_progress {
+    let outcome = if heuristics.state_hash_unchanged {
         StepOutcome::NoProgress
     } else {
         StepOutcome::Progress
@@ -669,9 +665,9 @@ mod tests {
     }
 
     #[test]
-    fn step_outcome_marks_no_progress_when_actionables_unchanged() {
+    fn step_outcome_marks_no_progress_when_state_hash_unchanged() {
         let prev = sample_observation("obs1", "hash1", vec![element("el_1"), element("el_2")]);
-        let next = sample_observation("obs2", "hash2", vec![element("el_1"), element("el_2")]);
+        let next = sample_observation("obs2", "hash1", vec![element("el_3")]);
         let result = StepResult {
             ok: true,
             error: None,
@@ -682,30 +678,11 @@ mod tests {
 
         let (outcome, heuristics) = step_outcome(&result, &prev, &next);
         assert_eq!(outcome, StepOutcome::NoProgress);
-        assert!(heuristics.actionables_unchanged);
-        assert!(!heuristics.state_hash_unchanged);
+        assert!(heuristics.state_hash_unchanged);
     }
 
     #[test]
-    fn step_outcome_marks_no_progress_on_low_actionability() {
-        let prev = sample_observation("obs1", "hash1", vec![element("el_1")]);
-        let next = sample_observation("obs2", "hash2", vec![element("el_2")]);
-        let result = StepResult {
-            ok: true,
-            error: None,
-            new_state_hash: None,
-            scroll: None,
-            extract: None,
-        };
-
-        let (outcome, heuristics) = step_outcome(&result, &prev, &next);
-        assert_eq!(outcome, StepOutcome::NoProgress);
-        assert!(heuristics.low_actionability);
-        assert!(!heuristics.actionables_unchanged);
-    }
-
-    #[test]
-    fn step_outcome_reports_progress_when_heuristics_clear() {
+    fn step_outcome_reports_progress_when_state_hash_changes() {
         let prev = sample_observation(
             "obs1",
             "hash1",
@@ -727,8 +704,6 @@ mod tests {
         let (outcome, heuristics) = step_outcome(&result, &prev, &next);
         assert_eq!(outcome, StepOutcome::Progress);
         assert!(!heuristics.state_hash_unchanged);
-        assert!(!heuristics.actionables_unchanged);
-        assert!(!heuristics.low_actionability);
     }
 
     trait ActionMatch {

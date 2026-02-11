@@ -1,0 +1,1 @@
+{"definition_of_done":["Unchanged state hash increments no-progress counter","Configured threshold escalates model tier"],"model":"gpt-5.2-codex","recommended":{"approach":"Use state hash comparisons at the loop boundary to keep behavior deterministic."},"status":"unstarted","task_id":"M1-ROUTER-002","title":"Implement no-progress streak counter for model escalation"}

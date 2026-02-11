@@ -595,10 +595,16 @@
         "Configured threshold escalates model tier"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T221945Z-78463 completed",
+        "last_run_id": "20260211T221945Z-78463",
+        "last_update_utc": "2026-02-11T22:22:06Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Use state hash comparisons at the loop boundary to keep behavior deterministic."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-ROUTER-002",
       "title": "Implement no-progress streak counter for model escalation"
     },
