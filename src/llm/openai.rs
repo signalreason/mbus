@@ -232,3 +232,44 @@ fn extract_content(value: &Value) -> LlmResult<String> {
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn test_client() -> OpenAiClient {
+        OpenAiClient::new(OpenAiConfig {
+            api_key: "test".to_string(),
+            base_url: "http://localhost".to_string(),
+            model: "unit-test".to_string(),
+            timeout: Duration::from_secs(1),
+            temperature: 0.0,
+            max_tokens: None,
+        })
+        .expect("client")
+    }
+
+    #[test]
+    fn parse_strict_reports_invalid_json_code() {
+        let client = test_client();
+        let err = client.parse_strict("not json").expect_err("expected invalid json");
+        assert_eq!(err.code, "invalid_json");
+    }
+
+    #[test]
+    fn parse_strict_reports_schema_violation_codes() {
+        let client = test_client();
+        let samples = [
+            r#"{"type":"click"}"#,
+            r#"{"type":"wait","ms":"fast"}"#,
+            r#"{"type":"teleport","id":"el_1"}"#,
+        ];
+        for payload in samples {
+            let err = client
+                .parse_strict(payload)
+                .expect_err("expected schema violation");
+            assert_eq!(err.code, "schema_violation");
+        }
+    }
+}

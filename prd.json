@@ -120,10 +120,16 @@
         "Test cases include missing fields, wrong types, and unknown actions"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T210009Z-78463 completed",
+        "last_run_id": "20260211T210009Z-78463",
+        "last_update_utc": "2026-02-11T21:02:36Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Cover the highest-frequency schema errors before wiring any LLM client."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M0-SCHEMA-003",
       "title": "Add failure tests for malformed action payloads"
     },

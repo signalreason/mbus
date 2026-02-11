@@ -134,4 +134,17 @@ mod tests {
         let actions = parse_actions(payload).expect("actions");
         assert_eq!(actions.len(), 2);
     }
+
+    #[test]
+    fn rejects_malformed_actions_with_parse_code() {
+        let samples = [
+            r#"{"type":"click"}"#,
+            r#"{"type":"wait","ms":"fast"}"#,
+            r#"{"type":"teleport","id":"el_1"}"#,
+        ];
+        for payload in samples {
+            let err = parse_actions(payload).expect_err("expected parse error");
+            assert_eq!(err.code, "invalid_actions");
+        }
+    }
 }
