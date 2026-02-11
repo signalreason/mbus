@@ -110,9 +110,218 @@ async fn viewport(page: &Page) -> BrowserResult<[u32; 2]> {
 async fn visible_text(page: &Page, max_len: usize) -> BrowserResult<String> {
     let eval = r#"
         () => {
-            const body = document.body;
-            const text = body ? (body.innerText || body.textContent || '') : '';
-            return text;
+            const MAX_INTERACTIVE = 40;
+            const MAX_NEARBY = 20;
+            const MAX_HEADINGS = 12;
+            const MAX_CHUNK = 160;
+            const INTERACTIVE_SELECTOR = [
+                "button",
+                "a[href]",
+                "input",
+                "select",
+                "textarea",
+                "[role='button']",
+                "[role='link']",
+                "[role='checkbox']",
+                "[role='radio']",
+                "[role='tab']",
+                "[role='switch']",
+                "[role='menuitem']",
+                "[role='menuitemcheckbox']",
+                "[role='menuitemradio']",
+                "[role='option']",
+                "[role='combobox']",
+                "[role='listbox']",
+                "[role='slider']",
+                "[role='spinbutton']",
+                "[contenteditable='true']",
+                "[tabindex]"
+            ].join(",");
+
+            const disallowedTags = new Set([
+                "INPUT",
+                "TEXTAREA",
+                "SELECT",
+                "OPTION",
+                "SCRIPT",
+                "STYLE",
+                "NOSCRIPT"
+            ]);
+
+            const normalize = (text) => text.replace(/\s+/g, " ").trim();
+
+            const isVisible = (el) => {
+                if (!el) return false;
+                const style = window.getComputedStyle(el);
+                if (!style || style.display === "none" || style.visibility === "hidden") return false;
+                if (parseFloat(style.opacity || "1") === 0) return false;
+                const rect = el.getBoundingClientRect();
+                if (rect.width < 2 || rect.height < 2) return false;
+                const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+                const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+                const margin = 8;
+                return rect.bottom > margin && rect.right > margin && rect.top < vh - margin && rect.left < vw - margin;
+            };
+
+            const textFromNode = (node) => {
+                if (!node) return "";
+                const walker = document.createTreeWalker(
+                    node,
+                    NodeFilter.SHOW_TEXT,
+                    {
+                        acceptNode(textNode) {
+                            const parent = textNode.parentElement;
+                            if (!parent) return NodeFilter.FILTER_REJECT;
+                            if (parent.isContentEditable) return NodeFilter.FILTER_REJECT;
+                            if (disallowedTags.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
+                            return NodeFilter.FILTER_ACCEPT;
+                        }
+                    }
+                );
+                let out = "";
+                while (walker.nextNode()) {
+                    const value = walker.currentNode.nodeValue;
+                    if (value) {
+                        out += value + " ";
+                    }
+                }
+                return out;
+            };
+
+            const labelFromAria = (el) => {
+                const aria = el.getAttribute("aria-label");
+                if (aria) return aria;
+                const labelledBy = el.getAttribute("aria-labelledby");
+                if (labelledBy) {
+                    const ids = labelledBy.split(/\s+/).filter(Boolean);
+                    const parts = [];
+                    for (const id of ids) {
+                        const target = document.getElementById(id);
+                        if (target) {
+                            const text = normalize(textFromNode(target));
+                            if (text) parts.push(text);
+                        }
+                    }
+                    if (parts.length) return parts.join(" ");
+                }
+                return "";
+            };
+
+            const labelFromLabels = (el) => {
+                if (!el.labels || !el.labels.length) return "";
+                const parts = [];
+                for (const label of el.labels) {
+                    const text = normalize(textFromNode(label));
+                    if (text) parts.push(text);
+                }
+                return parts.join(" ");
+            };
+
+            const labelFromInput = (el) => {
+                const tag = el.tagName;
+                if (tag === "INPUT" || tag === "TEXTAREA") {
+                    const placeholder = el.getAttribute("placeholder");
+                    if (placeholder) return placeholder;
+                    const name = el.getAttribute("name");
+                    if (name) return name;
+                }
+                if (tag === "SELECT") {
+                    const name = el.getAttribute("name");
+                    if (name) return name;
+                }
+                return "";
+            };
+
+            const labelFromText = (el) => {
+                const tag = el.tagName;
+                if (tag === "BUTTON" || tag === "A") {
+                    return normalize(textFromNode(el));
+                }
+                return "";
+            };
+
+            const labelFromValue = (el) => {
+                if (el.tagName !== "INPUT") return "";
+                const type = (el.getAttribute("type") || "text").toLowerCase();
+                if (type === "button" || type === "submit" || type === "reset") {
+                    return el.value || "";
+                }
+                return "";
+            };
+
+            const describeInteractive = (el) => {
+                const role = (el.getAttribute("role") || el.tagName || "").toLowerCase();
+                let label = labelFromAria(el);
+                if (!label) label = labelFromLabels(el);
+                if (!label) label = labelFromText(el);
+                if (!label) label = labelFromInput(el);
+                if (!label) label = labelFromValue(el);
+                if (!label) {
+                    const type = el.getAttribute("type");
+                    if (type) label = type;
+                }
+                label = normalize(label || "");
+                if (label) return `${role}: ${label}`;
+                return role || "";
+            };
+
+            const closestNearbyText = (el) => {
+                let node = el.parentElement;
+                while (node && node !== document.body && node !== document.documentElement) {
+                    if (node.matches && node.matches("form,section,article,main,fieldset,div,li")) {
+                        const text = normalize(textFromNode(node));
+                        if (text.length >= 20 && text.length <= 200) return text;
+                        if (text.length > 200 && text.length <= 400) return text.slice(0, 200) + "...";
+                    }
+                    node = node.parentElement;
+                }
+                return "";
+            };
+
+            const chunks = [];
+            const seen = new Set();
+            const addChunk = (text) => {
+                let normalized = normalize(text || "");
+                if (!normalized) return;
+                if (normalized.length > MAX_CHUNK) {
+                    normalized = normalized.slice(0, MAX_CHUNK) + "...";
+                }
+                if (seen.has(normalized)) return;
+                seen.add(normalized);
+                chunks.push(normalized);
+            };
+
+            const interactive = Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR))
+                .filter((el) => isVisible(el) && el.getAttribute("tabindex") !== "-1");
+
+            for (const el of interactive.slice(0, MAX_INTERACTIVE)) {
+                const desc = describeInteractive(el);
+                if (desc) addChunk(desc);
+            }
+
+            let nearbyCount = 0;
+            for (const el of interactive) {
+                if (nearbyCount >= MAX_NEARBY) break;
+                const text = closestNearbyText(el);
+                if (text) {
+                    addChunk(text);
+                    nearbyCount += 1;
+                }
+            }
+
+            const headings = Array.from(document.querySelectorAll("h1,h2,h3,legend"))
+                .filter(isVisible);
+            for (const el of headings.slice(0, MAX_HEADINGS)) {
+                const text = normalize(textFromNode(el));
+                if (text) addChunk(text);
+            }
+
+            if (!chunks.length && document.body) {
+                const fallback = normalize(textFromNode(document.body));
+                if (fallback) addChunk(fallback);
+            }
+
+            return chunks.join("\n");
         }
     "#;
     let result = page.evaluate(eval).await?;
