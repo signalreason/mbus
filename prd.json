@@ -1013,10 +1013,16 @@
         "No hardcoded scripted override remains in benchmark execution"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T234709Z-78463 completed",
+        "last_run_id": "20260211T234709Z-78463",
+        "last_update_utc": "2026-02-11T23:49:42Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Thread llm-mode from CLI/config into benchmark runtime selection logic."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M3-BENCH-001",
       "title": "Add benchmark LLM mode selection for scripted and openai"
     },

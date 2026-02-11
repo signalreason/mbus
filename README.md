@@ -77,20 +77,25 @@ For a concise install + quickstart path (prerequisites, install steps, and the f
 - `--headless`
 - `--max-steps-per-task` (default: `40`)
 - `--required-passes` (default: total tasks minus two)
+- `--llm-mode` (`scripted`, `openai`)
+- `--llm-base-url`, `--llm-api-key`
+- `--llm-model-fast`, `--llm-model-mid`, `--llm-model-strong`
+- `--llm-timeout-ms`, `--llm-temperature`, `--llm-max-tokens`
 
 ## Benchmark Harness
 
 Run the local benchmark harness:
 
 ```bash
-cargo run -- bench
+cargo run -- bench --llm-mode scripted
 ```
 
 The command:
 - Starts a local HTTP harness server on `127.0.0.1` with deterministic pages.
 - Serves static harness pages from `harness/pages`.
 - Loads task fixtures from `harness/tasks/*.json`.
-- Executes each task with scripted actions.
+- Executes each task with scripted actions in `scripted` mode.
+- Executes each task autonomously in `openai` mode (requires `MBUS_LLM_API_KEY` or `--llm-api-key`).
 - Writes the report to `target/bench/report.json`.
 - Enforces a gate (`required_passes`, default 8 of 10 tasks).
 

@@ -26,6 +26,7 @@
 - 2026-02-09 BENCH-001 benchmark harness: `notes/2026-02-09-bench-001-harness.md`
 - 2026-02-10 challenge gap assessment: `notes/2026-02-10-challenge-gap-assessment.md`
 - 2026-02-11 next-step assessment: `notes/2026-02-11-next-step-assessment.md`
+- 2026-02-11 Bench LLM mode selection: `notes/2026-02-11-bench-llm-mode.md`
 - 2026-02-11 PRD M3 autonomous bench spec: `notes/2026-02-11-prd-m3-autonomous-bench-spec.md`
 - 2026-02-11 PRD JSON granular breakdown: `notes/2026-02-11-prd-json-granular-breakdown.md`
 - 2026-02-11 AGENT-001 max-step loop check: `notes/2026-02-11-agent-001-max-step-loop.md`

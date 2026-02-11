@@ -121,6 +121,24 @@ struct BenchArgs {
     max_steps_per_task: Option<usize>,
     #[arg(long)]
     required_passes: Option<usize>,
+    #[arg(long)]
+    llm_mode: Option<String>,
+    #[arg(long)]
+    llm_base_url: Option<String>,
+    #[arg(long)]
+    llm_api_key: Option<String>,
+    #[arg(long)]
+    llm_model_fast: Option<String>,
+    #[arg(long)]
+    llm_model_mid: Option<String>,
+    #[arg(long)]
+    llm_model_strong: Option<String>,
+    #[arg(long)]
+    llm_timeout_ms: Option<u64>,
+    #[arg(long)]
+    llm_temperature: Option<f32>,
+    #[arg(long)]
+    llm_max_tokens: Option<u32>,
 }
 
 #[tokio::main]
@@ -248,14 +266,18 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
         .unwrap_or_else(|| total_tasks.saturating_sub(2));
 
     let config_path = resolve_config_path(args.config.as_deref());
-    let cli_overrides = CliOverrides {
-        headless: args.headless,
-        max_steps: Some(max_steps_per_task),
-        llm_mode: Some(LlmMode::Scripted),
-        extract_output: None,
-        ..CliOverrides::default()
-    };
+    let cli_overrides = build_bench_cli_overrides(&args, max_steps_per_task)?;
     let base_config = load_config(config_path.as_deref(), cli_overrides)?;
+    let bench_llm_mode = match base_config.llm.mode {
+        LlmMode::Scripted => LlmMode::Scripted,
+        LlmMode::OpenAi => LlmMode::OpenAi,
+        LlmMode::Stub => {
+            return Err(
+                "bench requires llm.mode scripted or openai (set --llm-mode or config [llm].mode)"
+                    .into(),
+            );
+        }
+    };
 
     let server = BenchServer::start()
         .await
@@ -280,14 +302,18 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
         let step_limit = bench_task_limit(&task, max_steps_per_task);
         task_config.agent.max_steps = step_limit;
         task_config.browser.initial_url = join_base_url(&base_url, &task.start_path);
-        task_config.llm.mode = LlmMode::Scripted;
+        task_config.llm.mode = bench_llm_mode.clone();
 
-        let actions_json = render_actions(&task.actions, &base_url)
-            .map_err(|err| format!("task {} actions: {err}", task.id))?;
-        let actions_file = actions_file_path(&actions_dir, &task.id);
-        write_actions_file(&actions_file, &actions_json)
-            .map_err(|err| format!("task {} actions file: {err}", task.id))?;
-        task_config.llm.actions_file = Some(actions_file);
+        if bench_llm_mode == LlmMode::Scripted {
+            let actions_json = render_actions(&task.actions, &base_url)
+                .map_err(|err| format!("task {} actions: {err}", task.id))?;
+            let actions_file = actions_file_path(&actions_dir, &task.id);
+            write_actions_file(&actions_file, &actions_json)
+                .map_err(|err| format!("task {} actions file: {err}", task.id))?;
+            task_config.llm.actions_file = Some(actions_file);
+        } else {
+            task_config.llm.actions_file = None;
+        }
 
         let run = execute_agent(&task.task, task.plan.as_deref(), &task_config).await;
         let elapsed = started_at.elapsed().as_millis() as u64;
@@ -481,6 +507,32 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
         llm_max_tokens: args.llm_max_tokens,
         llm_actions_file: args.llm_actions_file.clone(),
         extract_output: args.extract_output.clone(),
+    })
+}
+
+fn build_bench_cli_overrides(
+    args: &BenchArgs,
+    max_steps_per_task: usize,
+) -> Result<CliOverrides, ConfigError> {
+    let llm_mode = if let Some(mode) = args.llm_mode.as_deref() {
+        Some(LlmMode::from_str(mode)?)
+    } else {
+        None
+    };
+
+    Ok(CliOverrides {
+        max_steps: Some(max_steps_per_task),
+        headless: args.headless,
+        llm_mode,
+        llm_base_url: args.llm_base_url.clone(),
+        llm_api_key: args.llm_api_key.clone(),
+        llm_model_fast: args.llm_model_fast.clone(),
+        llm_model_mid: args.llm_model_mid.clone(),
+        llm_model_strong: args.llm_model_strong.clone(),
+        llm_timeout_ms: args.llm_timeout_ms,
+        llm_temperature: args.llm_temperature,
+        llm_max_tokens: args.llm_max_tokens,
+        ..CliOverrides::default()
     })
 }
 
