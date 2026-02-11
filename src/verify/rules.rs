@@ -210,6 +210,31 @@ mod tests {
     }
 
     #[test]
+    fn validates_text_at_max_length() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Type {
+            id: "el_1".to_string(),
+            text: "a".repeat(validator.config.max_text_len),
+            submit: None,
+        };
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
+    fn rejects_text_above_max_length() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Type {
+            id: "el_1".to_string(),
+            text: "a".repeat(validator.config.max_text_len + 1),
+            submit: None,
+        };
+        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        assert_eq!(errors[0].code, "text_too_long");
+    }
+
+    #[test]
     fn rejects_missing_id() {
         let validator = Validator::default();
         let obs = sample_observation();

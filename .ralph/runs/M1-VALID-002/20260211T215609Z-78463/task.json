@@ -1,0 +1,1 @@
+{"definition_of_done":["Type action text above max length is rejected","Boundary lengths are covered by unit tests"],"model":"gpt-5.2-codex","recommended":{"approach":"Enforce text limits in validator with explicit error metadata."},"status":"unstarted","task_id":"M1-VALID-002","title":"Validate type text length constraints"}

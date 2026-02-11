@@ -53,3 +53,4 @@
 - 2026-02-11 TYPES-002 ElementRef flags shape: `notes/2026-02-11-types-002-elementref.md`
 - 2026-02-11 TYPES-003 StepResult contract: `notes/2026-02-11-types-003-stepresult-contract.md`
 - 2026-02-11 VERIFY-002 validation codes: `notes/2026-02-11-verify-002-validation-code.md`
+- 2026-02-11 VALID-002 type text length validation: `notes/2026-02-11-valid-002-type-text-length.md`
