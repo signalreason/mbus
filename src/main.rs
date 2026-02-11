@@ -437,6 +437,7 @@ async fn execute_agent(
 ) -> Result<RunResult, Box<dyn Error>> {
     let mut browser_config = config.browser.clone();
     browser_config.max_scroll = config.validator.max_scroll;
+    browser_config.max_wait_ms = config.validator.max_wait_ms;
     let browser = CdpBrowser::start(browser_config).await?;
     let clients = build_clients(&config.llm)?;
 

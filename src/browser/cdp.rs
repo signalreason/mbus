@@ -23,6 +23,7 @@ pub struct CdpConfig {
     pub max_elements: usize,
     pub max_text_len: usize,
     pub max_scroll: i64,
+    pub max_wait_ms: u64,
 }
 
 impl Default for CdpConfig {
@@ -36,6 +37,7 @@ impl Default for CdpConfig {
             max_elements: 50,
             max_text_len: 4000,
             max_scroll: 2000,
+            max_wait_ms: 30_000,
         }
     }
 }
@@ -193,7 +195,7 @@ impl CdpBrowser {
         Self {
             session,
             observer,
-            applier: ActionApplier::new(config.max_scroll),
+            applier: ActionApplier::new(config.max_scroll, config.max_wait_ms),
             timeouts: Timeouts {
                 snapshot: config.snapshot_timeout,
                 action: config.action_timeout,
@@ -228,8 +230,25 @@ impl Browser for CdpBrowser {
     async fn apply(&self, action: &Action) -> BrowserResult<StepResult> {
         let page = self.session.page().await;
         let map = { self.element_map.lock().await.clone() };
-        let result =
-            timeout(self.timeouts.action, self.applier.apply(&page, action, Some(&map))).await;
+        let timeout_duration = match action {
+            Action::Wait { ms } => {
+                let wait = Duration::from_millis(*ms);
+                let padded = wait
+                    .checked_add(Duration::from_millis(50))
+                    .unwrap_or(wait);
+                if padded > self.timeouts.action {
+                    padded
+                } else {
+                    self.timeouts.action
+                }
+            }
+            _ => self.timeouts.action,
+        };
+        let result = timeout(
+            timeout_duration,
+            self.applier.apply(&page, action, Some(&map)),
+        )
+        .await;
         let step = match result {
             Ok(Ok(outcome)) => action_result_ok_with(outcome),
             Ok(Err(err)) => action_result_err(err),

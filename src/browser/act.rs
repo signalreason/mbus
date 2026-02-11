@@ -17,6 +17,7 @@ use tokio::time::{sleep, Duration};
 #[derive(Clone, Debug)]
 pub struct ActionApplier {
     max_scroll: i64,
+    max_wait_ms: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -85,8 +86,11 @@ fn map_cdp_error(err: chromiumoxide::error::CdpError, context: &'static str) -> 
 }
 
 impl ActionApplier {
-    pub fn new(max_scroll: i64) -> Self {
-        Self { max_scroll }
+    pub fn new(max_scroll: i64, max_wait_ms: u64) -> Self {
+        Self {
+            max_scroll,
+            max_wait_ms,
+        }
     }
 
     pub async fn apply(
@@ -116,6 +120,12 @@ impl ActionApplier {
                 }
             }
             Action::Wait { ms } => {
+                if *ms > self.max_wait_ms {
+                    return Err(ActionError::new(
+                        "wait_too_long",
+                        format!("wait {ms}ms exceeds max {}ms", self.max_wait_ms),
+                    ));
+                }
                 sleep(Duration::from_millis(*ms)).await;
                 ApplyOutcome::none()
             }
