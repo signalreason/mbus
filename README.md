@@ -114,6 +114,7 @@ Task fixture shape (example):
 ## Config
 
 Config precedence is: defaults -> config file -> env (`MBUS_*`) -> CLI flags.
+Config file lookup order is: `--config`, `MBUS_CONFIG`, `./mbus.toml`, `~/.mbus.toml`.
 
 Sample `mbus.toml`:
 
@@ -172,6 +173,7 @@ Environment variable overrides (full list):
 - `MBUS_MEMORY_MAX_HISTORY`
 - `MBUS_HEADLESS`
 - `MBUS_INITIAL_URL`
+- `MBUS_CDP_URL`
 - `MBUS_SNAPSHOT_TIMEOUT_MS`
 - `MBUS_ACTION_TIMEOUT_MS`
 - `MBUS_MAX_ELEMENTS`

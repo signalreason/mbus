@@ -375,9 +375,25 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
 }
 
 fn resolve_config_path(cli_path: Option<&Path>) -> Option<PathBuf> {
-    cli_path
-        .map(|path| path.to_path_buf())
-        .or_else(|| std::env::var("MBUS_CONFIG").ok().map(PathBuf::from))
+    if let Some(path) = cli_path {
+        return Some(path.to_path_buf());
+    }
+    if let Ok(path) = std::env::var("MBUS_CONFIG") {
+        return Some(PathBuf::from(path));
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let local = cwd.join("mbus.toml");
+        if local.is_file() {
+            return Some(local);
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let home_config = PathBuf::from(home).join(".mbus.toml");
+        if home_config.is_file() {
+            return Some(home_config);
+        }
+    }
+    None
 }
 
 fn resolve_required_text(
@@ -719,7 +735,7 @@ impl From<&mbus::config::AppConfig> for ConfigLog {
             browser: BrowserLog {
                 headful: config.browser.headful,
                 initial_url: config.browser.initial_url.clone(),
-                cdp_url: config.browser.cdp_url.clone(),
+                cdp_url: config.browser.cdp_url.as_ref().map(|value| redact_url(value)),
                 snapshot_timeout_ms: config.browser.snapshot_timeout.as_millis() as u64,
                 action_timeout_ms: config.browser.action_timeout.as_millis() as u64,
                 max_elements: config.browser.max_elements,
@@ -739,7 +755,7 @@ impl From<&mbus::config::AppConfig> for ConfigLog {
             },
             llm: LlmLog {
                 mode: format!("{:?}", config.llm.mode).to_lowercase(),
-                base_url: config.llm.base_url.clone(),
+                base_url: redact_url(&config.llm.base_url),
                 model_fast: config.llm.model_fast.clone(),
                 model_mid: config.llm.model_mid.clone(),
                 model_strong: config.llm.model_strong.clone(),
@@ -762,6 +778,20 @@ impl From<&mbus::config::AppConfig> for ConfigLog {
             },
         }
     }
+}
+
+fn redact_url(value: &str) -> String {
+    let Some(scheme_end) = value.find("://") else {
+        return value.to_string();
+    };
+    let userinfo_start = scheme_end + 3;
+    let rest = &value[userinfo_start..];
+    let Some(at_index) = rest.find('@') else {
+        return value.to_string();
+    };
+    let prefix = &value[..userinfo_start];
+    let suffix = &rest[at_index + 1..];
+    format!("{prefix}***@{suffix}")
 }
 
 #[derive(Serialize)]
