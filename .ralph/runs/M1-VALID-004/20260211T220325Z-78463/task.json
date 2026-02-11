@@ -1,0 +1,1 @@
+{"definition_of_done":["Scroll dx and dy outside bounds are rejected","Bounds are configurable and tested"],"model":"gpt-5.2-codex","recommended":{"approach":"Apply symmetric positive and negative limits in a shared numeric guard."},"status":"unstarted","task_id":"M1-VALID-004","title":"Validate scroll delta bounds"}

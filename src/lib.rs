@@ -2,6 +2,7 @@ pub mod agent;
 pub mod bench;
 pub mod browser;
 pub mod config;
+pub mod limits;
 pub mod llm;
 pub mod output;
 pub mod telemetry;

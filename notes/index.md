@@ -55,3 +55,4 @@
 - 2026-02-11 VERIFY-002 validation codes: `notes/2026-02-11-verify-002-validation-code.md`
 - 2026-02-11 VALID-002 type text length validation: `notes/2026-02-11-valid-002-type-text-length.md`
 - 2026-02-11 VALID-003 wait duration validation: `notes/2026-02-11-valid-003-wait-duration.md`
+- 2026-02-11 VALID-004 scroll delta bounds validation: `notes/2026-02-11-valid-004-scroll-delta-bounds.md`

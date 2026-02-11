@@ -1,3 +1,4 @@
+use crate::limits::exceeds_symmetric_limit_i64;
 use crate::types::{Action, Observation};
 use std::collections::HashSet;
 use std::time::Duration;
@@ -87,7 +88,8 @@ impl Validator {
             }
             Action::Scroll { dx, dy } => {
                 let limit = self.config.max_scroll;
-                if dx.saturating_abs() > limit || dy.saturating_abs() > limit {
+                if exceeds_symmetric_limit_i64(*dx, limit) || exceeds_symmetric_limit_i64(*dy, limit)
+                {
                     errors.push(ValidationError::new(
                         "scroll_out_of_bounds",
                         Some("scroll"),
@@ -311,6 +313,29 @@ mod tests {
         let obs = sample_observation();
         let action = Action::Scroll { dx: -2000, dy: 2000 };
         assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
+    fn validates_scroll_with_configured_bounds() {
+        let validator = Validator::new(ValidatorConfig {
+            max_scroll: 500,
+            ..ValidatorConfig::default()
+        });
+        let obs = sample_observation();
+        let action = Action::Scroll { dx: -500, dy: 500 };
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
+    fn rejects_scroll_above_configured_bounds() {
+        let validator = Validator::new(ValidatorConfig {
+            max_scroll: 500,
+            ..ValidatorConfig::default()
+        });
+        let obs = sample_observation();
+        let action = Action::Scroll { dx: -501, dy: 0 };
+        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        assert_eq!(errors[0].code, "scroll_out_of_bounds");
     }
 
     #[test]

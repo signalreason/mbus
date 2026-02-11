@@ -1,3 +1,4 @@
+use crate::limits::exceeds_symmetric_limit_i64;
 use crate::types::{Action, ExtractResult, StepError, StepResult};
 use chromiumoxide::keys;
 use chromiumoxide::layout::Point;
@@ -201,7 +202,7 @@ async fn scroll_by(
     dy: i64,
     max_scroll: i64,
 ) -> Result<[f64; 2], ActionError> {
-    if dx.saturating_abs() > max_scroll || dy.saturating_abs() > max_scroll {
+    if exceeds_symmetric_limit_i64(dx, max_scroll) || exceeds_symmetric_limit_i64(dy, max_scroll) {
         return Err(ActionError::new(
             "scroll_out_of_bounds",
             format!("scroll out of bounds: dx={dx}, dy={dy}, max={max_scroll}"),

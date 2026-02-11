@@ -500,10 +500,16 @@
         "Bounds are configurable and tested"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T220325Z-78463 completed",
+        "last_run_id": "20260211T220325Z-78463",
+        "last_update_utc": "2026-02-11T22:06:15Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Apply symmetric positive and negative limits in a shared numeric guard."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-VALID-004",
       "title": "Validate scroll delta bounds"
     },
