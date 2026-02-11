@@ -253,10 +253,16 @@
         "Detached or stale nodes return structured execution errors"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T212316Z-78463 completed",
+        "last_run_id": "20260211T212316Z-78463",
+        "last_update_utc": "2026-02-11T21:26:11Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Resolve id-to-node mapping at execution time and fail loudly on mismatches."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-BROW-003",
       "title": "Implement click action execution"
     },

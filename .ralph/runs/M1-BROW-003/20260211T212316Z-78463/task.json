@@ -1,0 +1,1 @@
+{"definition_of_done":["Click targets existing element ids from the latest observation","Detached or stale nodes return structured execution errors"],"model":"gpt-5.2-codex","recommended":{"approach":"Resolve id-to-node mapping at execution time and fail loudly on mismatches."},"status":"unstarted","task_id":"M1-BROW-003","title":"Implement click action execution"}

@@ -57,6 +57,27 @@ impl From<chromiumoxide::error::CdpError> for ActionError {
     }
 }
 
+fn is_detached_error(err: &chromiumoxide::error::CdpError) -> bool {
+    let msg = err.to_string().to_lowercase();
+    msg.contains("node")
+        && (msg.contains("not found")
+            || msg.contains("no node")
+            || msg.contains("could not find node")
+            || msg.contains("backend node")
+            || msg.contains("detached"))
+}
+
+fn map_cdp_error(err: chromiumoxide::error::CdpError, context: &'static str) -> ActionError {
+    if is_detached_error(&err) {
+        ActionError::new(
+            "stale_element",
+            format!("element detached or stale during {context}"),
+        )
+    } else {
+        ActionError::new("cdp_error", err.to_string())
+    }
+}
+
 impl ActionApplier {
     pub fn new() -> Self {
         Self
@@ -235,7 +256,8 @@ async fn call_function_on_node(
                 .backend_node_id(backend_node_id)
                 .build(),
         )
-        .await?;
+        .await
+        .map_err(|err| map_cdp_error(err, "resolve_node"))?;
     let object_id = resolved
         .result
         .object
@@ -252,7 +274,10 @@ async fn call_function_on_node(
     let params = builder
         .build()
         .map_err(|err| ActionError::new("js_error", err))?;
-    let response = page.execute(params).await?;
+    let response = page
+        .execute(params)
+        .await
+        .map_err(|err| map_cdp_error(err, "call_function"))?;
     let call_result = response.result;
     if let Some(details) = call_result.exception_details {
         return Err(ActionError::new(
@@ -399,7 +424,9 @@ async fn focus_backend_node(page: &Page, backend_node_id: BackendNodeId) -> Resu
     let params = FocusParams::builder()
         .backend_node_id(backend_node_id)
         .build();
-    page.execute(params).await?;
+    page.execute(params)
+        .await
+        .map_err(|err| map_cdp_error(err, "focus"))?;
     Ok(())
 }
 
@@ -413,7 +440,8 @@ async fn backend_node_click_point(
                 .backend_node_id(backend_node_id)
                 .build(),
         )
-        .await?
+        .await
+        .map_err(|err| map_cdp_error(err, "get_box_model"))?
         .result
         .model;
     quad_center(model.border.inner())
@@ -450,9 +478,12 @@ fn resolve_backend_node_id(
     element_map: Option<&HashMap<String, BackendNodeId>>,
 ) -> Result<BackendNodeId, ActionError> {
     if let Some(map) = element_map {
-        if let Some(found) = map.get(id) {
-            return Ok(found.clone());
-        }
+        return map.get(id).cloned().ok_or_else(|| {
+            ActionError::new(
+                "stale_element",
+                format!("id {id} not found in latest observation"),
+            )
+        });
     }
     parse_backend_node_id(id)
 }
@@ -518,6 +549,13 @@ mod tests {
         let resolved =
             resolve_backend_node_id("el_deadbeef_1", Some(&map)).expect("resolve id");
         assert_eq!(*resolved.inner(), 7);
+    }
+
+    #[test]
+    fn resolve_backend_node_id_requires_latest_map_entry() {
+        let map: HashMap<String, BackendNodeId> = HashMap::new();
+        let err = resolve_backend_node_id("el_missing_1", Some(&map)).unwrap_err();
+        assert_eq!(err.code, "stale_element");
     }
 
     #[test]
