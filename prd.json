@@ -291,10 +291,16 @@
         "Invalid options return structured errors"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T213033Z-78463 completed",
+        "last_run_id": "20260211T213033Z-78463",
+        "last_update_utc": "2026-02-11T21:33:12Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Resolve options from DOM at runtime and verify selected state post-action."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-BROW-005",
       "title": "Implement select action execution"
     },

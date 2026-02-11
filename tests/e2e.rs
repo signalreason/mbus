@@ -320,7 +320,7 @@ async fn e2e_click_type_select() {
         .id
         .clone();
     let select = Action::Select {
-        id: select_id,
+        id: select_id.clone(),
         value: "beta".to_string(),
     };
     validator.validate(&select, &snapshot).expect("valid select");
@@ -332,6 +332,22 @@ async fn e2e_click_type_select() {
         snapshot.visible_text.contains("selected:beta"),
         "visible text should reflect select change"
     );
+
+    let invalid_select = Action::Select {
+        id: select_id,
+        value: "delta".to_string(),
+    };
+    validator
+        .validate(&invalid_select, &snapshot)
+        .expect("valid select action");
+    let step = browser
+        .apply(&invalid_select)
+        .await
+        .expect("apply invalid select");
+    assert!(!step.ok, "invalid select should fail");
+    let error = step.error.expect("invalid select error");
+    assert_eq!(error.code, "select_failed");
+    assert_eq!(error.message, "invalid_option");
 
     browser.shutdown().await.expect("shutdown browser");
     server.shutdown().await;

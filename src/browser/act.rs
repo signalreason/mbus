@@ -350,15 +350,20 @@ async fn select_by_id(
             if (tag !== "select" && !("value" in this)) {
                 return { ok: false, error: "not_select" };
             }
-            let nextValue = value;
+            const needle = String(value);
+            let nextValue = needle;
             if (tag === "select" && this.options) {
                 const options = Array.from(this.options);
                 const match = options.find(
-                    (opt) => opt.value === value || opt.text === value
+                    (opt) =>
+                        opt.value === needle ||
+                        opt.label === needle ||
+                        opt.text === needle
                 );
-                if (match) {
-                    nextValue = match.value;
+                if (!match) {
+                    return { ok: false, error: "invalid_option" };
                 }
+                nextValue = match.value;
             }
             try {
                 this.value = nextValue;
@@ -367,7 +372,11 @@ async fn select_by_id(
             }
             this.dispatchEvent(new Event("input", { bubbles: true }));
             this.dispatchEvent(new Event("change", { bubbles: true }));
-            return { ok: true, value: String(this.value ?? "") };
+            const actual = String(this.value ?? "");
+            if (actual !== nextValue) {
+                return { ok: false, error: "selection_mismatch", value: actual };
+            }
+            return { ok: true, value: actual };
         }
     "#;
     let backend_id = resolve_backend_node_id(id, element_map)?;
