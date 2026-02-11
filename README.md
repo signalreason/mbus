@@ -86,6 +86,7 @@ cargo run -- bench
 
 The command:
 - Starts a local HTTP harness server on `127.0.0.1` with deterministic pages.
+- Serves static harness pages from `harness/pages`.
 - Loads task fixtures from `harness/tasks/*.json`.
 - Executes each task with scripted actions.
 - Writes the report to `target/bench/report.json`.

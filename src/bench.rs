@@ -418,26 +418,8 @@ fn route_request(method: &str, path: &str) -> (&'static str, String, &'static st
         );
     }
 
-    if path == "/" || path == "/bench/start" {
-        return (
-            "200 OK",
-            "<!doctype html><html><head><title>mbus bench start</title></head><body><h1>MBUS BENCH START</h1></body></html>".to_string(),
-            "text/html; charset=utf-8",
-        );
-    }
-
-    if let Some(suffix) = path.strip_prefix("/bench/task-") {
-        let id = suffix
-            .chars()
-            .take_while(|ch| ch.is_ascii_digit())
-            .collect::<String>();
-        if id.len() == 2 {
-            let marker = format!("BENCH TASK {id}");
-            let body = format!(
-                "<!doctype html><html><head><title>{marker}</title></head><body><h1>{marker}</h1><p>{marker} READY</p></body></html>"
-            );
-            return ("200 OK", body, "text/html; charset=utf-8");
-        }
+    if let Some(body) = bench_page(path) {
+        return ("200 OK", body, "text/html; charset=utf-8");
     }
 
     (
@@ -445,6 +427,26 @@ fn route_request(method: &str, path: &str) -> (&'static str, String, &'static st
         "not found".to_string(),
         "text/plain; charset=utf-8",
     )
+}
+
+fn bench_page(path: &str) -> Option<String> {
+    let relative = if path == "/" || path == "/bench/start" {
+        Some("bench/start.html".to_string())
+    } else if let Some(suffix) = path.strip_prefix("/bench/task-") {
+        let id = suffix
+            .chars()
+            .take_while(|ch| ch.is_ascii_digit())
+            .collect::<String>();
+        if id.len() == 2 {
+            Some(format!("bench/task-{id}.html"))
+        } else {
+            None
+        }
+    } else {
+        None
+    }?;
+    let full_path = Path::new("harness/pages").join(relative);
+    std::fs::read_to_string(full_path).ok()
 }
 
 pub fn now_timestamp() -> Result<String, String> {

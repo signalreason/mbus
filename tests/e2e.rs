@@ -8,62 +8,7 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
-const HARNESS_HTML: &str = r##"<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>mbus e2e</title>
-  <style>
-    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-    .card { padding: 6px; border: 1px solid #ddd; }
-  </style>
-</head>
-<body>
-  <h1>Harness</h1>
-  <div id="status" role="status">ready</div>
-  <button id="click-btn" aria-label="Click Button">Click Me</button>
-  <label for="name-input">Name</label>
-  <input id="name-input" aria-label="Name" type="text" />
-  <form id="submit-form">
-    <label for="submit-input">Search</label>
-    <input id="submit-input" aria-label="Search" type="text" />
-    <button id="submit-btn" type="submit">Go</button>
-  </form>
-  <label for="choice-select">Choice</label>
-  <select id="choice-select" aria-label="Choice">
-    <option value="">Pick</option>
-    <option value="alpha">Alpha</option>
-    <option value="beta">Beta</option>
-  </select>
-  <div class="grid">
-    <button id="extra-btn-1">Extra 1</button>
-    <button id="extra-btn-2">Extra 2</button>
-    <button id="extra-btn-3">Extra 3</button>
-    <a id="extra-link-1" href="#">Link One</a>
-    <a id="extra-link-2" href="#">Link Two</a>
-    <label class="card"><input type="checkbox" aria-label="Agree" /> Agree</label>
-    <label class="card"><input type="radio" name="group" aria-label="Pick A" /> Pick A</label>
-    <label class="card"><input type="radio" name="group" aria-label="Pick B" /> Pick B</label>
-  </div>
-  <script>
-    const status = document.getElementById('status');
-    document.getElementById('click-btn').addEventListener('click', () => {
-      status.textContent = 'clicked';
-    });
-    document.getElementById('name-input').addEventListener('input', (event) => {
-      status.textContent = `typed:${event.target.value}`;
-    });
-    document.getElementById('submit-form').addEventListener('submit', (event) => {
-      event.preventDefault();
-      status.textContent = `submitted:${document.getElementById('submit-input').value}`;
-    });
-    document.getElementById('choice-select').addEventListener('change', (event) => {
-      status.textContent = `selected:${event.target.value}`;
-    });
-  </script>
-</body>
-</html>
-"##;
+const HARNESS_PAGE_PATH: &str = "harness/pages/actions.html";
 
 struct TestServer {
     addr: SocketAddr,
@@ -153,14 +98,26 @@ async fn handle_connection(mut socket: TcpStream) -> std::io::Result<()> {
     Ok(())
 }
 
-fn route_request(method: &str, path: &str) -> (&'static str, &'static str, &'static str) {
+fn load_harness_page() -> String {
+    std::fs::read_to_string(HARNESS_PAGE_PATH).expect("read harness page")
+}
+
+fn route_request(method: &str, path: &str) -> (&'static str, String, &'static str) {
     if method != "GET" {
-        return ("405 Method Not Allowed", "method not allowed", "text/plain");
+        return (
+            "405 Method Not Allowed",
+            "method not allowed".to_string(),
+            "text/plain",
+        );
     }
     match path {
-        "/" | "/harness" => ("200 OK", HARNESS_HTML, "text/html; charset=utf-8"),
-        "/favicon.ico" => ("404 Not Found", "not found", "text/plain"),
-        _ => ("404 Not Found", "not found", "text/plain"),
+        "/" | "/harness" => (
+            "200 OK",
+            load_harness_page(),
+            "text/html; charset=utf-8",
+        ),
+        "/favicon.ico" => ("404 Not Found", "not found".to_string(), "text/plain"),
+        _ => ("404 Not Found", "not found".to_string(), "text/plain"),
     }
 }
 
@@ -228,7 +185,10 @@ async fn e2e_snapshot_metadata() {
 
     let snapshot = browser.snapshot().await.expect("snapshot");
     assert_eq!(snapshot.url, url, "snapshot should report page url");
-    assert_eq!(snapshot.title, "mbus e2e", "snapshot should report title");
+    assert_eq!(
+        snapshot.title, "mbus harness actions",
+        "snapshot should report title"
+    );
     assert!(
         snapshot.viewport[0] > 0 && snapshot.viewport[1] > 0,
         "snapshot should report non-zero viewport"

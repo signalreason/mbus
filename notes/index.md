@@ -72,3 +72,4 @@
 - 2026-02-11 CLI-001 run task/max-steps flags: `notes/2026-02-11-cli-001-run-cli-task-max-steps.md`
 - 2026-02-11 CLI-002 config file + env merge: `notes/2026-02-11-cli-002-config-env-merge.md`
 - 2026-02-11 CLI-003 step NDJSON logs: `notes/2026-02-11-cli-003-step-ndjson.md`
+- 2026-02-11 HARNESS-001 static pages: `notes/2026-02-11-harness-001-static-pages.md`
