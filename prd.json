@@ -557,10 +557,16 @@
         "Non-JSON or multi-action outputs produce structured errors"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T221209Z-78463 completed",
+        "last_run_id": "20260211T221209Z-78463",
+        "last_update_utc": "2026-02-11T22:17:27Z",
+        "run_attempts": 3
+      },
       "recommended": {
         "approach": "Constrain prompt format and parse with strict schema validation."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-LLM-002",
       "title": "Enforce single-action JSON response contract from LLM"
     },

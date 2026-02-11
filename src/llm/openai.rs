@@ -73,9 +73,15 @@ impl OpenAiClient {
     }
 
     fn parse_content(&self, content: &str) -> LlmResult<Action> {
-        match self.parse_strict(content) {
+        let value = self.parse_json_value(content)?;
+        self.reject_multi_action(&value)?;
+
+        match self.parse_value_strict(value.clone()) {
             Ok(action) => Ok(action),
             Err(err) => {
+                if !matches!(value, Value::Object(_)) {
+                    return Err(err);
+                }
                 telemetry::inc_repair_attempt();
                 match repair_action(content, &self.schema) {
                     Ok(action) => {
@@ -101,9 +107,21 @@ impl OpenAiClient {
         }
     }
 
+    #[allow(dead_code)]
     fn parse_strict(&self, content: &str) -> LlmResult<Action> {
-        let value: Value = serde_json::from_str(content)
-            .map_err(|err| LlmError::new("invalid_json", err.to_string()))?;
+        let value = self.parse_json_value(content)?;
+        self.parse_value_strict(value)
+    }
+
+    fn parse_json_value(&self, content: &str) -> LlmResult<Value> {
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            return Err(LlmError::new("invalid_json", "empty response"));
+        }
+        serde_json::from_str(trimmed).map_err(|err| LlmError::new("invalid_json", err.to_string()))
+    }
+
+    fn parse_value_strict(&self, value: Value) -> LlmResult<Action> {
         self.schema
             .validate_json(&value)
             .map_err(|errors| {
@@ -116,6 +134,28 @@ impl OpenAiClient {
             })?;
         serde_json::from_value(value)
             .map_err(|err| LlmError::new("deserialize_error", err.to_string()))
+    }
+
+    fn reject_multi_action(&self, value: &Value) -> LlmResult<()> {
+        match value {
+            Value::Array(_) => Err(LlmError::new(
+                "multi_action",
+                "expected single JSON action object, got array",
+            )),
+            Value::Object(map) => {
+                if matches!(map.get("action"), Some(Value::Array(_)))
+                    || matches!(map.get("actions"), Some(Value::Array(_)))
+                {
+                    Err(LlmError::new(
+                        "multi_action",
+                        "expected single JSON action object, got action array",
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Ok(()),
+        }
     }
 }
 
@@ -281,5 +321,33 @@ mod tests {
                 .expect_err("expected schema violation");
             assert_eq!(err.code, "schema_violation");
         }
+    }
+
+    #[test]
+    fn parse_content_rejects_non_json() {
+        let client = test_client();
+        let err = client
+            .parse_content("not json")
+            .expect_err("expected invalid json");
+        assert_eq!(err.code, "invalid_json");
+    }
+
+    #[test]
+    fn parse_content_rejects_action_arrays() {
+        let client = test_client();
+        let err = client
+            .parse_content(r#"[{"type":"done","summary":"ok"}]"#)
+            .expect_err("expected multi action error");
+        assert_eq!(err.code, "multi_action");
+    }
+
+    #[test]
+    fn parse_content_rejects_action_wrapper_arrays() {
+        let client = test_client();
+        let payload = r#"{"action":[{"type":"done","summary":"ok"}]}"#;
+        let err = client
+            .parse_content(payload)
+            .expect_err("expected multi action error");
+        assert_eq!(err.code, "multi_action");
     }
 }
