@@ -576,10 +576,16 @@
         "Counter threshold transitions model tier"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T221727Z-78463 completed",
+        "last_run_id": "20260211T221727Z-78463",
+        "last_update_utc": "2026-02-11T22:19:44Z",
+        "run_attempts": 2
+      },
       "recommended": {
         "approach": "Track failures independently from no-progress to keep escalation reasons explicit."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-ROUTER-001",
       "title": "Implement failure streak counter for model escalation"
     },

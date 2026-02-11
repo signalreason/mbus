@@ -69,6 +69,7 @@ impl Router {
                 self.failures = self.failures.saturating_add(1);
             }
             StepOutcome::NoProgress => {
+                self.failures = 0;
                 self.no_progress = self.no_progress.saturating_add(1);
             }
         }
@@ -166,7 +167,7 @@ mod tests {
         });
         assert_eq!(router.record(StepOutcome::Failure), Tier::Fast);
         assert_eq!(router.record(StepOutcome::Failure), Tier::Mid);
-        assert_eq!(router.record(StepOutcome::NoProgress), Tier::Mid);
+        assert_eq!(router.record(StepOutcome::NoProgress), Tier::Fast);
         assert_eq!(router.record(StepOutcome::NoProgress), Tier::Strong);
     }
 

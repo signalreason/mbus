@@ -1,0 +1,1 @@
+{"definition_of_done":["Consecutive step failures increment a dedicated counter","Counter threshold transitions model tier"],"model":"gpt-5.2-codex","recommended":{"approach":"Track failures independently from no-progress to keep escalation reasons explicit."},"status":"unstarted","task_id":"M1-ROUTER-001","title":"Implement failure streak counter for model escalation"}
