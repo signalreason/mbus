@@ -187,6 +187,7 @@ pub fn action_result_err(error: ActionError) -> StepResult {
         error: Some(StepError {
             code: error.code.to_string(),
             message: error.message,
+            validation_code: None,
         }),
         new_state_hash: None,
         extract: None,

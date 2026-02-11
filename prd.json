@@ -443,10 +443,16 @@
         "Error payload includes a machine-readable validation code"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T215431Z-78463 completed",
+        "last_run_id": "20260211T215431Z-78463",
+        "last_update_utc": "2026-02-11T21:56:09Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Centralize id checks in validator so executors assume validated inputs."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-VALID-001",
       "title": "Validate action id presence against current observation"
     },

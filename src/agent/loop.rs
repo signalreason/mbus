@@ -402,12 +402,14 @@ fn actionable_signature(observation: &Observation) -> Vec<String> {
 }
 
 fn validation_result(errors: Vec<ValidationError>) -> StepResult {
+    let validation_code = errors.first().map(|err| err.code.clone());
     let message = format_validation_errors(&errors);
     StepResult {
         ok: false,
         error: Some(StepError {
             code: "invalid_action".to_string(),
             message,
+            validation_code,
         }),
         new_state_hash: None,
         scroll: None,
@@ -599,6 +601,16 @@ mod tests {
                 .unwrap()
                 .code,
             "invalid_action"
+        );
+        assert_eq!(
+            agent.memory().steps()[0]
+                .result
+                .error
+                .as_ref()
+                .unwrap()
+                .validation_code
+                .as_deref(),
+            Some("unknown_id")
         );
         let applied = agent.browser.applied().await;
         assert!(applied.is_empty());

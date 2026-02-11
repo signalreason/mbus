@@ -99,6 +99,8 @@ pub enum Action {
 pub struct StepError {
     pub code: String,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -187,6 +189,7 @@ mod tests {
             error: Some(StepError {
                 code: "invalid_action".to_string(),
                 message: "missing id".to_string(),
+                validation_code: Some("missing_id".to_string()),
             }),
             new_state_hash: None,
             scroll: None,
