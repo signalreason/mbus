@@ -33,6 +33,7 @@
 - 2026-02-11 CDP-003 accessibility actionable nodes: `notes/2026-02-11-cdp-003-accessibility-actionable.md`
 - 2026-02-11 CDP-004 click action: `notes/2026-02-11-cdp-004-click.md`
 - 2026-02-11 BROW-001 browser lifecycle: `notes/2026-02-11-brow-001-lifecycle.md`
+- 2026-02-11 BROW-002 navigate scheme validation: `notes/2026-02-11-brow-002-navigate-scheme.md`
 - 2026-02-11 M0-SCHEMA-001 action tagging: `notes/2026-02-11-m0-schema-001-action-tagging.md`
 - 2026-02-11 M0-SCHEMA-002 golden action payloads: `notes/2026-02-11-m0-schema-002-golden-actions.md`
 - 2026-02-11 M0-SCHEMA-003 malformed action payload tests: `notes/2026-02-11-m0-schema-003-malformed-action-tests.md`

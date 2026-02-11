@@ -109,20 +109,22 @@ impl Validator {
                 }
             }
             Action::Navigate { url } => {
-                if url.trim().is_empty() {
+                let trimmed = url.trim();
+                if trimmed.is_empty() {
                     errors.push(ValidationError::new(
                         "missing_url",
                         Some("url"),
                         "navigate url is required",
                     ));
-                } else if !self.config.allow_insecure
-                    && !(url.starts_with("http://") || url.starts_with("https://"))
-                {
-                    errors.push(ValidationError::new(
-                        "insecure_url",
-                        Some("url"),
-                        format!("unsupported url scheme for {url}"),
-                    ));
+                } else if !self.config.allow_insecure {
+                    let normalized = trimmed.to_ascii_lowercase();
+                    if !(normalized.starts_with("http://") || normalized.starts_with("https://")) {
+                        errors.push(ValidationError::new(
+                            "insecure_url",
+                            Some("url"),
+                            format!("unsupported url scheme for {trimmed}"),
+                        ));
+                    }
                 }
             }
             Action::Back => {}
@@ -326,6 +328,26 @@ mod tests {
         let obs = sample_observation();
         let action = Action::Navigate {
             url: "https://example.com".to_string(),
+        };
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
+    fn validates_http_url() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Navigate {
+            url: "http://example.com".to_string(),
+        };
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
+    fn validates_uppercase_scheme_url() {
+        let validator = Validator::default();
+        let obs = sample_observation();
+        let action = Action::Navigate {
+            url: "HTTPS://example.com".to_string(),
         };
         assert!(validator.validate(&action, &obs).is_ok());
     }

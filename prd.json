@@ -234,10 +234,16 @@
         "Non-allowed schemes are rejected with structured validation errors"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T212040Z-78463 completed",
+        "last_run_id": "20260211T212040Z-78463",
+        "last_update_utc": "2026-02-11T21:23:16Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Enforce URL policy in validator before browser calls."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-BROW-002",
       "title": "Implement navigate action with scheme restrictions"
     },
