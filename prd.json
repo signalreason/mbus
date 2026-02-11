@@ -481,10 +481,16 @@
         "Validation behavior is deterministic across platforms"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T215803Z-78463 completed",
+        "last_run_id": "20260211T215803Z-78463",
+        "last_update_utc": "2026-02-11T22:03:25Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Normalize duration units and compare against one configured ceiling."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-VALID-003",
       "title": "Validate wait duration constraints"
     },

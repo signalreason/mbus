@@ -1,0 +1,1 @@
+{"definition_of_done":["Wait durations above maximum are rejected","Validation behavior is deterministic across platforms"],"model":"gpt-5.2-codex","recommended":{"approach":"Normalize duration units and compare against one configured ceiling."},"status":"unstarted","task_id":"M1-VALID-003","title":"Validate wait duration constraints"}

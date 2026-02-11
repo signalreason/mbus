@@ -1,5 +1,6 @@
 use crate::types::{Action, Observation};
 use std::collections::HashSet;
+use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub struct Validator {
@@ -97,7 +98,7 @@ impl Validator {
                 }
             }
             Action::Wait { ms } => {
-                if *ms > self.config.max_wait_ms {
+                if wait_exceeds_max(*ms, self.config.max_wait_ms) {
                     errors.push(ValidationError::new(
                         "wait_too_long",
                         Some("ms"),
@@ -161,6 +162,10 @@ fn validate_element_id(id: &str, element_ids: &HashSet<&str>, errors: &mut Vec<V
             format!("id {id} not found in observation"),
         ));
     }
+}
+
+fn wait_exceeds_max(ms: u64, max_wait_ms: u64) -> bool {
+    Duration::from_millis(ms) > Duration::from_millis(max_wait_ms)
 }
 
 #[cfg(test)]
@@ -323,6 +328,29 @@ mod tests {
         let obs = sample_observation();
         let action = Action::Wait { ms: 500 };
         assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
+    fn validates_wait_at_configured_max() {
+        let validator = Validator::new(ValidatorConfig {
+            max_wait_ms: 750,
+            ..ValidatorConfig::default()
+        });
+        let obs = sample_observation();
+        let action = Action::Wait { ms: 750 };
+        assert!(validator.validate(&action, &obs).is_ok());
+    }
+
+    #[test]
+    fn rejects_wait_above_configured_max() {
+        let validator = Validator::new(ValidatorConfig {
+            max_wait_ms: 750,
+            ..ValidatorConfig::default()
+        });
+        let obs = sample_observation();
+        let action = Action::Wait { ms: 751 };
+        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        assert_eq!(errors[0].code, "wait_too_long");
     }
 
     #[test]
