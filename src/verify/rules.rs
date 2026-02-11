@@ -173,7 +173,7 @@ mod tests {
             viewport: [1280, 800],
             focused: None,
             visible_text: "Hello".to_string(),
-            state_hash: Some("hash".to_string()),
+            state_hash: "hash".to_string(),
             elements: vec![ElementRef {
                 id: "el_1".to_string(),
                 role: "button".to_string(),

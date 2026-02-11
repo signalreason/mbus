@@ -158,10 +158,16 @@
         "Observation serialization is covered by unit tests"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T210420Z-78463 completed",
+        "last_run_id": "20260211T210420Z-78463",
+        "last_update_utc": "2026-02-11T21:07:30Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Keep Observation compact and stable, with explicit field semantics documented in code."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-TYPES-001",
       "title": "Define Observation type with required snapshot fields"
     },

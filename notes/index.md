@@ -36,3 +36,4 @@
 - 2026-02-11 M0-SCHEMA-002 golden action payloads: `notes/2026-02-11-m0-schema-002-golden-actions.md`
 - 2026-02-11 M0-SCHEMA-003 malformed action payload tests: `notes/2026-02-11-m0-schema-003-malformed-action-tests.md`
 - 2026-02-11 CORE-002 module boundaries cleanup: `notes/2026-02-11-core-002-module-boundaries.md`
+- 2026-02-11 TYPES-001 observation fields: `notes/2026-02-11-types-001-observation.md`

@@ -3,14 +3,19 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Observation {
+    /// Current page URL after any redirects.
     pub url: String,
+    /// Document title text (may be empty if unavailable).
     pub title: String,
+    /// Viewport size in CSS pixels: `[width, height]`.
     pub viewport: [u32; 2],
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Focused element id when known; null when no focused element is tracked.
     pub focused: Option<String>,
+    /// Compact, trimmed visible text for context (length capped by observer).
     pub visible_text: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub state_hash: Option<String>,
+    /// Deterministic hash of the compact snapshot for progress detection.
+    pub state_hash: String,
+    /// Actionable elements with stable ids in observation order.
     #[serde(default)]
     pub elements: Vec<ElementRef>,
 }
@@ -114,7 +119,7 @@ mod tests {
             viewport: [1280, 800],
             focused: Some("el_7".to_string()),
             visible_text: "Hello".to_string(),
-            state_hash: Some("ab12cd".to_string()),
+            state_hash: "ab12cd".to_string(),
             elements: vec![ElementRef {
                 id: "el_7".to_string(),
                 role: "textbox".to_string(),
@@ -125,6 +130,8 @@ mod tests {
             }],
         };
         let value = serde_json::to_value(&observation).expect("serialize observation");
+        assert_eq!(value.get("state_hash"), Some(&json!("ab12cd")));
+        assert_eq!(value.get("focused"), Some(&json!("el_7")));
         let parsed: Observation =
             serde_json::from_value(value).expect("deserialize observation");
         assert_eq!(parsed, observation);

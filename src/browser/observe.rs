@@ -66,7 +66,7 @@ impl Observer {
         let viewport = viewport(page).await?;
         let visible_text = visible_text(page, self.config.max_text_len).await?;
         let collected = collect_actionable(page, self.config.max_elements).await?;
-        let state_hash = Some(compute_state_hash(&url, &title, &collected.elements));
+        let state_hash = compute_state_hash(&url, &title, &collected.elements);
 
         Ok(ObservedSnapshot {
             observation: Observation {

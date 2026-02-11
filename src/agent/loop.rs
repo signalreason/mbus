@@ -373,7 +373,7 @@ fn step_outcome(
 fn evaluate_progress(previous: &Observation, next: &Observation) -> ProgressHeuristics {
     let prev_actionables = previous.elements.len();
     let next_actionables = next.elements.len();
-    let state_hash_unchanged = previous.state_hash.is_some() && previous.state_hash == next.state_hash;
+    let state_hash_unchanged = previous.state_hash == next.state_hash;
     let actionables_unchanged = actionable_signature(previous) == actionable_signature(next);
     let low_actionability = prev_actionables <= LOW_ACTIONABILITY_THRESHOLD
         && next_actionables <= LOW_ACTIONABILITY_THRESHOLD;
@@ -426,7 +426,7 @@ fn done_result(observation: &Observation) -> StepResult {
     StepResult {
         ok: true,
         error: None,
-        new_state_hash: observation.state_hash.clone(),
+        new_state_hash: Some(observation.state_hash.clone()),
         extract: None,
     }
 }
@@ -522,7 +522,7 @@ mod tests {
             viewport: [1280, 800],
             focused: None,
             visible_text: "Hello".to_string(),
-            state_hash: Some(hash.to_string()),
+            state_hash: hash.to_string(),
             elements,
         }
     }
