@@ -61,6 +61,9 @@ pub struct RunSummary {
     pub apply_failures: usize,
     pub apply_successes: usize,
     pub done_steps: usize,
+    pub repair_attempts: usize,
+    pub repair_successes: usize,
+    pub repair_failures: usize,
 }
 
 pub fn task_id_for(task: &str) -> String {
@@ -120,6 +123,13 @@ pub fn write_extract_output(path: &Path, output: &ExtractOutput) -> io::Result<(
         .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
     std::fs::write(path, data)?;
     Ok(())
+}
+
+#[derive(Default)]
+pub struct RepairCounts {
+    pub attempts: usize,
+    pub successes: usize,
+    pub failures: usize,
 }
 
 #[derive(Default)]
@@ -186,6 +196,7 @@ pub fn build_run_summary(
     steps: &[StepRecord],
     mut extra_errors: Vec<RunErrorSummary>,
     output_artifacts: Vec<OutputArtifact>,
+    repair_counts: RepairCounts,
 ) -> RunSummary {
     let counts = step_counts(steps);
     let mut errors = step_errors(steps);
@@ -199,6 +210,9 @@ pub fn build_run_summary(
         apply_failures: counts.apply_failures,
         apply_successes: counts.apply_successes,
         done_steps: counts.done_steps,
+        repair_attempts: repair_counts.attempts,
+        repair_successes: repair_counts.successes,
+        repair_failures: repair_counts.failures,
     }
 }
 

@@ -4,7 +4,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-#[cfg(test)]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MetricsSnapshot {
     pub steps_total: u64,
@@ -12,6 +11,7 @@ pub struct MetricsSnapshot {
     pub llm_failures_total: u64,
     pub repair_attempts_total: u64,
     pub repair_success_total: u64,
+    pub repair_failures_total: u64,
     pub validation_failures_total: u64,
     pub apply_failures_total: u64,
     pub actions_click_total: u64,
@@ -38,6 +38,7 @@ struct Metrics {
     llm_failures_by_code: Mutex<HashMap<&'static str, u64>>,
     repair_attempts_total: AtomicU64,
     repair_success_total: AtomicU64,
+    repair_failures_total: AtomicU64,
     validation_failures_total: AtomicU64,
     apply_failures_total: AtomicU64,
     actions_click_total: AtomicU64,
@@ -91,6 +92,10 @@ impl Metrics {
         self.repair_success_total.fetch_add(1, Ordering::Relaxed);
     }
 
+    fn inc_repair_failure(&self) {
+        self.repair_failures_total.fetch_add(1, Ordering::Relaxed);
+    }
+
     fn inc_validation_failure(&self) {
         self.validation_failures_total.fetch_add(1, Ordering::Relaxed);
     }
@@ -140,7 +145,6 @@ impl Metrics {
             .store(value as u64, Ordering::Relaxed);
     }
 
-    #[cfg(test)]
     fn snapshot(&self) -> MetricsSnapshot {
         MetricsSnapshot {
             steps_total: self.steps_total.load(Ordering::Relaxed),
@@ -148,6 +152,7 @@ impl Metrics {
             llm_failures_total: self.llm_failures_total.load(Ordering::Relaxed),
             repair_attempts_total: self.repair_attempts_total.load(Ordering::Relaxed),
             repair_success_total: self.repair_success_total.load(Ordering::Relaxed),
+            repair_failures_total: self.repair_failures_total.load(Ordering::Relaxed),
             validation_failures_total: self.validation_failures_total.load(Ordering::Relaxed),
             apply_failures_total: self.apply_failures_total.load(Ordering::Relaxed),
             actions_click_total: self.actions_click_total.load(Ordering::Relaxed),
@@ -198,10 +203,29 @@ pub fn inc_llm_failure(code: &'static str) {
 
 pub fn inc_repair_attempt() {
     metrics().inc_repair_attempt();
+    tracing::info!(
+        event = "metric",
+        metric_name = "repair_attempts_total",
+        value = 1u64
+    );
 }
 
 pub fn inc_repair_success() {
     metrics().inc_repair_success();
+    tracing::info!(
+        event = "metric",
+        metric_name = "repair_success_total",
+        value = 1u64
+    );
+}
+
+pub fn inc_repair_failure() {
+    metrics().inc_repair_failure();
+    tracing::info!(
+        event = "metric",
+        metric_name = "repair_failures_total",
+        value = 1u64
+    );
 }
 
 pub fn inc_validation_failure() {
@@ -235,6 +259,10 @@ pub fn record_llm_duration(duration: Duration) {
 
 pub fn set_no_progress_streak(value: u32) {
     metrics().set_no_progress_streak(value);
+}
+
+pub fn snapshot() -> MetricsSnapshot {
+    metrics().snapshot()
 }
 
 pub fn action_type(action: &Action) -> &'static str {
@@ -403,6 +431,9 @@ mod tests {
         metrics.inc_step();
         metrics.inc_llm_call();
         metrics.inc_llm_failure("timeout");
+        metrics.inc_repair_attempt();
+        metrics.inc_repair_success();
+        metrics.inc_repair_failure();
         metrics.inc_validation_failure();
         metrics.inc_apply_failure();
         metrics.inc_action(&Action::Click { id: "el_1".to_string() });
@@ -414,6 +445,9 @@ mod tests {
         assert_eq!(snapshot.steps_total, 1);
         assert_eq!(snapshot.llm_calls_total, 1);
         assert_eq!(snapshot.llm_failures_total, 1);
+        assert_eq!(snapshot.repair_attempts_total, 1);
+        assert_eq!(snapshot.repair_success_total, 1);
+        assert_eq!(snapshot.repair_failures_total, 1);
         assert_eq!(snapshot.validation_failures_total, 1);
         assert_eq!(snapshot.apply_failures_total, 1);
         assert_eq!(snapshot.actions_click_total, 1);

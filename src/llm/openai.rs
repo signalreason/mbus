@@ -155,6 +155,7 @@ impl OpenAiClient {
                 Ok(action)
             }
             Err(repair_err) => {
+                telemetry::inc_repair_failure();
                 let message = format!("{}; repair_failed: {}", err.message, repair_err);
                 tracing::warn!(
                     event = "repair_failed",

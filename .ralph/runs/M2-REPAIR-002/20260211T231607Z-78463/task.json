@@ -1,0 +1,1 @@
+{"definition_of_done":["Telemetry exposes counts for repair attempts, successes, and failures","Per-run summary includes repair contribution"],"model":"gpt-5.2-codex","recommended":{"approach":"Emit repair metrics at parser boundary and include fields in final run summary."},"status":"unstarted","task_id":"M2-REPAIR-002","title":"Track repair attempt and success metrics"}

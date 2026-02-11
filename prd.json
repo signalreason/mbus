@@ -899,10 +899,16 @@
         "Per-run summary includes repair contribution"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T231607Z-78463 completed",
+        "last_run_id": "20260211T231607Z-78463",
+        "last_update_utc": "2026-02-11T23:21:21Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Emit repair metrics at parser boundary and include fields in final run summary."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M2-REPAIR-002",
       "title": "Track repair attempt and success metrics"
     },

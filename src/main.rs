@@ -147,9 +147,11 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
     let config = load_config(config_path.as_deref(), cli_overrides)?;
 
     emit_json(&ConfigLog::from(&config))?;
+    let repair_start = telemetry::snapshot();
     let execution = match execute_agent(&task, plan.as_deref(), &config).await {
         Ok(execution) => execution,
         Err(err) => {
+            let repair_counts = repair_counts_delta(&repair_start, &telemetry::snapshot());
             let summary = mbus::output::build_run_summary(
                 mbus::output::TerminalState::Error,
                 &[],
@@ -159,6 +161,7 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
                     Some("startup"),
                 )],
                 Vec::new(),
+                repair_counts,
             );
             emit_run_logs(&[], &summary, None, None)?;
             return Err(err);
@@ -208,11 +211,13 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
         }
     }
 
+    let repair_counts = repair_counts_delta(&repair_start, &telemetry::snapshot());
     let summary = mbus::output::build_run_summary(
         terminal_state,
         &steps,
         errors,
         output_artifacts,
+        repair_counts,
     );
     emit_run_logs(
         &steps,
@@ -643,6 +648,9 @@ fn emit_run_logs(
         apply_failures: summary.apply_failures,
         apply_successes: summary.apply_successes,
         done_steps: summary.done_steps,
+        repair_attempts: summary.repair_attempts,
+        repair_successes: summary.repair_successes,
+        repair_failures: summary.repair_failures,
         errors: summary.errors.clone(),
         output_artifacts: summary.output_artifacts.clone(),
         final_url: final_observation.map(|value| value.url.clone()),
@@ -705,12 +713,31 @@ struct SummaryLog {
     apply_failures: usize,
     apply_successes: usize,
     done_steps: usize,
+    repair_attempts: usize,
+    repair_successes: usize,
+    repair_failures: usize,
     errors: Vec<mbus::output::RunErrorSummary>,
     output_artifacts: Vec<mbus::output::OutputArtifact>,
     #[serde(skip_serializing_if = "Option::is_none")]
     final_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     final_title: Option<String>,
+}
+
+fn repair_counts_delta(
+    start: &telemetry::MetricsSnapshot,
+    end: &telemetry::MetricsSnapshot,
+) -> mbus::output::RepairCounts {
+    mbus::output::RepairCounts {
+        attempts: saturating_delta(start.repair_attempts_total, end.repair_attempts_total),
+        successes: saturating_delta(start.repair_success_total, end.repair_success_total),
+        failures: saturating_delta(start.repair_failures_total, end.repair_failures_total),
+    }
+}
+
+fn saturating_delta(start: u64, end: u64) -> usize {
+    let delta = end.saturating_sub(start);
+    usize::try_from(delta).unwrap_or(usize::MAX)
 }
 
 #[derive(Serialize)]
