@@ -104,7 +104,6 @@ pub struct StepError {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ExtractResult {
     pub query: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub value: String,
 }

@@ -41,6 +41,7 @@
 - 2026-02-11 BROW-006 bounded scroll execution: `notes/2026-02-11-brow-006-scroll-exec.md`
 - 2026-02-11 BROW-007 wait guard: `notes/2026-02-11-brow-007-wait-guard.md`
 - 2026-02-11 BROW-008 back action execution: `notes/2026-02-11-brow-008-back-exec.md`
+- 2026-02-11 BROW-009 extract output contract: `notes/2026-02-11-brow-009-extract-output-contract.md`
 - 2026-02-11 M0-SCHEMA-001 action tagging: `notes/2026-02-11-m0-schema-001-action-tagging.md`
 - 2026-02-11 M0-SCHEMA-002 golden action payloads: `notes/2026-02-11-m0-schema-002-golden-actions.md`
 - 2026-02-11 M0-SCHEMA-003 malformed action payload tests: `notes/2026-02-11-m0-schema-003-malformed-action-tests.md`

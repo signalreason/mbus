@@ -17,7 +17,6 @@ pub struct ExtractOutput {
 pub struct ExtractRecord {
     pub step_index: usize,
     pub query: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub value: String,
 }
