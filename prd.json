@@ -785,10 +785,16 @@
         "Failures are tagged by structured error code"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T225517Z-78463 completed",
+        "last_run_id": "20260211T225517Z-78463",
+        "last_update_utc": "2026-02-11T22:59:18Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Wrap client calls with timing and outcome capture in a single adapter layer."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-OBSERV-002",
       "title": "Instrument LLM latency and failure counters"
     },

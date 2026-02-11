@@ -1,6 +1,7 @@
 use crate::types::Action;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 #[cfg(test)]
@@ -34,6 +35,7 @@ struct Metrics {
     steps_total: AtomicU64,
     llm_calls_total: AtomicU64,
     llm_failures_total: AtomicU64,
+    llm_failures_by_code: Mutex<HashMap<&'static str, u64>>,
     repair_attempts_total: AtomicU64,
     repair_success_total: AtomicU64,
     validation_failures_total: AtomicU64,
@@ -63,8 +65,22 @@ impl Metrics {
         self.llm_calls_total.fetch_add(1, Ordering::Relaxed);
     }
 
-    fn inc_llm_failure(&self) {
+    fn inc_llm_failure(&self, code: &'static str) {
         self.llm_failures_total.fetch_add(1, Ordering::Relaxed);
+        match self.llm_failures_by_code.lock() {
+            Ok(mut guard) => {
+                let entry = guard.entry(code).or_insert(0);
+                *entry = entry.saturating_add(1);
+            }
+            Err(err) => {
+                tracing::error!(
+                    event = "telemetry_error",
+                    error = %err,
+                    error_code = code,
+                    message = "failed to record llm failure code metric"
+                );
+            }
+        }
     }
 
     fn inc_repair_attempt(&self) {
@@ -170,8 +186,14 @@ pub fn inc_llm_call() {
     metrics().inc_llm_call();
 }
 
-pub fn inc_llm_failure() {
-    metrics().inc_llm_failure();
+pub fn inc_llm_failure(code: &'static str) {
+    metrics().inc_llm_failure(code);
+    tracing::info!(
+        event = "metric",
+        metric_name = "llm_failures_total",
+        value = 1u64,
+        error_code = code
+    );
 }
 
 pub fn inc_repair_attempt() {
@@ -204,6 +226,11 @@ pub fn record_apply_duration(duration: Duration) {
 
 pub fn record_llm_duration(duration: Duration) {
     metrics().record_llm_duration(duration);
+    tracing::info!(
+        event = "metric",
+        metric_name = "llm_duration_ms",
+        value = duration.as_millis() as u64
+    );
 }
 
 pub fn set_no_progress_streak(value: u32) {
@@ -375,7 +402,7 @@ mod tests {
         let metrics = Metrics::default();
         metrics.inc_step();
         metrics.inc_llm_call();
-        metrics.inc_llm_failure();
+        metrics.inc_llm_failure("timeout");
         metrics.inc_validation_failure();
         metrics.inc_apply_failure();
         metrics.inc_action(&Action::Click { id: "el_1".to_string() });

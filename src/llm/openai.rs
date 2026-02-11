@@ -228,7 +228,7 @@ impl LlmClient for OpenAiClient {
 
         telemetry::record_llm_duration(start.elapsed());
         if let Err(err) = &result {
-            telemetry::inc_llm_failure();
+            telemetry::inc_llm_failure(err.code);
             tracing::warn!(
                 event = "llm_failure",
                 error_code = err.code,
