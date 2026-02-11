@@ -624,6 +624,7 @@ fn emit_run_logs(
             action: step.action.clone(),
             validation: step.validation.clone(),
             result: step.result.clone(),
+            outcome: step.outcome.clone(),
             timings: step.timings.clone(),
         })?;
     }
@@ -687,6 +688,7 @@ struct StepLog {
     action: mbus::types::Action,
     validation: mbus::agent::memory::ValidationOutcome,
     result: mbus::types::StepResult,
+    outcome: mbus::agent::memory::StepOutcomeLog,
     timings: mbus::agent::memory::StepTimings,
 }
 

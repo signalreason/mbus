@@ -1,0 +1,1 @@
+{"definition_of_done":["Each step outputs one structured JSON line","Output includes action, outcome, and timing fields"],"model":"gpt-5.2-codex","recommended":{"approach":"Define one step log schema and keep field names stable for downstream parsers."},"status":"unstarted","task_id":"M1-CLI-003","title":"Emit newline-delimited JSON logs per step"}

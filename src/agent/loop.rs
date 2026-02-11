@@ -1,4 +1,6 @@
-use crate::agent::memory::{Memory, StepRecord, StepTimings, ValidationOutcome};
+use crate::agent::memory::{
+    Memory, StepOutcomeLog, StepRecord, StepTimings, ValidationOutcome,
+};
 use crate::agent::policy::AgentPolicy;
 use crate::browser::{Browser, BrowserError};
 use crate::llm::client::{LlmClient, LlmError};
@@ -216,6 +218,7 @@ impl<B: Browser> AgentLoop<B> {
                         action,
                         validation: ValidationOutcome::failure(errors),
                         result,
+                        outcome: StepOutcomeLog::ValidationFailed,
                         timings: StepTimings {
                             step_duration_ms: duration_ms(duration),
                             llm_duration_ms: duration_ms(llm_duration),
@@ -242,6 +245,7 @@ impl<B: Browser> AgentLoop<B> {
                         action: action.clone(),
                         validation: ValidationOutcome::success(),
                         result,
+                        outcome: StepOutcomeLog::Done,
                         timings: StepTimings {
                             step_duration_ms: duration_ms(duration),
                             llm_duration_ms: duration_ms(llm_duration),
@@ -303,11 +307,19 @@ impl<B: Browser> AgentLoop<B> {
                 let new_hash = next_observation.state_hash.clone();
                 result.new_state_hash = Some(new_hash.clone());
 
+                let (outcome, heuristics) = step_outcome(&result, &observation, &next_observation);
+                let log_outcome = match outcome {
+                    StepOutcome::Failure => StepOutcomeLog::ApplyFailed,
+                    StepOutcome::NoProgress => StepOutcomeLog::NoProgress,
+                    StepOutcome::Progress => StepOutcomeLog::Progress,
+                };
+
                 let duration = step_start.elapsed();
                 self.memory.record_step(StepRecord {
                     action: action.clone(),
                     validation: ValidationOutcome::success(),
                     result: result.clone(),
+                    outcome: log_outcome,
                     timings: StepTimings {
                         step_duration_ms: duration_ms(duration),
                         llm_duration_ms: duration_ms(llm_duration),
@@ -317,7 +329,6 @@ impl<B: Browser> AgentLoop<B> {
                 });
                 self.memory.update_last_step_state_hash(new_hash);
 
-                let (outcome, heuristics) = step_outcome(&result, &observation, &next_observation);
                 let tier_after = self.router.record(outcome);
                 telemetry::set_no_progress_streak(self.router.counters().no_progress);
 

@@ -48,11 +48,22 @@ pub struct StepTimings {
     pub snapshot_duration_ms: Option<u64>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StepOutcomeLog {
+    Done,
+    ValidationFailed,
+    ApplyFailed,
+    NoProgress,
+    Progress,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct StepRecord {
     pub action: Action,
     pub validation: ValidationOutcome,
     pub result: StepResult,
+    pub outcome: StepOutcomeLog,
     pub timings: StepTimings,
 }
 

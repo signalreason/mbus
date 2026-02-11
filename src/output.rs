@@ -205,7 +205,7 @@ pub fn build_run_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::memory::{StepTimings, ValidationOutcome};
+    use crate::agent::memory::{StepOutcomeLog, StepTimings, ValidationOutcome};
     use crate::types::{Action, ExtractResult, StepResult};
 
     fn timings() -> StepTimings {
@@ -238,6 +238,7 @@ mod tests {
                 scroll: None,
                 extract: None,
             },
+            outcome: StepOutcomeLog::Progress,
             timings: timings(),
         }];
 
@@ -264,6 +265,7 @@ mod tests {
                     value: "$10".to_string(),
                 }),
             },
+            outcome: StepOutcomeLog::Progress,
             timings: timings(),
         }];
 
