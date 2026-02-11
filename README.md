@@ -52,6 +52,8 @@ cargo run -- run --task "Click the button" \
   --llm-actions-file ./actions.jsonl
 ```
 
+For a concise install + quickstart path (prerequisites, install steps, and the first successful run with validated commands), see `docs/quickstart.md`.
+
 ## CLI
 
 `mbus run` flags (most common):
