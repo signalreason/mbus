@@ -28,6 +28,7 @@
 - 2026-02-11 next-step assessment: `notes/2026-02-11-next-step-assessment.md`
 - 2026-02-11 PRD M3 autonomous bench spec: `notes/2026-02-11-prd-m3-autonomous-bench-spec.md`
 - 2026-02-11 PRD JSON granular breakdown: `notes/2026-02-11-prd-json-granular-breakdown.md`
+- 2026-02-11 AGENT-001 max-step loop check: `notes/2026-02-11-agent-001-max-step-loop.md`
 - 2026-02-11 CDP-001 bootstrap session: `notes/2026-02-11-cdp-001-bootstrap.md`
 - 2026-02-11 CDP-002 snapshot metadata: `notes/2026-02-11-cdp-002-snapshot-metadata.md`
 - 2026-02-11 CDP-003 accessibility actionable nodes: `notes/2026-02-11-cdp-003-accessibility-actionable.md`
