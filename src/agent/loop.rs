@@ -142,7 +142,13 @@ impl<B: Browser> AgentLoop<B> {
         }
 
         let snapshot_start = Instant::now();
-        let mut observation = match self.browser.snapshot().await {
+        let initial_tier = self.router.tier();
+        let snapshot_span = tracing::info_span!(
+            "step.snapshot",
+            step_index = 0,
+            tier = ?initial_tier
+        );
+        let mut observation = match self.browser.snapshot().instrument(snapshot_span).await {
             Ok(observation) => {
                 telemetry::record_snapshot_duration(snapshot_start.elapsed());
                 observation
@@ -161,11 +167,12 @@ impl<B: Browser> AgentLoop<B> {
 
         for step_index in 0..self.policy.max_steps {
             let tier = self.router.tier();
+            let step_number = step_index + 1;
             telemetry::inc_step();
 
             let step_span = tracing::info_span!(
                 "step",
-                step_index = step_index + 1,
+                step_index = step_number,
                 tier = ?tier,
                 url = %observation.url,
                 state_hash = ?observation.state_hash
@@ -176,6 +183,11 @@ impl<B: Browser> AgentLoop<B> {
                 let client = self.clients.client(tier);
 
                 let llm_start = Instant::now();
+                let llm_span = tracing::info_span!(
+                    "step.llm",
+                    step_index = step_number,
+                    tier = ?tier
+                );
                 let action = match client
                     .propose_action(
                         &self.task,
@@ -184,6 +196,7 @@ impl<B: Browser> AgentLoop<B> {
                         self.memory.observations(),
                         self.memory.history(),
                     )
+                    .instrument(llm_span)
                     .await
                 {
                     Ok(action) => action,
@@ -210,7 +223,14 @@ impl<B: Browser> AgentLoop<B> {
                     action = ?telemetry::ActionSummary::from(&action)
                 );
 
-                if let Err(errors) = self.validator.validate(&action, &observation) {
+                let validation_span = tracing::info_span!(
+                    "step.validation",
+                    step_index = step_number,
+                    tier = ?tier
+                );
+                let validation_check =
+                    validation_span.in_scope(|| self.validator.validate(&action, &observation));
+                if let Err(errors) = validation_check {
                     let error_count = errors.len();
                     telemetry::inc_validation_failure();
                     let mut result = validation_result(errors.clone());
@@ -268,7 +288,12 @@ impl<B: Browser> AgentLoop<B> {
                 }
 
                 let apply_start = Instant::now();
-                let mut result = match self.browser.apply(&action).await {
+                let apply_span = tracing::info_span!(
+                    "step.apply",
+                    step_index = step_number,
+                    tier = ?tier
+                );
+                let mut result = match self.browser.apply(&action).instrument(apply_span).await {
                     Ok(result) => result,
                     Err(err) => {
                         let apply_duration = apply_start.elapsed();
@@ -292,7 +317,13 @@ impl<B: Browser> AgentLoop<B> {
                 }
 
                 let snapshot_start = Instant::now();
-                let next_observation = match self.browser.snapshot().await {
+                let snapshot_span = tracing::info_span!(
+                    "step.snapshot",
+                    step_index = step_number,
+                    tier = ?tier
+                );
+                let next_observation =
+                    match self.browser.snapshot().instrument(snapshot_span).await {
                     Ok(observation) => observation,
                     Err(err) => {
                         let snapshot_duration = snapshot_start.elapsed();

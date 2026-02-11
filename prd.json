@@ -804,10 +804,16 @@
         "Trace metadata includes step index and chosen model tier"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T225919Z-78463 completed",
+        "last_run_id": "20260211T225919Z-78463",
+        "last_update_utc": "2026-02-11T23:01:37Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Create a canonical span naming convention and apply it consistently in the loop."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M1-OBSERV-003",
       "title": "Add tracing spans for snapshot, llm, validation, and apply"
     },

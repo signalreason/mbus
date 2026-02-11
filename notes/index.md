@@ -51,6 +51,7 @@
 - 2026-02-11 OBS-003 compact visible text policy: `notes/2026-02-11-obs-003-visible-text.md`
 - 2026-02-11 OBSERV-001 snapshot/apply duration metrics: `notes/2026-02-11-observ-001-snapshot-apply-metrics.md`
 - 2026-02-11 OBSERV-002 LLM metrics: `notes/2026-02-11-observ-002-llm-metrics.md`
+- 2026-02-11 OBSERV-003 tracing spans for step stages: `notes/2026-02-11-observ-003-tracing-spans.md`
 - 2026-02-11 M0-SCHEMA-001 action tagging: `notes/2026-02-11-m0-schema-001-action-tagging.md`
 - 2026-02-11 M0-SCHEMA-002 golden action payloads: `notes/2026-02-11-m0-schema-002-golden-actions.md`
 - 2026-02-11 M0-SCHEMA-003 malformed action payload tests: `notes/2026-02-11-m0-schema-003-malformed-action-tests.md`
