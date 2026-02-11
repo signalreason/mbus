@@ -46,6 +46,7 @@
 - 2026-02-11 BROW-007 wait guard: `notes/2026-02-11-brow-007-wait-guard.md`
 - 2026-02-11 BROW-008 back action execution: `notes/2026-02-11-brow-008-back-exec.md`
 - 2026-02-11 BROW-009 extract output contract: `notes/2026-02-11-brow-009-extract-output-contract.md`
+- 2026-02-11 EXTRACT-002 extract artifact schema + append-safe write: `notes/2026-02-11-extract-002-append-schema.md`
 - 2026-02-11 OBS-001 deterministic state hash: `notes/2026-02-11-obs-001-state-hash.md`
 - 2026-02-11 OBS-002 stable element ids: `notes/2026-02-11-obs-002-stable-ids.md`
 - 2026-02-11 OBS-003 compact visible text policy: `notes/2026-02-11-obs-003-visible-text.md`

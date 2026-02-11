@@ -676,7 +676,7 @@ fn write_extract_output(
     };
     let task_id = mbus::output::task_id_for(task);
     let timestamp = mbus::output::current_timestamp()?;
-    if let Some(output) = mbus::output::build_extract_output(task_id, timestamp, steps) {
+    if let Some(output) = mbus::output::build_extract_output(task, task_id, timestamp, steps) {
         let record_count = Some(output.extracts.len());
         mbus::output::write_extract_output(path, &output)?;
         return Ok(Some(mbus::output::OutputArtifact {

@@ -1,0 +1,1 @@
+{"definition_of_done":["Extracted payloads are persisted to a configurable file path","Output schema includes task metadata and timestamps"],"model":"gpt-5.2-codex","recommended":{"approach":"Keep extraction artifact schema versioned and append-safe for repeated runs."},"status":"unstarted","task_id":"M2-EXTRACT-001","title":"Write extract action outputs to JSON artifact"}

@@ -3,12 +3,17 @@ use crate::types::Action;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::io;
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
+
+pub const EXTRACT_OUTPUT_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ExtractOutput {
+    pub schema_version: u32,
+    pub run_id: String,
     pub task_id: String,
+    pub task: String,
     pub timestamp: String,
     pub extracts: Vec<ExtractRecord>,
 }
@@ -78,11 +83,19 @@ pub fn current_timestamp() -> Result<String, time::error::Format> {
     Ok(time::OffsetDateTime::now_utc().format(&Rfc3339)?)
 }
 
+pub fn run_id_for(task_id: &str, timestamp: &str) -> String {
+    format!("{task_id}_{timestamp}")
+}
+
 pub fn build_extract_output(
+    task: impl Into<String>,
     task_id: impl Into<String>,
     timestamp: impl Into<String>,
     steps: &[StepRecord],
 ) -> Option<ExtractOutput> {
+    let task = task.into();
+    let task_id = task_id.into();
+    let timestamp = timestamp.into();
     let extracts: Vec<ExtractRecord> = steps
         .iter()
         .enumerate()
@@ -107,8 +120,11 @@ pub fn build_extract_output(
         None
     } else {
         Some(ExtractOutput {
-            task_id: task_id.into(),
-            timestamp: timestamp.into(),
+            schema_version: EXTRACT_OUTPUT_SCHEMA_VERSION,
+            run_id: run_id_for(&task_id, &timestamp),
+            task_id,
+            task,
+            timestamp,
             extracts,
         })
     }
@@ -120,9 +136,24 @@ pub fn write_extract_output(path: &Path, output: &ExtractOutput) -> io::Result<(
             std::fs::create_dir_all(parent)?;
         }
     }
-    let data = serde_json::to_vec_pretty(output)
+    let data = serde_json::to_vec(output)
         .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
-    std::fs::write(path, data)?;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(path)?;
+    let len = file.metadata()?.len();
+    if len > 0 {
+        file.seek(SeekFrom::End(-1))?;
+        let mut buf = [0u8; 1];
+        file.read_exact(&mut buf)?;
+        if buf[0] != b'\n' {
+            file.write_all(b"\n")?;
+        }
+    }
+    file.write_all(&data)?;
+    file.write_all(b"\n")?;
     Ok(())
 }
 
@@ -257,7 +288,7 @@ mod tests {
             timings: timings(),
         }];
 
-        let output = build_extract_output("task_1", "now", &steps);
+        let output = build_extract_output("task", "task_1", "now", &steps);
         assert!(output.is_none());
     }
 
@@ -284,8 +315,11 @@ mod tests {
             timings: timings(),
         }];
 
-        let output = build_extract_output("task_1", "now", &steps).expect("output");
+        let output = build_extract_output("task", "task_1", "now", &steps).expect("output");
+        assert_eq!(output.schema_version, EXTRACT_OUTPUT_SCHEMA_VERSION);
+        assert_eq!(output.run_id, "task_1_now");
         assert_eq!(output.task_id, "task_1");
+        assert_eq!(output.task, "task");
         assert_eq!(output.timestamp, "now");
         assert_eq!(output.extracts.len(), 1);
         assert_eq!(output.extracts[0].step_index, 1);
