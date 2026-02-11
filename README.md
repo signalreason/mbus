@@ -234,6 +234,9 @@ Example (`actions.jsonl`):
 - Navigation to non-http(s) URLs blocked: set `allow_insecure = true` only when
   needed and understand the security implications.
 
+For a structured operations runbook, recovery steps, and the log/metric fields
+you should monitor, see `docs/operations-runbook.md`.
+
 ## Runbook
 
 Verification:
@@ -245,3 +248,6 @@ Rollback:
 - Checkout the previous release tag or commit and rebuild.
 - Revert any config changes (especially router thresholds and timeouts) to the
   last known-good values.
+
+For the full verification checklist, rollback recipe, and structured logging
+guidance, see `docs/operations-runbook.md`.

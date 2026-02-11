@@ -1,0 +1,1 @@
+{"definition_of_done":["Docs include common error modes and recovery steps","Runbook includes verification and rollback instructions"],"model":"gpt-5.1-codex-mini","recommended":{"approach":"Map troubleshooting sections directly to structured error codes and log fields."},"status":"unstarted","task_id":"M2-DOCS-002","title":"Document operations runbook and troubleshooting"}
