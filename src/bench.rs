@@ -12,6 +12,8 @@ const BASE_URL_TOKEN: &str = "{{base_url}}";
 
 pub mod aggregate;
 
+pub const BENCH_REPORT_SCHEMA_VERSION: u32 = 1;
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct BenchTask {
     pub id: String,
@@ -139,12 +141,23 @@ pub struct BenchGate {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct BenchLlmInfo {
+    pub mode: String,
+    pub model_fast: String,
+    pub model_mid: String,
+    pub model_strong: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct BenchReport {
+    pub schema_version: u32,
     pub timestamp: String,
     pub tasks_dir: String,
     pub report_path: String,
+    pub llm: BenchLlmInfo,
     pub max_steps_per_task: usize,
     pub required_passes: usize,
+    pub duration_ms: u64,
     pub gate: BenchGate,
     pub summary: BenchSummary,
     pub aggregate_usage: BenchTokenUsage,

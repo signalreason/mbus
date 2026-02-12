@@ -84,3 +84,4 @@
 - 2026-02-11 HARNESS-003 select/scroll/wait integration tests: `notes/2026-02-11-harness-003-select-scroll-wait-integration.md`
 - 2026-02-12 BENCH-003 token usage capture: `notes/2026-02-12-bench-003-token-usage.md`
 - 2026-02-12 BENCH-004 aggregate usage + cost: `notes/2026-02-12-bench-004-aggregate-cost.md`
+- 2026-02-12 BENCH-005 benchmark report schema: `notes/2026-02-12-bench-005-report-schema.md`

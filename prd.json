@@ -1089,10 +1089,16 @@
         "Report fields are stable and versioned for reproducibility"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260212T000921Z-78463 completed",
+        "last_run_id": "20260212T000921Z-78463",
+        "last_update_utc": "2026-02-12T00:12:11Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Evolve report schema with backward-compatible additions and explicit version metadata."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M3-BENCH-005",
       "title": "Extend benchmark report artifact schema with mode and economics"
     },

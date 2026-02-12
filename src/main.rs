@@ -1,11 +1,12 @@
 use clap::{Args, Parser, Subcommand};
 use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
 use mbus::bench::{
-    BenchObservedStatus, BenchPricing, BenchReport, BenchServer, BenchTaskResult,
-    BenchTokenUsage, actions_file_path, actions_work_dir, bench_task_limit,
-    build_summary, evaluate_gate, evaluate_task, failure_buckets, join_base_url,
-    load_tasks, now_timestamp, render_actions, report_path_default,
-    sleep_between_tasks, tasks_dir_default, write_actions_file, write_report,
+    BENCH_REPORT_SCHEMA_VERSION, BenchLlmInfo, BenchObservedStatus, BenchPricing,
+    BenchReport, BenchServer, BenchTaskResult, BenchTokenUsage, actions_file_path,
+    actions_work_dir, bench_task_limit, build_summary, evaluate_gate, evaluate_task,
+    failure_buckets, join_base_url, load_tasks, now_timestamp, render_actions,
+    report_path_default, sleep_between_tasks, tasks_dir_default, write_actions_file,
+    write_report,
 };
 use mbus::bench::aggregate::{
     aggregate_usage_from_results, aggregate_usage_from_steps, estimate_cost,
@@ -291,6 +292,12 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
         .await
         .map_err(|err| format!("bench server startup failed: {err}"))?;
     let base_url = server.base_url();
+    let llm_info = BenchLlmInfo {
+        mode: llm_mode_label(&bench_llm_mode).to_string(),
+        model_fast: base_config.llm.model_fast.clone(),
+        model_mid: base_config.llm.model_mid.clone(),
+        model_strong: base_config.llm.model_strong.clone(),
+    };
 
     emit_json(&BenchConfigLog {
         r#type: "bench_config",
@@ -302,6 +309,7 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
     })?;
 
     let actions_dir = actions_work_dir(&report_path);
+    let bench_started_at = std::time::Instant::now();
     let mut results = Vec::with_capacity(tasks.len());
 
     for task in tasks {
@@ -389,12 +397,16 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
     let summary = build_summary(&results, &gate);
     let aggregate_usage = aggregate_usage_from_results(&results);
     let aggregate_cost = estimate_cost(&aggregate_usage, BenchPricing::from_config(&base_config.llm));
+    let bench_duration_ms = bench_started_at.elapsed().as_millis() as u64;
     let report = BenchReport {
+        schema_version: BENCH_REPORT_SCHEMA_VERSION,
         timestamp: now_timestamp().map_err(|err| format!("bench timestamp: {err}"))?,
         tasks_dir: tasks_dir.display().to_string(),
         report_path: report_path.display().to_string(),
+        llm: llm_info,
         max_steps_per_task,
         required_passes,
+        duration_ms: bench_duration_ms,
         gate: gate.clone(),
         summary: summary.clone(),
         aggregate_usage,
@@ -427,6 +439,14 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn llm_mode_label(mode: &LlmMode) -> &'static str {
+    match mode {
+        LlmMode::Scripted => "scripted",
+        LlmMode::OpenAi => "openai",
+        LlmMode::Stub => "stub",
+    }
 }
 
 
