@@ -10,6 +10,8 @@ use tokio::task::JoinHandle;
 
 const BASE_URL_TOKEN: &str = "{{base_url}}";
 
+pub mod aggregate;
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct BenchTask {
     pub id: String,
@@ -81,6 +83,38 @@ pub struct BenchTokenUsage {
     pub error: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Serialize)]
+pub struct BenchPricing {
+    pub input_cost_per_million: f64,
+    pub output_cost_per_million: f64,
+}
+
+impl BenchPricing {
+    pub fn from_config(config: &crate::config::LlmConfig) -> Option<Self> {
+        match (
+            config.input_cost_per_million,
+            config.output_cost_per_million,
+        ) {
+            (Some(input), Some(output)) => Some(Self {
+                input_cost_per_million: input,
+                output_cost_per_million: output,
+            }),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BenchCostSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pricing: Option<BenchPricing>,
+    pub input_cost_usd: Option<f64>,
+    pub output_cost_usd: Option<f64>,
+    pub total_cost_usd: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct BenchSummary {
     pub total_tasks: usize,
@@ -113,6 +147,8 @@ pub struct BenchReport {
     pub required_passes: usize,
     pub gate: BenchGate,
     pub summary: BenchSummary,
+    pub aggregate_usage: BenchTokenUsage,
+    pub aggregate_cost: BenchCostSummary,
     pub results: Vec<BenchTaskResult>,
 }
 

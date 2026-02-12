@@ -1070,10 +1070,16 @@
         "Cost computation uses configurable per-1M input/output pricing"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260212T000225Z-78463 completed",
+        "last_run_id": "20260212T000225Z-78463",
+        "last_update_utc": "2026-02-12T00:09:21Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Implement a pure aggregation module with unit-tested cost math."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M3-BENCH-004",
       "title": "Aggregate benchmark token totals and estimated USD cost"
     },

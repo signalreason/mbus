@@ -1,12 +1,14 @@
 use clap::{Args, Parser, Subcommand};
 use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
 use mbus::bench::{
-    BenchObservedStatus, BenchReport, BenchServer, BenchTaskResult, BenchTokenUsage,
-    actions_file_path,
-    actions_work_dir, bench_task_limit, build_summary, evaluate_gate, evaluate_task,
-    failure_buckets, join_base_url, load_tasks, now_timestamp, render_actions,
-    report_path_default, sleep_between_tasks, tasks_dir_default, write_actions_file,
-    write_report,
+    BenchObservedStatus, BenchPricing, BenchReport, BenchServer, BenchTaskResult,
+    BenchTokenUsage, actions_file_path, actions_work_dir, bench_task_limit,
+    build_summary, evaluate_gate, evaluate_task, failure_buckets, join_base_url,
+    load_tasks, now_timestamp, render_actions, report_path_default,
+    sleep_between_tasks, tasks_dir_default, write_actions_file, write_report,
+};
+use mbus::bench::aggregate::{
+    aggregate_usage_from_results, aggregate_usage_from_steps, estimate_cost,
 };
 use mbus::browser::CdpBrowser;
 use mbus::config::{CliOverrides, ConfigError, LlmConfig, LlmMode, load_config};
@@ -141,6 +143,10 @@ struct BenchArgs {
     llm_temperature: Option<f32>,
     #[arg(long)]
     llm_max_tokens: Option<u32>,
+    #[arg(long)]
+    llm_input_cost_per_million: Option<f64>,
+    #[arg(long)]
+    llm_output_cost_per_million: Option<f64>,
 }
 
 #[tokio::main]
@@ -319,8 +325,8 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
 
         let run = execute_agent(&task.task, task.plan.as_deref(), &task_config).await;
         let usage = match &run {
-            Ok(execution) => aggregate_bench_usage(&execution.steps, &bench_llm_mode),
-            Err(_) => aggregate_bench_usage(&[], &bench_llm_mode),
+            Ok(execution) => aggregate_usage_from_steps(&execution.steps, &bench_llm_mode),
+            Err(_) => aggregate_usage_from_steps(&[], &bench_llm_mode),
         };
         let elapsed = started_at.elapsed().as_millis() as u64;
         let task_result = match run {
@@ -381,6 +387,8 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
 
     let gate = evaluate_gate(&results, required_passes);
     let summary = build_summary(&results, &gate);
+    let aggregate_usage = aggregate_usage_from_results(&results);
+    let aggregate_cost = estimate_cost(&aggregate_usage, BenchPricing::from_config(&base_config.llm));
     let report = BenchReport {
         timestamp: now_timestamp().map_err(|err| format!("bench timestamp: {err}"))?,
         tasks_dir: tasks_dir.display().to_string(),
@@ -389,6 +397,8 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
         required_passes,
         gate: gate.clone(),
         summary: summary.clone(),
+        aggregate_usage,
+        aggregate_cost,
         results,
     };
     write_report(&report_path, &report)
@@ -419,71 +429,6 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn aggregate_bench_usage(
-    steps: &[mbus::agent::memory::StepRecord],
-    mode: &LlmMode,
-) -> BenchTokenUsage {
-    if steps.is_empty() {
-        return BenchTokenUsage {
-            prompt_tokens: None,
-            completion_tokens: None,
-            total_tokens: None,
-            error: Some("no_llm_calls".to_string()),
-        };
-    }
-
-    let mut prompt_total: u64 = 0;
-    let mut completion_total: u64 = 0;
-    let mut total_total: u64 = 0;
-    let mut missing_calls: usize = 0;
-    for step in steps {
-        match step.llm_usage.as_ref() {
-            Some(usage) => match (
-                usage.prompt_tokens,
-                usage.completion_tokens,
-                usage.total_tokens,
-            ) {
-                (Some(prompt), Some(completion), Some(total)) => {
-                    prompt_total = prompt_total.saturating_add(prompt);
-                    completion_total = completion_total.saturating_add(completion);
-                    total_total = total_total.saturating_add(total);
-                }
-                _ => missing_calls = missing_calls.saturating_add(1),
-            },
-            None => missing_calls = missing_calls.saturating_add(1),
-        }
-    }
-
-    if missing_calls > 0 {
-        let error = match mode {
-            LlmMode::Scripted => format!(
-                "usage_unavailable_for_scripted_mode (missing {missing_calls}/{total} calls)",
-                total = steps.len()
-            ),
-            LlmMode::OpenAi => format!(
-                "missing_usage_for_{missing_calls}/{total} calls",
-                total = steps.len()
-            ),
-            LlmMode::Stub => format!(
-                "usage_unavailable_for_stub_mode (missing {missing_calls}/{total} calls)",
-                total = steps.len()
-            ),
-        };
-        return BenchTokenUsage {
-            prompt_tokens: None,
-            completion_tokens: None,
-            total_tokens: None,
-            error: Some(error),
-        };
-    }
-
-    BenchTokenUsage {
-        prompt_tokens: Some(prompt_total),
-        completion_tokens: Some(completion_total),
-        total_tokens: Some(total_total),
-        error: None,
-    }
-}
 
 fn resolve_config_path(cli_path: Option<&Path>) -> Option<PathBuf> {
     if let Some(path) = cli_path {
@@ -581,6 +526,8 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
         llm_timeout_ms: args.llm_timeout_ms,
         llm_temperature: args.llm_temperature,
         llm_max_tokens: args.llm_max_tokens,
+        llm_input_cost_per_million: None,
+        llm_output_cost_per_million: None,
         llm_actions_file: args.llm_actions_file.clone(),
         extract_output: args.extract_output.clone(),
     })
@@ -608,6 +555,8 @@ fn build_bench_cli_overrides(
         llm_timeout_ms: args.llm_timeout_ms,
         llm_temperature: args.llm_temperature,
         llm_max_tokens: args.llm_max_tokens,
+        llm_input_cost_per_million: args.llm_input_cost_per_million,
+        llm_output_cost_per_million: args.llm_output_cost_per_million,
         ..CliOverrides::default()
     })
 }

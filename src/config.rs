@@ -70,6 +70,8 @@ pub struct LlmConfig {
     pub timeout_ms: u64,
     pub temperature: f32,
     pub max_tokens: Option<u32>,
+    pub input_cost_per_million: Option<f64>,
+    pub output_cost_per_million: Option<f64>,
     pub actions_file: Option<PathBuf>,
 }
 
@@ -85,6 +87,8 @@ impl Default for LlmConfig {
             timeout_ms: 30_000,
             temperature: 0.0,
             max_tokens: Some(256),
+            input_cost_per_million: None,
+            output_cost_per_million: None,
             actions_file: None,
         }
     }
@@ -133,6 +137,8 @@ pub struct CliOverrides {
     pub llm_timeout_ms: Option<u64>,
     pub llm_temperature: Option<f32>,
     pub llm_max_tokens: Option<u32>,
+    pub llm_input_cost_per_million: Option<f64>,
+    pub llm_output_cost_per_million: Option<f64>,
     pub llm_actions_file: Option<PathBuf>,
     pub extract_output: Option<PathBuf>,
 }
@@ -320,6 +326,12 @@ impl FileConfig {
             if let Some(value) = llm.max_tokens {
                 config.llm.max_tokens = Some(value);
             }
+            if let Some(value) = llm.input_cost_per_million {
+                config.llm.input_cost_per_million = Some(value);
+            }
+            if let Some(value) = llm.output_cost_per_million {
+                config.llm.output_cost_per_million = Some(value);
+            }
             if let Some(path) = llm.actions_file.as_ref() {
                 config.llm.actions_file = Some(PathBuf::from(path));
             }
@@ -382,6 +394,8 @@ struct FileLlmConfig {
     timeout_ms: Option<u64>,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
+    input_cost_per_million: Option<f64>,
+    output_cost_per_million: Option<f64>,
     actions_file: Option<String>,
 }
 
@@ -469,6 +483,12 @@ impl EnvOverrides {
                 }
                 "MBUS_LLM_MAX_TOKENS" => {
                     overrides.llm_max_tokens = Some(parse_u32(&key, &value)?)
+                }
+                "MBUS_LLM_INPUT_COST_PER_MILLION" => {
+                    overrides.llm_input_cost_per_million = Some(parse_f64(&key, &value)?)
+                }
+                "MBUS_LLM_OUTPUT_COST_PER_MILLION" => {
+                    overrides.llm_output_cost_per_million = Some(parse_f64(&key, &value)?)
                 }
                 "MBUS_LLM_ACTIONS_FILE" => overrides.llm_actions_file = Some(PathBuf::from(value)),
                 "MBUS_EXTRACT_OUTPUT" => overrides.extract_output = Some(PathBuf::from(value)),
@@ -568,6 +588,12 @@ impl CliOverrides {
         if let Some(value) = self.llm_max_tokens {
             config.llm.max_tokens = Some(value);
         }
+        if let Some(value) = self.llm_input_cost_per_million {
+            config.llm.input_cost_per_million = Some(value);
+        }
+        if let Some(value) = self.llm_output_cost_per_million {
+            config.llm.output_cost_per_million = Some(value);
+        }
         if let Some(value) = self.llm_actions_file.as_ref() {
             config.llm.actions_file = Some(value.to_path_buf());
         }
@@ -639,6 +665,13 @@ fn parse_i64(name: &str, value: &str) -> Result<i64, ConfigError> {
 
 fn parse_f32(name: &str, value: &str) -> Result<f32, ConfigError> {
     value.parse::<f32>().map_err(|err| ConfigError::Env {
+        name: name.to_string(),
+        message: err.to_string(),
+    })
+}
+
+fn parse_f64(name: &str, value: &str) -> Result<f64, ConfigError> {
+    value.parse::<f64>().map_err(|err| ConfigError::Env {
         name: name.to_string(),
         message: err.to_string(),
     })
