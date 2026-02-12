@@ -191,6 +191,32 @@ pub fn estimate_cost(usage: &BenchTokenUsage, pricing: Option<BenchPricing>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::memory::{StepOutcomeLog, StepTimings, ValidationOutcome};
+    use crate::types::{Action, StepResult, TokenUsage};
+
+    fn step_with_usage(usage: Option<TokenUsage>) -> StepRecord {
+        StepRecord {
+            action: Action::Done {
+                summary: "ok".to_string(),
+            },
+            validation: ValidationOutcome::success(),
+            result: StepResult {
+                ok: true,
+                error: None,
+                new_state_hash: None,
+                scroll: None,
+                extract: None,
+            },
+            outcome: StepOutcomeLog::Done,
+            timings: StepTimings {
+                step_duration_ms: 0,
+                llm_duration_ms: 0,
+                apply_duration_ms: 0,
+                snapshot_duration_ms: 0,
+            },
+            llm_usage: usage,
+        }
+    }
 
     #[test]
     fn estimate_cost_uses_per_million_pricing() {
@@ -229,5 +255,151 @@ mod tests {
 
         assert_eq!(cost.error.as_deref(), Some("missing_pricing"));
         assert!(cost.total_cost_usd.is_none());
+    }
+
+    #[test]
+    fn estimate_cost_rejects_negative_pricing() {
+        let usage = BenchTokenUsage {
+            prompt_tokens: Some(1),
+            completion_tokens: Some(1),
+            total_tokens: Some(2),
+            error: None,
+        };
+        let pricing = BenchPricing {
+            input_cost_per_million: -0.1,
+            output_cost_per_million: 1.0,
+        };
+
+        let cost = estimate_cost(&usage, Some(pricing));
+
+        assert_eq!(cost.error.as_deref(), Some("invalid_pricing"));
+        assert!(cost.total_cost_usd.is_none());
+    }
+
+    #[test]
+    fn estimate_cost_reports_usage_error() {
+        let usage = BenchTokenUsage {
+            prompt_tokens: None,
+            completion_tokens: None,
+            total_tokens: None,
+            error: Some("missing_usage_for_1/2 calls".to_string()),
+        };
+        let pricing = BenchPricing {
+            input_cost_per_million: 1.0,
+            output_cost_per_million: 1.0,
+        };
+
+        let cost = estimate_cost(&usage, Some(pricing));
+
+        assert_eq!(
+            cost.error.as_deref(),
+            Some("usage_error: missing_usage_for_1/2 calls")
+        );
+        assert!(cost.total_cost_usd.is_none());
+    }
+
+    #[test]
+    fn estimate_cost_requires_prompt_tokens() {
+        let usage = BenchTokenUsage {
+            prompt_tokens: None,
+            completion_tokens: Some(10),
+            total_tokens: Some(10),
+            error: None,
+        };
+        let pricing = BenchPricing {
+            input_cost_per_million: 1.0,
+            output_cost_per_million: 1.0,
+        };
+
+        let cost = estimate_cost(&usage, Some(pricing));
+
+        assert_eq!(cost.error.as_deref(), Some("missing_prompt_tokens"));
+    }
+
+    #[test]
+    fn estimate_cost_requires_completion_tokens() {
+        let usage = BenchTokenUsage {
+            prompt_tokens: Some(10),
+            completion_tokens: None,
+            total_tokens: Some(10),
+            error: None,
+        };
+        let pricing = BenchPricing {
+            input_cost_per_million: 1.0,
+            output_cost_per_million: 1.0,
+        };
+
+        let cost = estimate_cost(&usage, Some(pricing));
+
+        assert_eq!(cost.error.as_deref(), Some("missing_completion_tokens"));
+    }
+
+    #[test]
+    fn estimate_cost_handles_zero_tokens() {
+        let usage = BenchTokenUsage {
+            prompt_tokens: Some(0),
+            completion_tokens: Some(0),
+            total_tokens: Some(0),
+            error: None,
+        };
+        let pricing = BenchPricing {
+            input_cost_per_million: 2.5,
+            output_cost_per_million: 7.5,
+        };
+
+        let cost = estimate_cost(&usage, Some(pricing));
+
+        assert!(cost.error.is_none());
+        assert_eq!(cost.input_cost_usd, Some(0.0));
+        assert_eq!(cost.output_cost_usd, Some(0.0));
+        assert_eq!(cost.total_cost_usd, Some(0.0));
+    }
+
+    #[test]
+    fn aggregate_usage_from_steps_flags_missing_usage_for_openai() {
+        let steps = vec![step_with_usage(None)];
+
+        let usage = aggregate_usage_from_steps(&steps, &LlmMode::OpenAi);
+
+        assert_eq!(
+            usage.error.as_deref(),
+            Some("missing_usage_for_1/1 calls")
+        );
+        assert!(usage.total_tokens.is_none());
+    }
+
+    #[test]
+    fn aggregate_usage_from_steps_flags_missing_usage_for_scripted() {
+        let steps = vec![step_with_usage(None)];
+
+        let usage = aggregate_usage_from_steps(&steps, &LlmMode::Scripted);
+
+        assert_eq!(
+            usage.error.as_deref(),
+            Some("usage_unavailable_for_scripted_mode (missing 1/1 calls)")
+        );
+    }
+
+    #[test]
+    fn aggregate_usage_from_steps_sums_tokens() {
+        let steps = vec![
+            step_with_usage(Some(TokenUsage {
+                prompt_tokens: Some(10),
+                completion_tokens: Some(5),
+                total_tokens: Some(15),
+            })),
+            step_with_usage(Some(TokenUsage {
+                prompt_tokens: Some(7),
+                completion_tokens: Some(3),
+                total_tokens: Some(10),
+            })),
+        ];
+
+        let usage = aggregate_usage_from_steps(&steps, &LlmMode::OpenAi);
+
+        assert!(usage.error.is_none());
+        assert_eq!(usage.prompt_tokens, Some(17));
+        assert_eq!(usage.completion_tokens, Some(8));
+        assert_eq!(usage.total_tokens, Some(25));
     }
 }

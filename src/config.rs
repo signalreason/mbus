@@ -741,6 +741,28 @@ mod tests {
     }
 
     #[test]
+    fn parses_llm_mode_with_case_and_whitespace() {
+        assert_eq!(
+            LlmMode::from_str(" OpenAI ").expect("parse openai"),
+            LlmMode::OpenAi
+        );
+        assert_eq!(
+            LlmMode::from_str("SCRIPTED").expect("parse scripted"),
+            LlmMode::Scripted
+        );
+        assert_eq!(
+            LlmMode::from_str("stub").expect("parse stub"),
+            LlmMode::Stub
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_llm_mode() {
+        let err = LlmMode::from_str("gptz").expect_err("expected error");
+        assert_eq!(err.to_string(), "unknown llm mode 'gptz'");
+    }
+
+    #[test]
     fn file_config_updates_router() {
         let mut config = AppConfig::default();
         let file = FileConfig {

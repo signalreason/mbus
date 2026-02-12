@@ -85,3 +85,4 @@
 - 2026-02-12 BENCH-003 token usage capture: `notes/2026-02-12-bench-003-token-usage.md`
 - 2026-02-12 BENCH-004 aggregate usage + cost: `notes/2026-02-12-bench-004-aggregate-cost.md`
 - 2026-02-12 BENCH-005 benchmark report schema: `notes/2026-02-12-bench-005-report-schema.md`
+- 2026-02-12 BENCH-006 benchmark tests: `notes/2026-02-12-bench-006-tests.md`

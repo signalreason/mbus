@@ -1108,10 +1108,16 @@
         "Integration coverage exists for scripted mode and mocked openai usage path"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260212T001211Z-78463 completed",
+        "last_run_id": "20260212T001211Z-78463",
+        "last_update_utc": "2026-02-12T00:17:23Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Test pure config and aggregation modules independently from live provider calls."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M3-BENCH-006",
       "title": "Add benchmark tests for mode parsing and token-cost aggregation"
     },
