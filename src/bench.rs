@@ -67,8 +67,18 @@ pub struct BenchTaskResult {
     pub status: BenchObservedStatus,
     pub steps: usize,
     pub duration_ms: u64,
+    pub usage: BenchTokenUsage,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BenchTokenUsage {
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -183,6 +193,7 @@ pub fn evaluate_task(
     final_visible_text: Option<&str>,
     max_steps_per_task: usize,
     run_error: Option<&str>,
+    usage: BenchTokenUsage,
 ) -> BenchTaskResult {
     let mut passed = true;
     let mut failure_reason = None;
@@ -238,6 +249,7 @@ pub fn evaluate_task(
         status,
         steps,
         duration_ms: 0,
+        usage,
         failure_reason,
     }
 }
@@ -564,6 +576,12 @@ mod tests {
             Some("BENCH TASK 01 READY"),
             2,
             None,
+            BenchTokenUsage {
+                prompt_tokens: None,
+                completion_tokens: None,
+                total_tokens: None,
+                error: Some("missing_usage".to_string()),
+            },
         );
         assert!(!result.passed);
         assert!(result
@@ -581,6 +599,12 @@ mod tests {
             status: BenchObservedStatus::Done,
             steps: 2,
             duration_ms: 1,
+            usage: BenchTokenUsage {
+                prompt_tokens: Some(10),
+                completion_tokens: Some(5),
+                total_tokens: Some(15),
+                error: None,
+            },
             failure_reason: None,
         };
         let failed = BenchTaskResult {
@@ -589,6 +613,12 @@ mod tests {
             status: BenchObservedStatus::Error,
             steps: 1,
             duration_ms: 1,
+            usage: BenchTokenUsage {
+                prompt_tokens: None,
+                completion_tokens: None,
+                total_tokens: None,
+                error: Some("missing_usage".to_string()),
+            },
             failure_reason: Some("run_error: boom".to_string()),
         };
         let gate = evaluate_gate(&[passed.clone(), failed.clone()], 1);

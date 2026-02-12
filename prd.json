@@ -1051,10 +1051,16 @@
         "Missing usage data is handled with explicit null or error fields"
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260211T235325Z-78463 completed",
+        "last_run_id": "20260211T235325Z-78463",
+        "last_update_utc": "2026-02-12T00:02:24Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Capture provider usage metadata at LLM call boundaries and aggregate by task."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M3-BENCH-003",
       "title": "Collect per-task token usage from openai benchmark runs"
     },

@@ -1,7 +1,7 @@
 use mbus::agent::policy::AgentPolicy;
 use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
 use mbus::browser::{Browser, CdpBrowser, CdpConfig};
-use mbus::llm::client::{LlmClient, LlmError};
+use mbus::llm::client::{LlmClient, LlmError, LlmResponse};
 use mbus::types::{Action, ElementRef, Observation};
 use mbus::verify::{Validator, ValidatorConfig};
 use async_trait::async_trait;
@@ -211,7 +211,7 @@ impl LlmClient for HarnessLlm {
         observation: &Observation,
         _observations: &VecDeque<Observation>,
         _history: &[Action],
-    ) -> Result<Action, LlmError> {
+    ) -> Result<LlmResponse, LlmError> {
         let mut guard = self.step.lock().await;
         let action = match (self.mode, *guard) {
             (HarnessMode::Click, 0) => {
@@ -235,7 +235,10 @@ impl LlmClient for HarnessLlm {
             },
         };
         *guard += 1;
-        Ok(action)
+        Ok(LlmResponse {
+            action,
+            usage: None,
+        })
     }
 }
 

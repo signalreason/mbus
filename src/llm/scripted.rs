@@ -1,4 +1,4 @@
-use crate::llm::client::{LlmClient, LlmError, LlmResult};
+use crate::llm::client::{LlmClient, LlmError, LlmResponse, LlmResult};
 use crate::telemetry;
 use crate::types::Action;
 use async_trait::async_trait;
@@ -30,14 +30,17 @@ impl LlmClient for StubLlm {
         _observation: &crate::types::Observation,
         _observations: &VecDeque<crate::types::Observation>,
         _history: &[Action],
-    ) -> LlmResult<Action> {
+    ) -> LlmResult<LlmResponse> {
         telemetry::inc_llm_call();
         let start = Instant::now();
         let action = Action::Done {
             summary: self.summary.clone(),
         };
         telemetry::record_llm_duration(start.elapsed());
-        Ok(action)
+        Ok(LlmResponse {
+            action,
+            usage: None,
+        })
     }
 }
 
@@ -72,7 +75,7 @@ impl LlmClient for ScriptedLlm {
         _observation: &crate::types::Observation,
         _observations: &VecDeque<crate::types::Observation>,
         _history: &[Action],
-    ) -> LlmResult<Action> {
+    ) -> LlmResult<LlmResponse> {
         telemetry::inc_llm_call();
         let start = Instant::now();
         let mut guard = self.actions.lock().await;
@@ -84,7 +87,10 @@ impl LlmClient for ScriptedLlm {
             }
         };
         telemetry::record_llm_duration(start.elapsed());
-        Ok(action)
+        Ok(LlmResponse {
+            action,
+            usage: None,
+        })
     }
 }
 

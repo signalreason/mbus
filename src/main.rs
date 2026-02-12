@@ -1,7 +1,8 @@
 use clap::{Args, Parser, Subcommand};
 use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
 use mbus::bench::{
-    BenchObservedStatus, BenchReport, BenchServer, BenchTaskResult, actions_file_path,
+    BenchObservedStatus, BenchReport, BenchServer, BenchTaskResult, BenchTokenUsage,
+    actions_file_path,
     actions_work_dir, bench_task_limit, build_summary, evaluate_gate, evaluate_task,
     failure_buckets, join_base_url, load_tasks, now_timestamp, render_actions,
     report_path_default, sleep_between_tasks, tasks_dir_default, write_actions_file,
@@ -256,8 +257,8 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
 }
 
 async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
-    let tasks_dir = args.tasks_dir.unwrap_or_else(tasks_dir_default);
-    let report_path = args.report_path.unwrap_or_else(report_path_default);
+    let tasks_dir = args.tasks_dir.clone().unwrap_or_else(tasks_dir_default);
+    let report_path = args.report_path.clone().unwrap_or_else(report_path_default);
     let max_steps_per_task = args.max_steps_per_task.unwrap_or(40);
 
     let tasks = load_tasks(&tasks_dir).map_err(|err| format!("bench tasks: {err}"))?;
@@ -317,6 +318,10 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
         }
 
         let run = execute_agent(&task.task, task.plan.as_deref(), &task_config).await;
+        let usage = match &run {
+            Ok(execution) => aggregate_bench_usage(&execution.steps, &bench_llm_mode),
+            Err(_) => aggregate_bench_usage(&[], &bench_llm_mode),
+        };
         let elapsed = started_at.elapsed().as_millis() as u64;
         let task_result = match run {
             Ok(execution) => match execution.result {
@@ -334,6 +339,7 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
                         Some(&result.final_observation.visible_text),
                         step_limit,
                         None,
+                        usage,
                     );
                     evaluated.duration_ms = elapsed;
                     evaluated
@@ -347,6 +353,7 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
                         None,
                         step_limit,
                         Some(&err.to_string()),
+                        usage,
                     );
                     evaluated.duration_ms = elapsed;
                     evaluated
@@ -361,6 +368,7 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
                     None,
                     step_limit,
                     Some(&err.to_string()),
+                    usage,
                 );
                 evaluated.duration_ms = elapsed;
                 evaluated
@@ -409,6 +417,72 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn aggregate_bench_usage(
+    steps: &[mbus::agent::memory::StepRecord],
+    mode: &LlmMode,
+) -> BenchTokenUsage {
+    if steps.is_empty() {
+        return BenchTokenUsage {
+            prompt_tokens: None,
+            completion_tokens: None,
+            total_tokens: None,
+            error: Some("no_llm_calls".to_string()),
+        };
+    }
+
+    let mut prompt_total: u64 = 0;
+    let mut completion_total: u64 = 0;
+    let mut total_total: u64 = 0;
+    let mut missing_calls: usize = 0;
+    for step in steps {
+        match step.llm_usage.as_ref() {
+            Some(usage) => match (
+                usage.prompt_tokens,
+                usage.completion_tokens,
+                usage.total_tokens,
+            ) {
+                (Some(prompt), Some(completion), Some(total)) => {
+                    prompt_total = prompt_total.saturating_add(prompt);
+                    completion_total = completion_total.saturating_add(completion);
+                    total_total = total_total.saturating_add(total);
+                }
+                _ => missing_calls = missing_calls.saturating_add(1),
+            },
+            None => missing_calls = missing_calls.saturating_add(1),
+        }
+    }
+
+    if missing_calls > 0 {
+        let error = match mode {
+            LlmMode::Scripted => format!(
+                "usage_unavailable_for_scripted_mode (missing {missing_calls}/{total} calls)",
+                total = steps.len()
+            ),
+            LlmMode::OpenAi => format!(
+                "missing_usage_for_{missing_calls}/{total} calls",
+                total = steps.len()
+            ),
+            LlmMode::Stub => format!(
+                "usage_unavailable_for_stub_mode (missing {missing_calls}/{total} calls)",
+                total = steps.len()
+            ),
+        };
+        return BenchTokenUsage {
+            prompt_tokens: None,
+            completion_tokens: None,
+            total_tokens: None,
+            error: Some(error),
+        };
+    }
+
+    BenchTokenUsage {
+        prompt_tokens: Some(prompt_total),
+        completion_tokens: Some(completion_total),
+        total_tokens: Some(total_total),
+        error: None,
+    }
 }
 
 fn resolve_config_path(cli_path: Option<&Path>) -> Option<PathBuf> {
@@ -958,6 +1032,7 @@ struct BenchTaskLog {
     status: BenchObservedStatus,
     steps: usize,
     duration_ms: u64,
+    usage: BenchTokenUsage,
     #[serde(skip_serializing_if = "Option::is_none")]
     failure_reason: Option<String>,
 }
@@ -971,6 +1046,7 @@ impl From<&BenchTaskResult> for BenchTaskLog {
             status: value.status,
             steps: value.steps,
             duration_ms: value.duration_ms,
+            usage: value.usage.clone(),
             failure_reason: value.failure_reason.clone(),
         }
     }

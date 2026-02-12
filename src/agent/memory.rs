@@ -1,4 +1,4 @@
-use crate::types::{Action, Observation, StepResult};
+use crate::types::{Action, Observation, StepResult, TokenUsage};
 use crate::verify::rules::ValidationError;
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -63,6 +63,8 @@ pub struct StepRecord {
     pub result: StepResult,
     pub outcome: StepOutcomeLog,
     pub timings: StepTimings,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_usage: Option<TokenUsage>,
 }
 
 #[derive(Clone, Debug)]

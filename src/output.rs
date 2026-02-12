@@ -286,6 +286,7 @@ mod tests {
             },
             outcome: StepOutcomeLog::Progress,
             timings: timings(),
+            llm_usage: None,
         }];
 
         let output = build_extract_output("task", "task_1", "now", &steps);
@@ -313,6 +314,7 @@ mod tests {
             },
             outcome: StepOutcomeLog::Progress,
             timings: timings(),
+            llm_usage: None,
         }];
 
         let output = build_extract_output("task", "task_1", "now", &steps).expect("output");

@@ -1,4 +1,4 @@
-use crate::types::{Action, Observation};
+use crate::types::{Action, Observation, TokenUsage};
 use async_trait::async_trait;
 use std::collections::VecDeque;
 use std::fmt;
@@ -28,6 +28,12 @@ impl fmt::Display for LlmError {
 
 impl std::error::Error for LlmError {}
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct LlmResponse {
+    pub action: Action,
+    pub usage: Option<TokenUsage>,
+}
+
 #[async_trait]
 pub trait LlmClient: Send + Sync {
     async fn propose_action(
@@ -37,5 +43,5 @@ pub trait LlmClient: Send + Sync {
         observation: &Observation,
         observations: &VecDeque<Observation>,
         history: &[Action],
-    ) -> LlmResult<Action>;
+    ) -> LlmResult<LlmResponse>;
 }

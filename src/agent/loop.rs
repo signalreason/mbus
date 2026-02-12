@@ -215,7 +215,7 @@ impl<B: Browser> AgentLoop<B> {
                     step_index = step_number,
                     tier = ?tier
                 );
-                let action = match client
+                let llm_response = match client
                     .propose_action(
                         &self.task,
                         self.memory.plan(),
@@ -226,7 +226,7 @@ impl<B: Browser> AgentLoop<B> {
                     .instrument(llm_span)
                     .await
                 {
-                    Ok(action) => action,
+                    Ok(response) => response,
                     Err(err) => {
                         let duration = step_start.elapsed();
                         telemetry::record_step_duration(duration);
@@ -242,6 +242,8 @@ impl<B: Browser> AgentLoop<B> {
                     }
                 };
                 let llm_duration = llm_start.elapsed();
+                let action = llm_response.action;
+                let llm_usage = llm_response.usage;
 
                 telemetry::inc_action(&action);
                 tracing::info!(
@@ -276,6 +278,7 @@ impl<B: Browser> AgentLoop<B> {
                             apply_duration_ms: 0,
                             snapshot_duration_ms: 0,
                         },
+                        llm_usage,
                     });
                     let tier_after = self.router.record(StepOutcome::Failure);
                     telemetry::set_no_progress_streak(self.router.counters().no_progress);
@@ -305,6 +308,7 @@ impl<B: Browser> AgentLoop<B> {
                             apply_duration_ms: 0,
                             snapshot_duration_ms: 0,
                         },
+                        llm_usage,
                     });
                     telemetry::record_step_duration(duration);
                     tracing::info!(
@@ -393,6 +397,7 @@ impl<B: Browser> AgentLoop<B> {
                         apply_duration_ms: duration_ms(apply_duration),
                         snapshot_duration_ms: duration_ms(snapshot_duration),
                     },
+                    llm_usage,
                 });
                 self.memory.update_last_step_state_hash(new_hash);
 
@@ -514,6 +519,7 @@ fn duration_ms(duration: Duration) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm::client::LlmResponse;
     use crate::browser::BrowserResult;
     use crate::types::{ElementFlags, ElementRef};
     use async_trait::async_trait;
@@ -588,11 +594,15 @@ mod tests {
             _observation: &Observation,
             _observations: &VecDeque<Observation>,
             _history: &[Action],
-        ) -> Result<Action, LlmError> {
+        ) -> Result<LlmResponse, LlmError> {
             let mut guard = self.actions.lock().await;
-            guard
+            let action = guard
                 .pop_front()
-                .ok_or_else(|| LlmError::new("no_action", "no action queued"))
+                .ok_or_else(|| LlmError::new("no_action", "no action queued"))?;
+            Ok(LlmResponse {
+                action,
+                usage: None,
+            })
         }
     }
 
@@ -713,15 +723,19 @@ mod tests {
                 },
             ],
         );
-        let llm = ScriptedLlm::new(vec![
+        let actions = vec![
             Action::Click {
                 id: "el_1".to_string(),
             },
             Action::Click {
                 id: "el_1".to_string(),
             },
-        ]);
-        let clients = LlmClients::new(Box::new(llm), Box::new(ScriptedLlm::new(vec![])), Box::new(ScriptedLlm::new(vec![])));
+        ];
+        let clients = LlmClients::new(
+            Box::new(ScriptedLlm::new(actions.clone())),
+            Box::new(ScriptedLlm::new(actions.clone())),
+            Box::new(ScriptedLlm::new(actions)),
+        );
         let mut agent = AgentLoop::new(browser, clients, "task")
             .with_policy(AgentPolicy {
                 max_steps: 2,
@@ -765,18 +779,18 @@ mod tests {
                 },
             ],
         );
-        let llm = ScriptedLlm::new(vec![
+        let actions = vec![
             Action::Click {
                 id: "el_1".to_string(),
             },
             Action::Click {
                 id: "el_1".to_string(),
             },
-        ]);
+        ];
         let clients = LlmClients::new(
-            Box::new(llm),
-            Box::new(ScriptedLlm::new(vec![])),
-            Box::new(ScriptedLlm::new(vec![])),
+            Box::new(ScriptedLlm::new(actions.clone())),
+            Box::new(ScriptedLlm::new(actions.clone())),
+            Box::new(ScriptedLlm::new(actions)),
         );
         let mut agent = AgentLoop::new(browser, clients, "task").with_policy(AgentPolicy {
             max_steps: 5,

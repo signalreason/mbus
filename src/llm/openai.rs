@@ -1,9 +1,9 @@
-use crate::llm::client::{LlmClient, LlmError, LlmResult};
+use crate::llm::client::{LlmClient, LlmError, LlmResponse, LlmResult};
 use crate::llm::prompts::SYSTEM_PROMPT;
 use crate::llm::repair::repair_action;
 use crate::llm::schema::ActionSchema;
 use crate::telemetry;
-use crate::types::{Action, Observation};
+use crate::types::{Action, Observation, TokenUsage};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
@@ -177,7 +177,7 @@ impl LlmClient for OpenAiClient {
         observation: &Observation,
         observations: &std::collections::VecDeque<Observation>,
         history: &[Action],
-    ) -> LlmResult<Action> {
+    ) -> LlmResult<LlmResponse> {
         telemetry::inc_llm_call();
         let start = Instant::now();
         let span = tracing::info_span!("llm_call", model = %self.config.model);
@@ -227,7 +227,13 @@ impl LlmClient for OpenAiClient {
                 .and_then(|choice| choice.message.content.as_ref())
                 .ok_or_else(|| LlmError::new("empty_response", "missing content"))?;
             let content_text = extract_content(content)?;
-            self.parse_content(&content_text)
+            let action = self.parse_content(&content_text)?;
+            let usage = payload.usage.map(|usage| TokenUsage {
+                prompt_tokens: usage.prompt_tokens,
+                completion_tokens: usage.completion_tokens,
+                total_tokens: usage.total_tokens,
+            });
+            Ok(LlmResponse { action, usage })
         }
         .instrument(span)
         .await;
@@ -248,6 +254,7 @@ impl LlmClient for OpenAiClient {
 #[derive(Debug, Deserialize)]
 struct ChatResponse {
     choices: Vec<Choice>,
+    usage: Option<Usage>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -258,6 +265,13 @@ struct Choice {
 #[derive(Debug, Deserialize)]
 struct Message {
     content: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Usage {
+    prompt_tokens: Option<u64>,
+    completion_tokens: Option<u64>,
+    total_tokens: Option<u64>,
 }
 
 fn map_reqwest_error(err: reqwest::Error) -> LlmError {
