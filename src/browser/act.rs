@@ -9,11 +9,13 @@ use chromiumoxide_cdp::cdp::browser_protocol::dom::{
 use chromiumoxide_cdp::cdp::browser_protocol::input::{
     DispatchKeyEventParams, DispatchKeyEventType,
 };
-use chromiumoxide_cdp::cdp::js_protocol::runtime::{CallArgument, CallFunctionOnParams, RemoteObject};
+use chromiumoxide_cdp::cdp::js_protocol::runtime::{
+    CallArgument, CallFunctionOnParams, RemoteObject,
+};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 #[derive(Clone, Debug)]
 pub struct ActionApplier {
@@ -208,7 +210,9 @@ async fn scroll_by(
             format!("scroll out of bounds: dx={dx}, dy={dy}, max={max_scroll}"),
         ));
     }
-    let script = format!("() => {{ window.scrollBy({dx}, {dy}); return [window.scrollX, window.scrollY]; }}");
+    let script = format!(
+        "() => {{ window.scrollBy({dx}, {dy}); return [window.scrollX, window.scrollY]; }}"
+    );
     let result = page.evaluate(script).await?;
     let value = result
         .into_value()
@@ -370,11 +374,10 @@ async fn call_function_on_node(
         )
         .await
         .map_err(|err| map_cdp_error(err, "resolve_node"))?;
-    let object_id = resolved
-        .result
-        .object
-        .object_id
-        .ok_or_else(|| ActionError::new("missing_object_id", "resolve node returned no object"))?;
+    let object_id =
+        resolved.result.object.object_id.ok_or_else(|| {
+            ActionError::new("missing_object_id", "resolve node returned no object")
+        })?;
 
     let mut builder = CallFunctionOnParams::builder()
         .function_declaration(function_declaration)
@@ -477,8 +480,8 @@ async fn extract_by_id(
 }
 
 async fn extract_from_page(page: &Page, query: &str) -> Result<String, ActionError> {
-    let query_literal =
-        serde_json::to_string(query).map_err(|err| ActionError::new("js_error", err.to_string()))?;
+    let query_literal = serde_json::to_string(query)
+        .map_err(|err| ActionError::new("js_error", err.to_string()))?;
     let script = format!("({})({})", extract_function(), query_literal);
     let result = page.evaluate(script).await?;
     let value = result
@@ -541,7 +544,10 @@ fn extract_function() -> &'static str {
     "#
 }
 
-async fn focus_backend_node(page: &Page, backend_node_id: BackendNodeId) -> Result<(), ActionError> {
+async fn focus_backend_node(
+    page: &Page,
+    backend_node_id: BackendNodeId,
+) -> Result<(), ActionError> {
     let params = FocusParams::builder()
         .backend_node_id(backend_node_id)
         .build();
@@ -575,12 +581,12 @@ fn quad_center(quad: &[f64]) -> Option<(f64, f64)> {
     }
     let xs = [quad[0], quad[2], quad[4], quad[6]];
     let ys = [quad[1], quad[3], quad[5], quad[7]];
-    let (min_x, max_x) = xs.iter().fold((xs[0], xs[0]), |acc, x| {
-        (acc.0.min(*x), acc.1.max(*x))
-    });
-    let (min_y, max_y) = ys.iter().fold((ys[0], ys[0]), |acc, y| {
-        (acc.0.min(*y), acc.1.max(*y))
-    });
+    let (min_x, max_x) = xs
+        .iter()
+        .fold((xs[0], xs[0]), |acc, x| (acc.0.min(*x), acc.1.max(*x)));
+    let (min_y, max_y) = ys
+        .iter()
+        .fold((ys[0], ys[0]), |acc, y| (acc.0.min(*y), acc.1.max(*y)));
     Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
 }
 
@@ -640,8 +646,8 @@ async fn press_key(page: &Page, key: &str) -> Result<(), ActionError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use serde_json::json;
+    use std::collections::HashMap;
 
     #[test]
     fn parse_backend_node_id_accepts_el_prefix() {
@@ -667,8 +673,7 @@ mod tests {
     fn resolve_backend_node_id_prefers_map() {
         let mut map = HashMap::new();
         map.insert("el_deadbeef_1".to_string(), BackendNodeId::new(7));
-        let resolved =
-            resolve_backend_node_id("el_deadbeef_1", Some(&map)).expect("resolve id");
+        let resolved = resolve_backend_node_id("el_deadbeef_1", Some(&map)).expect("resolve id");
         assert_eq!(*resolved.inner(), 7);
     }
 

@@ -113,6 +113,7 @@ async fn visible_text(page: &Page, max_len: usize) -> BrowserResult<String> {
             const MAX_INTERACTIVE = 40;
             const MAX_NEARBY = 20;
             const MAX_HEADINGS = 12;
+            const MAX_STATUS = 8;
             const MAX_CHUNK = 160;
             const INTERACTIVE_SELECTOR = [
                 "button",
@@ -136,6 +137,12 @@ async fn visible_text(page: &Page, max_len: usize) -> BrowserResult<String> {
                 "[role='spinbutton']",
                 "[contenteditable='true']",
                 "[tabindex]"
+            ].join(",");
+            const STATUS_SELECTOR = [
+                "[role='status']",
+                "[role='alert']",
+                "[role='log']",
+                "[aria-live]"
             ].join(",");
 
             const disallowedTags = new Set([
@@ -309,6 +316,13 @@ async fn visible_text(page: &Page, max_len: usize) -> BrowserResult<String> {
                 }
             }
 
+            const statusNodes = Array.from(document.querySelectorAll(STATUS_SELECTOR))
+                .filter(isVisible);
+            for (const el of statusNodes.slice(0, MAX_STATUS)) {
+                const text = normalize(textFromNode(el));
+                if (text) addChunk(text);
+            }
+
             const headings = Array.from(document.querySelectorAll("h1,h2,h3,legend"))
                 .filter(isVisible);
             for (const el of headings.slice(0, MAX_HEADINGS)) {
@@ -373,7 +387,8 @@ async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<Collecte
             Err(_) => flags.bbox_missing = Some(true),
         }
 
-        let signature = stable_signature(&role, &name, node.node_id.inner(), node.frame_id.as_ref());
+        let signature =
+            stable_signature(&role, &name, node.node_id.inner(), node.frame_id.as_ref());
 
         out.push(ActionableElement {
             backend_id,
@@ -406,14 +421,15 @@ async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<Collecte
         });
     }
 
-    Ok(CollectedElements { elements, element_map })
+    Ok(CollectedElements {
+        elements,
+        element_map,
+    })
 }
 
 async fn fetch_ax_nodes(page: &Page) -> BrowserResult<Vec<AxNode>> {
     page.execute(EnableParams::default()).await?;
-    let response = page
-        .execute(GetFullAxTreeParams::builder().build())
-        .await?;
+    let response = page.execute(GetFullAxTreeParams::builder().build()).await?;
     Ok(response.result.nodes)
 }
 
@@ -511,12 +527,12 @@ fn quad_bbox(quad: &[f64]) -> Option<[f64; 4]> {
     }
     let xs = [quad[0], quad[2], quad[4], quad[6]];
     let ys = [quad[1], quad[3], quad[5], quad[7]];
-    let (min_x, max_x) = xs.iter().fold((xs[0], xs[0]), |acc, x| {
-        (acc.0.min(*x), acc.1.max(*x))
-    });
-    let (min_y, max_y) = ys.iter().fold((ys[0], ys[0]), |acc, y| {
-        (acc.0.min(*y), acc.1.max(*y))
-    });
+    let (min_x, max_x) = xs
+        .iter()
+        .fold((xs[0], xs[0]), |acc, x| (acc.0.min(*x), acc.1.max(*x)));
+    let (min_y, max_y) = ys
+        .iter()
+        .fold((ys[0], ys[0]), |acc, y| (acc.0.min(*y), acc.1.max(*y)));
     Some([min_x, min_y, max_x - min_x, max_y - min_y])
 }
 
@@ -529,7 +545,11 @@ fn stable_signature(
     let mut parts = Vec::new();
     parts.push("ax".to_string());
     parts.push(role.trim().to_lowercase());
-    if let Some(name) = name.as_ref().map(|value| value.trim()).filter(|v| !v.is_empty()) {
+    if let Some(name) = name
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|v| !v.is_empty())
+    {
         parts.push(name.to_string());
     }
     if let Some(frame_id) = frame_id {
@@ -552,10 +572,8 @@ fn compute_state_hash(url: &str, title: &str, elements: &[ElementRef]) -> String
     signature.push_str("title=");
     signature.push_str(&normalize_text(title));
 
-    let mut element_signatures: Vec<String> = elements
-        .iter()
-        .map(element_signature_for_hash)
-        .collect();
+    let mut element_signatures: Vec<String> =
+        elements.iter().map(element_signature_for_hash).collect();
     element_signatures.sort();
 
     for element_signature in element_signatures.into_iter().take(TOP_ELEMENTS) {
@@ -755,7 +773,11 @@ mod tests {
             bbox: [0.0, 0.0, 10.0, 10.0],
             flags: ElementFlags::default(),
         };
-        let hash_a = compute_state_hash("https://a.example", "Title", &[element_a.clone(), element_b.clone()]);
+        let hash_a = compute_state_hash(
+            "https://a.example",
+            "Title",
+            &[element_a.clone(), element_b.clone()],
+        );
         let hash_b = compute_state_hash("https://a.example", "Title", &[element_b, element_a]);
         assert_eq!(hash_a, hash_b);
     }

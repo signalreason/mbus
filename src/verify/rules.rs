@@ -62,8 +62,11 @@ impl Validator {
         action: &Action,
         observation: &Observation,
     ) -> Result<(), Vec<ValidationError>> {
-        let element_ids: HashSet<&str> =
-            observation.elements.iter().map(|el| el.id.as_str()).collect();
+        let element_ids: HashSet<&str> = observation
+            .elements
+            .iter()
+            .map(|el| el.id.as_str())
+            .collect();
         let mut errors = Vec::new();
 
         match action {
@@ -79,8 +82,7 @@ impl Validator {
                         Some("text"),
                         format!(
                             "text length {} exceeds max {}",
-                            length,
-                            self.config.max_text_len
+                            length, self.config.max_text_len
                         ),
                     ));
                 }
@@ -90,14 +92,13 @@ impl Validator {
             }
             Action::Scroll { dx, dy } => {
                 let limit = self.config.max_scroll;
-                if exceeds_symmetric_limit_i64(*dx, limit) || exceeds_symmetric_limit_i64(*dy, limit)
+                if exceeds_symmetric_limit_i64(*dx, limit)
+                    || exceeds_symmetric_limit_i64(*dy, limit)
                 {
                     errors.push(ValidationError::new(
                         "scroll_out_of_bounds",
                         Some("scroll"),
-                        format!(
-                            "scroll out of bounds: dx={dx}, dy={dy}, max={limit}"
-                        ),
+                        format!("scroll out of bounds: dx={dx}, dy={dy}, max={limit}"),
                     ));
                 }
             }
@@ -106,25 +107,18 @@ impl Validator {
                     errors.push(ValidationError::new(
                         "wait_too_long",
                         Some("ms"),
-                        format!(
-                            "wait {ms}ms exceeds max {}ms",
-                            self.config.max_wait_ms
-                        ),
+                        format!("wait {ms}ms exceeds max {}ms", self.config.max_wait_ms),
                     ));
                 }
             }
-            Action::Navigate { url } => {
-                match parse_navigate_url(url) {
-                    Ok(parsed) => {
-                        if let Some(error) =
-                            evaluate_url_policy(&parsed, self.config.allow_insecure)
-                        {
-                            errors.push(error);
-                        }
+            Action::Navigate { url } => match parse_navigate_url(url) {
+                Ok(parsed) => {
+                    if let Some(error) = evaluate_url_policy(&parsed, self.config.allow_insecure) {
+                        errors.push(error);
                     }
-                    Err(error) => errors.push(error),
                 }
-            }
+                Err(error) => errors.push(error),
+            },
             Action::Back => {}
             Action::Extract { id, .. } => {
                 if let Some(id) = id.as_ref() {
@@ -265,7 +259,9 @@ mod tests {
             text: "a".repeat(validator.config.max_text_len + 1),
             submit: None,
         };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         assert_eq!(errors[0].code, "text_too_long");
     }
 
@@ -274,7 +270,9 @@ mod tests {
         let validator = Validator::default();
         let obs = sample_observation();
         let action = Action::Click { id: "".to_string() };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         assert_eq!(errors[0].code, "missing_id");
     }
 
@@ -285,7 +283,9 @@ mod tests {
         let action = Action::Click {
             id: "el_9".to_string(),
         };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         assert_eq!(errors[0].code, "unknown_id");
     }
 
@@ -308,7 +308,9 @@ mod tests {
             id: "el_9".to_string(),
             value: "choice".to_string(),
         };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         assert_eq!(errors[0].code, "unknown_id");
     }
 
@@ -321,7 +323,9 @@ mod tests {
             text: "a".repeat(2001),
             submit: None,
         };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         let codes: Vec<&str> = errors.iter().map(|error| error.code.as_str()).collect();
         assert_eq!(codes, vec!["missing_id", "text_too_long"]);
     }
@@ -331,7 +335,9 @@ mod tests {
         let validator = Validator::default();
         let obs = sample_observation();
         let action = Action::Scroll { dx: 0, dy: 2501 };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         assert_eq!(errors[0].code, "scroll_out_of_bounds");
     }
 
@@ -339,7 +345,10 @@ mod tests {
     fn validates_scroll_within_bounds() {
         let validator = Validator::default();
         let obs = sample_observation();
-        let action = Action::Scroll { dx: -2000, dy: 2000 };
+        let action = Action::Scroll {
+            dx: -2000,
+            dy: 2000,
+        };
         assert!(validator.validate(&action, &obs).is_ok());
     }
 
@@ -362,7 +371,9 @@ mod tests {
         });
         let obs = sample_observation();
         let action = Action::Scroll { dx: -501, dy: 0 };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         assert_eq!(errors[0].code, "scroll_out_of_bounds");
     }
 
@@ -371,7 +382,9 @@ mod tests {
         let validator = Validator::default();
         let obs = sample_observation();
         let action = Action::Wait { ms: 40_000 };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         assert_eq!(errors[0].code, "wait_too_long");
     }
 
@@ -402,7 +415,9 @@ mod tests {
         });
         let obs = sample_observation();
         let action = Action::Wait { ms: 751 };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         assert_eq!(errors[0].code, "wait_too_long");
     }
 
@@ -413,7 +428,9 @@ mod tests {
         let action = Action::Navigate {
             url: "  ".to_string(),
         };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         assert_eq!(errors[0].code, "missing_url");
     }
 
@@ -424,7 +441,9 @@ mod tests {
         let action = Action::Navigate {
             url: "file:///tmp/test.html".to_string(),
         };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         assert_eq!(errors[0].code, "insecure_url");
     }
 
@@ -435,7 +454,9 @@ mod tests {
         let action = Action::Navigate {
             url: "http://exa mple.com".to_string(),
         };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         assert_eq!(errors[0].code, "invalid_url");
     }
 
@@ -501,7 +522,9 @@ mod tests {
             query: "price".to_string(),
             id: Some("el_9".to_string()),
         };
-        let errors = validator.validate(&action, &obs).expect_err("expected errors");
+        let errors = validator
+            .validate(&action, &obs)
+            .expect_err("expected errors");
         assert_eq!(errors[0].code, "unknown_id");
     }
 

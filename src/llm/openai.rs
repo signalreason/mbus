@@ -7,7 +7,7 @@ use crate::types::{Action, Observation, TokenUsage};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 use tracing::Instrument;
 
@@ -23,10 +23,7 @@ pub struct OpenAiConfig {
 
 impl OpenAiConfig {
     pub fn endpoint(&self) -> String {
-        format!(
-            "{}/chat/completions",
-            self.base_url.trim_end_matches('/')
-        )
+        format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
     }
 }
 
@@ -106,16 +103,14 @@ impl OpenAiClient {
     }
 
     fn parse_value_strict(&self, value: Value) -> LlmResult<Action> {
-        self.schema
-            .validate_json(&value)
-            .map_err(|errors| {
-                let message = errors
-                    .into_iter()
-                    .map(|err| err.message)
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                LlmError::new("schema_violation", message)
-            })?;
+        self.schema.validate_json(&value).map_err(|errors| {
+            let message = errors
+                .into_iter()
+                .map(|err| err.message)
+                .collect::<Vec<_>>()
+                .join("; ");
+            LlmError::new("schema_violation", message)
+        })?;
         serde_json::from_value(value)
             .map_err(|err| LlmError::new("deserialize_error", err.to_string()))
     }
@@ -217,10 +212,7 @@ impl LlmClient for OpenAiClient {
                 ));
             }
 
-            let payload: ChatResponse = response
-                .json()
-                .await
-                .map_err(map_reqwest_error)?;
+            let payload: ChatResponse = response.json().await.map_err(map_reqwest_error)?;
             let content = payload
                 .choices
                 .get(0)
@@ -351,10 +343,7 @@ fn extract_content(value: &Value) -> LlmResult<String> {
                 Ok(out)
             }
         }
-        _ => Err(LlmError::new(
-            "empty_response",
-            "unexpected content format",
-        )),
+        _ => Err(LlmError::new("empty_response", "unexpected content format")),
     }
 }
 
@@ -378,7 +367,9 @@ mod parse_tests {
     #[test]
     fn parse_strict_reports_invalid_json_code() {
         let client = test_client();
-        let err = client.parse_strict("not json").expect_err("expected invalid json");
+        let err = client
+            .parse_strict("not json")
+            .expect_err("expected invalid json");
         assert_eq!(err.code, "invalid_json");
     }
 
@@ -410,8 +401,7 @@ mod parse_tests {
     #[test]
     fn parse_content_rejects_action_arrays() {
         let client = test_client();
-        let payload =
-            r#"[{"type":"done","summary":"ok"},{"type":"done","summary":"two"}]"#;
+        let payload = r#"[{"type":"done","summary":"ok"},{"type":"done","summary":"two"}]"#;
         let err = client
             .parse_content(payload)
             .expect_err("expected multi action error");
@@ -421,7 +411,8 @@ mod parse_tests {
     #[test]
     fn parse_content_rejects_action_wrapper_arrays() {
         let client = test_client();
-        let payload = r#"{"action":[{"type":"done","summary":"ok"},{"type":"done","summary":"two"}]}"#;
+        let payload =
+            r#"{"action":[{"type":"done","summary":"ok"},{"type":"done","summary":"two"}]}"#;
         let err = client
             .parse_content(payload)
             .expect_err("expected multi action error");
@@ -449,16 +440,19 @@ mod parse_tests {
         let action = client
             .parse_content(payload)
             .expect("repair action wrapper");
-        assert_eq!(action, Action::Click { id: "el_1".to_string() });
+        assert_eq!(
+            action,
+            Action::Click {
+                id: "el_1".to_string()
+            }
+        );
     }
 
     #[test]
     fn parse_content_repairs_code_fence() {
         let client = test_client();
         let payload = "```json\n{\"type\":\"wait\",\"ms\":200}\n```";
-        let action = client
-            .parse_content(payload)
-            .expect("repair fenced action");
+        let action = client.parse_content(payload).expect("repair fenced action");
         assert_eq!(action, Action::Wait { ms: 200 });
     }
 
@@ -466,9 +460,12 @@ mod parse_tests {
     fn parse_content_repairs_json_string() {
         let client = test_client();
         let payload = r#""{\"type\":\"click\",\"id\":\"el_9\"}""#;
-        let action = client
-            .parse_content(payload)
-            .expect("repair json string");
-        assert_eq!(action, Action::Click { id: "el_9".to_string() });
+        let action = client.parse_content(payload).expect("repair json string");
+        assert_eq!(
+            action,
+            Action::Click {
+                id: "el_9".to_string()
+            }
+        );
     }
 }

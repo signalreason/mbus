@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use mbus::agent::policy::AgentPolicy;
 use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
+use mbus::agent::policy::AgentPolicy;
 use mbus::bench::aggregate::aggregate_usage_from_steps;
 use mbus::browser::{Browser, BrowserError};
 use mbus::config::LlmMode;
@@ -94,18 +94,15 @@ async fn scripted_mode_reads_actions_file_and_completes() {
             .as_nanos()
     );
     let temp_path = std::env::temp_dir().join(temp_name);
-    std::fs::write(&temp_path, r#"[{"type":"done","summary":"ok"}]"#)
-        .expect("write actions file");
+    std::fs::write(&temp_path, r#"[{"type":"done","summary":"ok"}]"#).expect("write actions file");
 
     let llm = ScriptedLlm::from_path(&temp_path).expect("scripted llm");
-    let clients = LlmClients::new(
-        Box::new(llm.clone()),
-        Box::new(llm.clone()),
-        Box::new(llm),
-    );
+    let clients = LlmClients::new(Box::new(llm.clone()), Box::new(llm.clone()), Box::new(llm));
     let browser = FakeBrowser::new(sample_observation());
-    let mut agent = AgentLoop::new(browser, clients, "task")
-        .with_policy(AgentPolicy { max_steps: 1, ..AgentPolicy::default() });
+    let mut agent = AgentLoop::new(browser, clients, "task").with_policy(AgentPolicy {
+        max_steps: 1,
+        ..AgentPolicy::default()
+    });
 
     let result = agent.run().await.expect("run");
 
@@ -123,15 +120,15 @@ async fn mocked_openai_usage_aggregates_tokens() {
         completion_tokens: Some(30),
         total_tokens: Some(150),
     };
-    let llm = UsageLlm { usage: usage.clone() };
-    let clients = LlmClients::new(
-        Box::new(llm.clone()),
-        Box::new(llm.clone()),
-        Box::new(llm),
-    );
+    let llm = UsageLlm {
+        usage: usage.clone(),
+    };
+    let clients = LlmClients::new(Box::new(llm.clone()), Box::new(llm.clone()), Box::new(llm));
     let browser = FakeBrowser::new(sample_observation());
-    let mut agent = AgentLoop::new(browser, clients, "task")
-        .with_policy(AgentPolicy { max_steps: 1, ..AgentPolicy::default() });
+    let mut agent = AgentLoop::new(browser, clients, "task").with_policy(AgentPolicy {
+        max_steps: 1,
+        ..AgentPolicy::default()
+    });
 
     let result = agent.run().await.expect("run");
 

@@ -97,7 +97,8 @@ impl Metrics {
     }
 
     fn inc_validation_failure(&self) {
-        self.validation_failures_total.fetch_add(1, Ordering::Relaxed);
+        self.validation_failures_total
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     fn inc_apply_failure(&self) {
@@ -111,9 +112,7 @@ impl Metrics {
             Action::Select { .. } => self.actions_select_total.fetch_add(1, Ordering::Relaxed),
             Action::Scroll { .. } => self.actions_scroll_total.fetch_add(1, Ordering::Relaxed),
             Action::Wait { .. } => self.actions_wait_total.fetch_add(1, Ordering::Relaxed),
-            Action::Navigate { .. } => {
-                self.actions_navigate_total.fetch_add(1, Ordering::Relaxed)
-            }
+            Action::Navigate { .. } => self.actions_navigate_total.fetch_add(1, Ordering::Relaxed),
             Action::Back => self.actions_back_total.fetch_add(1, Ordering::Relaxed),
             Action::Extract { .. } => self.actions_extract_total.fetch_add(1, Ordering::Relaxed),
             Action::Done { .. } => self.actions_done_total.fetch_add(1, Ordering::Relaxed),
@@ -412,8 +411,7 @@ pub fn init_tracing() {
     use tracing_subscriber::filter::EnvFilter;
     use tracing_subscriber::fmt;
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let _ = fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr)
@@ -436,7 +434,9 @@ mod tests {
         metrics.inc_repair_failure();
         metrics.inc_validation_failure();
         metrics.inc_apply_failure();
-        metrics.inc_action(&Action::Click { id: "el_1".to_string() });
+        metrics.inc_action(&Action::Click {
+            id: "el_1".to_string(),
+        });
         metrics.record_llm_duration(Duration::from_millis(12));
         metrics.record_step_duration(Duration::from_millis(7));
         metrics.set_no_progress_streak(3);

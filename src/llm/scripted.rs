@@ -115,10 +115,7 @@ fn parse_actions(content: &str) -> LlmResult<Vec<Action>> {
     }
 
     if actions.is_empty() {
-        Err(LlmError::new(
-            "invalid_actions",
-            "no actions parsed",
-        ))
+        Err(LlmError::new("invalid_actions", "no actions parsed"))
     } else {
         Ok(actions)
     }

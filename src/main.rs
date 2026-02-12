@@ -1,15 +1,14 @@
 use clap::{Args, Parser, Subcommand};
 use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
-use mbus::bench::{
-    BENCH_REPORT_SCHEMA_VERSION, BenchLlmInfo, BenchObservedStatus, BenchPricing,
-    BenchReport, BenchServer, BenchTaskResult, BenchTokenUsage, actions_file_path,
-    actions_work_dir, bench_task_limit, build_summary, evaluate_gate, evaluate_task,
-    failure_buckets, join_base_url, load_tasks, now_timestamp, render_actions,
-    report_path_default, sleep_between_tasks, tasks_dir_default, write_actions_file,
-    write_report,
-};
 use mbus::bench::aggregate::{
     aggregate_usage_from_results, aggregate_usage_from_steps, estimate_cost,
+};
+use mbus::bench::{
+    BENCH_REPORT_SCHEMA_VERSION, BenchLlmInfo, BenchObservedStatus, BenchPricing, BenchReport,
+    BenchServer, BenchTaskResult, BenchTokenUsage, actions_file_path, actions_work_dir,
+    bench_task_limit, build_summary, evaluate_gate, evaluate_task, failure_buckets, join_base_url,
+    load_tasks, now_timestamp, render_actions, report_path_default, sleep_between_tasks,
+    tasks_dir_default, write_actions_file, write_report,
 };
 use mbus::browser::CdpBrowser;
 use mbus::config::{CliOverrides, ConfigError, LlmConfig, LlmMode, load_config};
@@ -40,7 +39,11 @@ enum Commands {
 
 #[derive(Args, Debug)]
 struct RunArgs {
-    #[arg(long, required_unless_present = "task_file", conflicts_with = "task_file")]
+    #[arg(
+        long,
+        required_unless_present = "task_file",
+        conflicts_with = "task_file"
+    )]
     task: Option<String>,
     #[arg(long, required_unless_present = "task", conflicts_with = "task")]
     task_file: Option<PathBuf>,
@@ -396,7 +399,10 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
     let gate = evaluate_gate(&results, required_passes);
     let summary = build_summary(&results, &gate);
     let aggregate_usage = aggregate_usage_from_results(&results);
-    let aggregate_cost = estimate_cost(&aggregate_usage, BenchPricing::from_config(&base_config.llm));
+    let aggregate_cost = estimate_cost(
+        &aggregate_usage,
+        BenchPricing::from_config(&base_config.llm),
+    );
     let bench_duration_ms = bench_started_at.elapsed().as_millis() as u64;
     let report = BenchReport {
         schema_version: BENCH_REPORT_SCHEMA_VERSION,
@@ -448,7 +454,6 @@ fn llm_mode_label(mode: &LlmMode) -> &'static str {
         LlmMode::Stub => "stub",
     }
 }
-
 
 fn resolve_config_path(cli_path: Option<&Path>) -> Option<PathBuf> {
     if let Some(path) = cli_path {
@@ -663,20 +668,14 @@ fn run_error_summary(
     }
 }
 
-fn agent_error_summary(
-    err: &mbus::agent::r#loop::AgentError,
-) -> mbus::output::RunErrorSummary {
+fn agent_error_summary(err: &mbus::agent::r#loop::AgentError) -> mbus::output::RunErrorSummary {
     match err {
-        mbus::agent::r#loop::AgentError::Browser(err) => run_error_summary(
-            err.code,
-            err.message.clone(),
-            Some("browser"),
-        ),
-        mbus::agent::r#loop::AgentError::Llm(err) => run_error_summary(
-            err.code,
-            err.message.clone(),
-            Some("llm"),
-        ),
+        mbus::agent::r#loop::AgentError::Browser(err) => {
+            run_error_summary(err.code, err.message.clone(), Some("browser"))
+        }
+        mbus::agent::r#loop::AgentError::Llm(err) => {
+            run_error_summary(err.code, err.message.clone(), Some("llm"))
+        }
     }
 }
 
@@ -701,11 +700,7 @@ async fn execute_agent(
 
     let run_result = agent.run().await;
     let steps = agent.memory().steps().to_vec();
-    let final_observation = agent
-        .memory()
-        .observations()
-        .back()
-        .cloned();
+    let final_observation = agent.memory().observations().back().cloned();
     let shutdown_result = agent.shutdown().await;
     if let Err(err) = shutdown_result {
         eprintln!("shutdown error: {err}");
@@ -868,7 +863,11 @@ impl From<&mbus::config::AppConfig> for ConfigLog {
             browser: BrowserLog {
                 headful: config.browser.headful,
                 initial_url: config.browser.initial_url.clone(),
-                cdp_url: config.browser.cdp_url.as_ref().map(|value| redact_url(value)),
+                cdp_url: config
+                    .browser
+                    .cdp_url
+                    .as_ref()
+                    .map(|value| redact_url(value)),
                 snapshot_timeout_ms: config.browser.snapshot_timeout.as_millis() as u64,
                 action_timeout_ms: config.browser.action_timeout.as_millis() as u64,
                 max_elements: config.browser.max_elements,

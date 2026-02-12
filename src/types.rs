@@ -75,24 +75,38 @@ impl ElementFlags {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
-    Click { id: String },
+    Click {
+        id: String,
+    },
     Type {
         id: String,
         text: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         submit: Option<bool>,
     },
-    Select { id: String, value: String },
-    Scroll { dx: i64, dy: i64 },
-    Wait { ms: u64 },
-    Navigate { url: String },
+    Select {
+        id: String,
+        value: String,
+    },
+    Scroll {
+        dx: i64,
+        dy: i64,
+    },
+    Wait {
+        ms: u64,
+    },
+    Navigate {
+        url: String,
+    },
     Back,
     Extract {
         query: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         id: Option<String>,
     },
-    Done { summary: String },
+    Done {
+        summary: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -184,8 +198,7 @@ mod tests {
         let value = serde_json::to_value(&observation).expect("serialize observation");
         assert_eq!(value.get("state_hash"), Some(&json!("ab12cd")));
         assert_eq!(value.get("focused"), Some(&json!("el_7")));
-        let parsed: Observation =
-            serde_json::from_value(value).expect("deserialize observation");
+        let parsed: Observation = serde_json::from_value(value).expect("deserialize observation");
         assert_eq!(parsed, observation);
     }
 

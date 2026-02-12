@@ -633,11 +633,13 @@ mod tests {
             },
         );
         assert!(!result.passed);
-        assert!(result
-            .failure_reason
-            .as_deref()
-            .unwrap_or_default()
-            .starts_with("step_limit_exceeded"));
+        assert!(
+            result
+                .failure_reason
+                .as_deref()
+                .unwrap_or_default()
+                .starts_with("step_limit_exceeded")
+        );
     }
 
     #[test]

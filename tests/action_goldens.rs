@@ -10,12 +10,18 @@ fn assert_golden(payload: &str, path: &str) {
 
 #[test]
 fn golden_click_round_trip() {
-    assert_golden(include_str!("fixtures/actions/click.json"), "fixtures/actions/click.json");
+    assert_golden(
+        include_str!("fixtures/actions/click.json"),
+        "fixtures/actions/click.json",
+    );
 }
 
 #[test]
 fn golden_type_round_trip() {
-    assert_golden(include_str!("fixtures/actions/type.json"), "fixtures/actions/type.json");
+    assert_golden(
+        include_str!("fixtures/actions/type.json"),
+        "fixtures/actions/type.json",
+    );
 }
 
 #[test]
@@ -36,7 +42,10 @@ fn golden_scroll_round_trip() {
 
 #[test]
 fn golden_wait_round_trip() {
-    assert_golden(include_str!("fixtures/actions/wait.json"), "fixtures/actions/wait.json");
+    assert_golden(
+        include_str!("fixtures/actions/wait.json"),
+        "fixtures/actions/wait.json",
+    );
 }
 
 #[test]
@@ -49,7 +58,10 @@ fn golden_navigate_round_trip() {
 
 #[test]
 fn golden_back_round_trip() {
-    assert_golden(include_str!("fixtures/actions/back.json"), "fixtures/actions/back.json");
+    assert_golden(
+        include_str!("fixtures/actions/back.json"),
+        "fixtures/actions/back.json",
+    );
 }
 
 #[test]
@@ -62,5 +74,8 @@ fn golden_extract_round_trip() {
 
 #[test]
 fn golden_done_round_trip() {
-    assert_golden(include_str!("fixtures/actions/done.json"), "fixtures/actions/done.json");
+    assert_golden(
+        include_str!("fixtures/actions/done.json"),
+        "fixtures/actions/done.json",
+    );
 }

@@ -155,7 +155,10 @@ impl Router {
             self.config.low_actionability_to_mid,
             self.config.low_actionability_to_strong,
         );
-        max_tier(max_tier(failure_tier, no_progress_tier), low_actionability_tier)
+        max_tier(
+            max_tier(failure_tier, no_progress_tier),
+            low_actionability_tier,
+        )
     }
 
     pub fn counters(&self) -> RouterCounters {

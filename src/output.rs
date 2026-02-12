@@ -136,8 +136,8 @@ pub fn write_extract_output(path: &Path, output: &ExtractOutput) -> io::Result<(
             std::fs::create_dir_all(parent)?;
         }
     }
-    let data = serde_json::to_vec(output)
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+    let data =
+        serde_json::to_vec(output).map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .read(true)

@@ -1,10 +1,8 @@
-use crate::agent::memory::{
-    Memory, StepOutcomeLog, StepRecord, StepTimings, ValidationOutcome,
-};
+use crate::agent::memory::{Memory, StepOutcomeLog, StepRecord, StepTimings, ValidationOutcome};
 use crate::agent::policy::AgentPolicy;
 use crate::browser::{Browser, BrowserError};
 use crate::llm::client::{LlmClient, LlmError};
-use crate::llm::router::{step_outcome, Router, StepOutcome, Tier};
+use crate::llm::router::{Router, StepOutcome, Tier, step_outcome};
 use crate::telemetry;
 use crate::types::{Action, Observation, StepError, StepResult};
 use crate::verify::rules::{ValidationError, Validator};
@@ -353,8 +351,8 @@ impl<B: Browser> AgentLoop<B> {
                     step_index = step_number,
                     tier = ?tier
                 );
-                let next_observation =
-                    match self.browser.snapshot().instrument(snapshot_span).await {
+                let next_observation = match self.browser.snapshot().instrument(snapshot_span).await
+                {
                     Ok(observation) => observation,
                     Err(err) => {
                         let snapshot_duration = snapshot_start.elapsed();
@@ -401,7 +399,9 @@ impl<B: Browser> AgentLoop<B> {
                 });
                 self.memory.update_last_step_state_hash(new_hash);
 
-                let tier_after = self.router.record_with_heuristics(outcome, Some(&heuristics));
+                let tier_after = self
+                    .router
+                    .record_with_heuristics(outcome, Some(&heuristics));
                 telemetry::set_no_progress_streak(self.router.counters().no_progress);
 
                 let error_code = result
@@ -519,8 +519,8 @@ fn duration_ms(duration: Duration) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm::client::LlmResponse;
     use crate::browser::BrowserResult;
+    use crate::llm::client::LlmResponse;
     use crate::types::{ElementFlags, ElementRef};
     use async_trait::async_trait;
     use std::collections::VecDeque;
@@ -534,10 +534,7 @@ mod tests {
     }
 
     impl FakeBrowser {
-        fn new(
-            snapshots: Vec<Observation>,
-            apply_results: Vec<StepResult>,
-        ) -> Self {
+        fn new(snapshots: Vec<Observation>, apply_results: Vec<StepResult>) -> Self {
             Self {
                 snapshots: Mutex::new(VecDeque::from(snapshots)),
                 apply_results: Mutex::new(VecDeque::from(apply_results)),
@@ -636,7 +633,11 @@ mod tests {
         let llm = ScriptedLlm::new(vec![Action::Done {
             summary: "ok".to_string(),
         }]);
-        let clients = LlmClients::new(Box::new(llm), Box::new(ScriptedLlm::new(vec![])), Box::new(ScriptedLlm::new(vec![])));
+        let clients = LlmClients::new(
+            Box::new(llm),
+            Box::new(ScriptedLlm::new(vec![])),
+            Box::new(ScriptedLlm::new(vec![])),
+        );
         let mut agent = AgentLoop::new(browser, clients, "task");
 
         let result = agent.run().await.expect("run");
@@ -668,7 +669,11 @@ mod tests {
                 summary: "done".to_string(),
             },
         ]);
-        let clients = LlmClients::new(Box::new(llm), Box::new(ScriptedLlm::new(vec![])), Box::new(ScriptedLlm::new(vec![])));
+        let clients = LlmClients::new(
+            Box::new(llm),
+            Box::new(ScriptedLlm::new(vec![])),
+            Box::new(ScriptedLlm::new(vec![])),
+        );
         let mut agent = AgentLoop::new(browser, clients, "task");
 
         let result = agent.run().await.expect("run");
@@ -736,11 +741,10 @@ mod tests {
             Box::new(ScriptedLlm::new(actions.clone())),
             Box::new(ScriptedLlm::new(actions)),
         );
-        let mut agent = AgentLoop::new(browser, clients, "task")
-            .with_policy(AgentPolicy {
-                max_steps: 2,
-                ..AgentPolicy::default()
-            });
+        let mut agent = AgentLoop::new(browser, clients, "task").with_policy(AgentPolicy {
+            max_steps: 2,
+            ..AgentPolicy::default()
+        });
 
         let result = agent.run().await.expect("run");
         assert_eq!(result.status, RunStatus::MaxSteps);

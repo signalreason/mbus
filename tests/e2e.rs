@@ -1,20 +1,20 @@
-use mbus::agent::policy::AgentPolicy;
+use async_trait::async_trait;
 use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
+use mbus::agent::policy::AgentPolicy;
 use mbus::browser::{Browser, CdpBrowser, CdpConfig};
 use mbus::llm::client::{LlmClient, LlmError, LlmResponse};
 use mbus::types::{Action, ElementRef, Observation};
 use mbus::verify::{Validator, ValidatorConfig};
-use async_trait::async_trait;
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::oneshot;
 use tokio::sync::Mutex;
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 const HARNESS_PAGE_PATH: &str = "harness/pages/actions.html";
 
@@ -90,7 +90,11 @@ async fn handle_connection(mut socket: TcpStream) -> std::io::Result<()> {
         return Ok(());
     }
     let request = String::from_utf8_lossy(&buffer[..read]);
-    let mut parts = request.lines().next().unwrap_or_default().split_whitespace();
+    let mut parts = request
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .split_whitespace();
     let method = parts.next().unwrap_or("GET");
     let raw_path = parts.next().unwrap_or("/");
     let path = raw_path.split('?').next().unwrap_or("/");
@@ -119,21 +123,13 @@ fn route_request(method: &str, path: &str) -> (&'static str, String, &'static st
         );
     }
     match path {
-        "/" | "/harness" => (
-            "200 OK",
-            load_harness_page(),
-            "text/html; charset=utf-8",
-        ),
+        "/" | "/harness" => ("200 OK", load_harness_page(), "text/html; charset=utf-8"),
         "/favicon.ico" => ("404 Not Found", "not found".to_string(), "text/plain"),
         _ => ("404 Not Found", "not found".to_string(), "text/plain"),
     }
 }
 
-fn find_element<'a>(
-    observation: &'a Observation,
-    role: &str,
-    name: &str,
-) -> &'a ElementRef {
+fn find_element<'a>(observation: &'a Observation, role: &str, name: &str) -> &'a ElementRef {
     observation
         .elements
         .iter()
@@ -157,7 +153,9 @@ fn find_element_by_roles<'a>(
         .elements
         .iter()
         .find(|element| {
-            roles.iter().any(|role| element.role.eq_ignore_ascii_case(role))
+            roles
+                .iter()
+                .any(|role| element.role.eq_ignore_ascii_case(role))
                 && element
                     .name
                     .as_deref()
@@ -167,10 +165,7 @@ fn find_element_by_roles<'a>(
         .unwrap_or_else(|| panic!("missing element roles={roles:?} name={name}"))
 }
 
-async fn wait_for_visible_text(
-    browser: &CdpBrowser,
-    needle: &str,
-) -> Observation {
+async fn wait_for_visible_text(browser: &CdpBrowser, needle: &str) -> Observation {
     for _ in 0..20 {
         let snapshot = browser.snapshot().await.expect("snapshot retry");
         if snapshot.visible_text.contains(needle) {
@@ -252,11 +247,7 @@ async fn e2e_click_updates_status_via_agent_loop() {
     };
     let browser = CdpBrowser::launch(config).await.expect("launch browser");
     let llm = HarnessLlm::new(HarnessMode::Click);
-    let clients = LlmClients::new(
-        Box::new(llm.clone()),
-        Box::new(llm.clone()),
-        Box::new(llm),
-    );
+    let clients = LlmClients::new(Box::new(llm.clone()), Box::new(llm.clone()), Box::new(llm));
     let mut agent = AgentLoop::new(browser, clients, "click test").with_policy(AgentPolicy {
         max_steps: 2,
         ..AgentPolicy::default()
@@ -286,11 +277,7 @@ async fn e2e_type_updates_status_via_agent_loop() {
     };
     let browser = CdpBrowser::launch(config).await.expect("launch browser");
     let llm = HarnessLlm::new(HarnessMode::Type);
-    let clients = LlmClients::new(
-        Box::new(llm.clone()),
-        Box::new(llm.clone()),
-        Box::new(llm),
-    );
+    let clients = LlmClients::new(Box::new(llm.clone()), Box::new(llm.clone()), Box::new(llm));
     let mut agent = AgentLoop::new(browser, clients, "type test").with_policy(AgentPolicy {
         max_steps: 2,
         ..AgentPolicy::default()
@@ -386,7 +373,9 @@ async fn e2e_click_type_select() {
     let type_id = find_element_by_roles(&snapshot, &["textbox", "searchbox"], "Name")
         .id
         .clone();
-    let focus = Action::Click { id: type_id.clone() };
+    let focus = Action::Click {
+        id: type_id.clone(),
+    };
     validator.validate(&focus, &snapshot).expect("valid focus");
     let step = browser.apply(&focus).await.expect("apply focus");
     assert!(step.ok);
@@ -410,7 +399,9 @@ async fn e2e_click_type_select() {
         text: "Lambda".to_string(),
         submit: Some(true),
     };
-    validator.validate(&submit, &snapshot).expect("valid submit type");
+    validator
+        .validate(&submit, &snapshot)
+        .expect("valid submit type");
     let step = browser.apply(&submit).await.expect("apply submit type");
     assert!(step.ok);
 
@@ -423,7 +414,9 @@ async fn e2e_click_type_select() {
         id: select_id.clone(),
         value: "beta".to_string(),
     };
-    validator.validate(&select, &snapshot).expect("valid select");
+    validator
+        .validate(&select, &snapshot)
+        .expect("valid select");
     let step = browser.apply(&select).await.expect("apply select");
     assert!(step.ok);
 
@@ -473,7 +466,9 @@ async fn e2e_select_updates_status_and_rejects_invalid_option() {
         id: select_id.clone(),
         value: "alpha".to_string(),
     };
-    validator.validate(&select, &snapshot).expect("valid select");
+    validator
+        .validate(&select, &snapshot)
+        .expect("valid select");
     let step = browser.apply(&select).await.expect("apply select");
     assert!(step.ok);
 
@@ -520,7 +515,9 @@ async fn e2e_scroll_within_bounds_and_rejects_out_of_bounds() {
 
     let snapshot = browser.snapshot().await.expect("initial snapshot");
     let scroll = Action::Scroll { dx: 0, dy: 80 };
-    validator.validate(&scroll, &snapshot).expect("valid scroll");
+    validator
+        .validate(&scroll, &snapshot)
+        .expect("valid scroll");
     let step = browser.apply(&scroll).await.expect("apply scroll");
     assert!(step.ok);
     let coords = step.scroll.expect("scroll coords");

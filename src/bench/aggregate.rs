@@ -173,10 +173,8 @@ pub fn estimate_cost(usage: &BenchTokenUsage, pricing: Option<BenchPricing>) -> 
         };
     };
 
-    let input_cost =
-        (prompt_tokens as f64 / 1_000_000.0) * pricing.input_cost_per_million;
-    let output_cost =
-        (completion_tokens as f64 / 1_000_000.0) * pricing.output_cost_per_million;
+    let input_cost = (prompt_tokens as f64 / 1_000_000.0) * pricing.input_cost_per_million;
+    let output_cost = (completion_tokens as f64 / 1_000_000.0) * pricing.output_cost_per_million;
     let total_cost = input_cost + output_cost;
 
     BenchCostSummary {
@@ -361,10 +359,7 @@ mod tests {
 
         let usage = aggregate_usage_from_steps(&steps, &LlmMode::OpenAi);
 
-        assert_eq!(
-            usage.error.as_deref(),
-            Some("missing_usage_for_1/1 calls")
-        );
+        assert_eq!(usage.error.as_deref(), Some("missing_usage_for_1/1 calls"));
         assert!(usage.total_tokens.is_none());
     }
 

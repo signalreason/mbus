@@ -83,7 +83,9 @@ fn extract_fenced_block(content: &str) -> Option<String> {
         if let Some(pos) = block.find('\n') {
             block = block[pos + 1..].to_string();
         } else {
-            block = block.trim_start_matches(|c: char| c != '{' && c != '[').to_string();
+            block = block
+                .trim_start_matches(|c: char| c != '{' && c != '[')
+                .to_string();
         }
     }
     Some(block.trim().to_string())
@@ -384,7 +386,12 @@ mod tests {
     fn repairs_code_fence() {
         let payload = "```json\n{\"type\":\"click\",\"id\":\"el_1\"}\n```";
         let action = repair_action(payload, &schema()).expect("repair action");
-        assert_eq!(action, Action::Click { id: "el_1".to_string() });
+        assert_eq!(
+            action,
+            Action::Click {
+                id: "el_1".to_string()
+            }
+        );
     }
 
     #[test]
@@ -408,7 +415,8 @@ mod tests {
 
     #[test]
     fn rejects_multi_action_array() {
-        let payload = "[{\"type\":\"done\",\"summary\":\"one\"},{\"type\":\"done\",\"summary\":\"two\"}]";
+        let payload =
+            "[{\"type\":\"done\",\"summary\":\"one\"},{\"type\":\"done\",\"summary\":\"two\"}]";
         let err = repair_action(payload, &schema()).expect_err("expected error");
         match err {
             RepairError::SchemaViolation(_) => {}
@@ -431,7 +439,8 @@ mod tests {
 
     #[test]
     fn repairs_action_type_alias_and_submit() {
-        let payload = "{\"action_type\":\"type\",\"id\":\"el_9\",\"text\":\"hi\",\"submit\":\"true\"}";
+        let payload =
+            "{\"action_type\":\"type\",\"id\":\"el_9\",\"text\":\"hi\",\"submit\":\"true\"}";
         let action = repair_action(payload, &schema()).expect("repair action");
         assert_eq!(
             action,
@@ -447,7 +456,12 @@ mod tests {
     fn repairs_embedded_json() {
         let payload = "Sure: {\"type\":\"click\",\"id\":\"el_3\"} thanks.";
         let action = repair_action(payload, &schema()).expect("repair action");
-        assert_eq!(action, Action::Click { id: "el_3".to_string() });
+        assert_eq!(
+            action,
+            Action::Click {
+                id: "el_3".to_string()
+            }
+        );
     }
 
     #[test]

@@ -1,17 +1,20 @@
-use crate::browser::act::{action_result_err, action_result_ok_with, ActionApplier, ActionError};
+use crate::browser::act::{ActionApplier, ActionError, action_result_err, action_result_ok_with};
 use crate::browser::observe::{Observer, ObserverConfig};
 use crate::browser::{Browser, BrowserError, BrowserResult};
 use crate::types::{Action, Observation, StepResult};
 use async_trait::async_trait;
 use chromiumoxide::browser::{Browser as ChromiumBrowser, BrowserConfig};
 use chromiumoxide::page::Page;
+use chromiumoxide_cdp::cdp::browser_protocol::dom::BackendNodeId;
 use futures::StreamExt;
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tokio::time::timeout;
-use std::time::Duration;
-use chromiumoxide_cdp::cdp::browser_protocol::dom::BackendNodeId;
 
 #[derive(Clone, Debug)]
 pub struct CdpConfig {
@@ -54,6 +57,7 @@ struct CdpSession {
     page: Mutex<Page>,
     handler_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     owns_browser: bool,
+    user_data_dir: Option<PathBuf>,
     closed: AtomicBool,
 }
 
@@ -63,15 +67,19 @@ impl CdpSession {
         if config.headful {
             builder = builder.with_head();
         }
+        let user_data_dir = unique_user_data_dir();
+        std::fs::create_dir_all(&user_data_dir).map_err(|err| {
+            BrowserError::new("config_error", format!("create user data dir: {err}"))
+        })?;
+        builder = builder.user_data_dir(&user_data_dir);
         let browser_config = builder
             .build()
             .map_err(|err| BrowserError::new("config_error", err))?;
         let (browser, mut handler) = ChromiumBrowser::launch(browser_config)
             .await
             .map_err(|err| BrowserError::new("cdp_launch_failed", err.to_string()))?;
-        let handler_task = tokio::spawn(async move {
-            while let Some(_event) = handler.next().await {}
-        });
+        let handler_task =
+            tokio::spawn(async move { while let Some(_event) = handler.next().await {} });
         let page = create_page(&browser, &config.initial_url).await?;
 
         Ok(Self {
@@ -79,6 +87,7 @@ impl CdpSession {
             page: Mutex::new(page),
             handler_task: Mutex::new(Some(handler_task)),
             owns_browser: true,
+            user_data_dir: Some(user_data_dir),
             closed: AtomicBool::new(false),
         })
     }
@@ -87,9 +96,8 @@ impl CdpSession {
         let (browser, mut handler) = ChromiumBrowser::connect(url)
             .await
             .map_err(|err| BrowserError::new("cdp_connect_failed", err.to_string()))?;
-        let handler_task = tokio::spawn(async move {
-            while let Some(_event) = handler.next().await {}
-        });
+        let handler_task =
+            tokio::spawn(async move { while let Some(_event) = handler.next().await {} });
         let page = create_page(&browser, &config.initial_url).await?;
 
         Ok(Self {
@@ -97,6 +105,7 @@ impl CdpSession {
             page: Mutex::new(page),
             handler_task: Mutex::new(Some(handler_task)),
             owns_browser: false,
+            user_data_dir: None,
             closed: AtomicBool::new(false),
         })
     }
@@ -136,12 +145,27 @@ impl CdpSession {
             }
         }
 
+        if let Some(user_data_dir) = &self.user_data_dir {
+            let _ = std::fs::remove_dir_all(user_data_dir);
+        }
+
         Ok(())
     }
 
     async fn page(&self) -> Page {
         self.page.lock().await.clone()
     }
+}
+
+fn unique_user_data_dir() -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let pid = std::process::id();
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!("chromiumoxide-runner-{pid}-{ts}-{seq}"))
 }
 
 async fn create_page(browser: &ChromiumBrowser, initial_url: &str) -> BrowserResult<Page> {
@@ -217,7 +241,7 @@ impl Browser for CdpBrowser {
                     return Err(BrowserError::new(
                         "timeout",
                         format!("snapshot timed out: {err}"),
-                    ))
+                    ));
                 }
             }
         };
@@ -233,9 +257,7 @@ impl Browser for CdpBrowser {
         let timeout_duration = match action {
             Action::Wait { ms } => {
                 let wait = Duration::from_millis(*ms);
-                let padded = wait
-                    .checked_add(Duration::from_millis(50))
-                    .unwrap_or(wait);
+                let padded = wait.checked_add(Duration::from_millis(50)).unwrap_or(wait);
                 if padded > self.timeouts.action {
                     padded
                 } else {

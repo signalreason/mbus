@@ -52,9 +52,7 @@ impl FromStr for LlmMode {
             "stub" => Ok(LlmMode::Stub),
             "openai" => Ok(LlmMode::OpenAi),
             "scripted" => Ok(LlmMode::Scripted),
-            other => Err(ConfigError::invalid(format!(
-                "unknown llm mode '{other}'"
-            ))),
+            other => Err(ConfigError::invalid(format!("unknown llm mode '{other}'"))),
         }
     }
 }
@@ -178,7 +176,10 @@ impl fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
-pub fn load_config(config_path: Option<&Path>, cli: CliOverrides) -> Result<AppConfig, ConfigError> {
+pub fn load_config(
+    config_path: Option<&Path>,
+    cli: CliOverrides,
+) -> Result<AppConfig, ConfigError> {
     let mut config = AppConfig::default();
 
     if let Some(path) = config_path {
@@ -459,9 +460,7 @@ impl EnvOverrides {
                 "MBUS_ROUTER_NO_PROGRESS_TO_STRONG" => {
                     overrides.router_no_progress_to_strong = Some(parse_u32(&key, &value)?)
                 }
-                "MBUS_ALLOW_INSECURE" => {
-                    overrides.allow_insecure = Some(parse_bool(&key, &value)?)
-                }
+                "MBUS_ALLOW_INSECURE" => overrides.allow_insecure = Some(parse_bool(&key, &value)?),
                 "MBUS_VALIDATOR_MAX_TEXT_LEN" => {
                     overrides.validator_max_text_len = Some(parse_usize(&key, &value)?)
                 }
@@ -481,9 +480,7 @@ impl EnvOverrides {
                 "MBUS_LLM_TEMPERATURE" => {
                     overrides.llm_temperature = Some(parse_f32(&key, &value)?)
                 }
-                "MBUS_LLM_MAX_TOKENS" => {
-                    overrides.llm_max_tokens = Some(parse_u32(&key, &value)?)
-                }
+                "MBUS_LLM_MAX_TOKENS" => overrides.llm_max_tokens = Some(parse_u32(&key, &value)?),
                 "MBUS_LLM_INPUT_COST_PER_MILLION" => {
                     overrides.llm_input_cost_per_million = Some(parse_f64(&key, &value)?)
                 }
@@ -611,9 +608,7 @@ fn apply_headless(
     headful: Option<bool>,
 ) -> Result<(), ConfigError> {
     if headless.is_some() && headful.is_some() {
-        return Err(ConfigError::invalid(
-            "cannot set both headless and headful",
-        ));
+        return Err(ConfigError::invalid("cannot set both headless and headful"));
     }
     if let Some(headless) = headless {
         config.headful = !headless;
@@ -695,13 +690,10 @@ mod tests {
         };
         file.apply(&mut config).expect("file apply");
 
-        let env = EnvOverrides::from_pairs(vec![(
-            "MBUS_MAX_STEPS".to_string(),
-            "20".to_string(),
-        ), (
-            "MBUS_MAX_NO_PROGRESS_STEPS".to_string(),
-            "22".to_string(),
-        )])
+        let env = EnvOverrides::from_pairs(vec![
+            ("MBUS_MAX_STEPS".to_string(), "20".to_string()),
+            ("MBUS_MAX_NO_PROGRESS_STEPS".to_string(), "22".to_string()),
+        ])
         .expect("env overrides");
         env.apply(&mut config).expect("env apply");
 
@@ -732,11 +724,9 @@ mod tests {
 
     #[test]
     fn parses_llm_mode_from_env() {
-        let env = EnvOverrides::from_pairs(vec![(
-            "MBUS_LLM_MODE".to_string(),
-            "openai".to_string(),
-        )])
-        .expect("env overrides");
+        let env =
+            EnvOverrides::from_pairs(vec![("MBUS_LLM_MODE".to_string(), "openai".to_string())])
+                .expect("env overrides");
         assert_eq!(env.inner.llm_mode, Some(LlmMode::OpenAi));
     }
 
@@ -783,11 +773,9 @@ mod tests {
 
     #[test]
     fn env_boolean_parsing_accepts_yes_no() {
-        let env = EnvOverrides::from_pairs(vec![(
-            "MBUS_ALLOW_INSECURE".to_string(),
-            "yes".to_string(),
-        )])
-        .expect("env overrides");
+        let env =
+            EnvOverrides::from_pairs(vec![("MBUS_ALLOW_INSECURE".to_string(), "yes".to_string())])
+                .expect("env overrides");
         assert_eq!(env.inner.allow_insecure, Some(true));
     }
 }
