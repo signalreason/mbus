@@ -11,7 +11,7 @@ use mbus::bench::{
     tasks_dir_default, write_actions_file, write_report,
 };
 use mbus::browser::CdpBrowser;
-use mbus::config::{CliOverrides, ConfigError, LlmConfig, LlmMode, load_config};
+use mbus::config::{CliOverrides, ConfigError, LlmConfig, LlmMode, ScreenshotPersist, load_config};
 use mbus::llm::openai::{OpenAiClient, OpenAiConfig};
 use mbus::llm::router::Router;
 use mbus::llm::scripted::{ScriptedLlm, StubLlm};
@@ -31,6 +31,7 @@ struct Cli {
     command: Commands,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 enum Commands {
     Run(RunArgs),
@@ -113,6 +114,10 @@ struct RunArgs {
     llm_actions_file: Option<PathBuf>,
     #[arg(long)]
     extract_output: Option<PathBuf>,
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    screenshot_enabled: Option<bool>,
+    #[arg(long)]
+    screenshot_persist: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -151,6 +156,10 @@ struct BenchArgs {
     llm_input_cost_per_million: Option<f64>,
     #[arg(long)]
     llm_output_cost_per_million: Option<f64>,
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    screenshot_enabled: Option<bool>,
+    #[arg(long)]
+    screenshot_persist: Option<String>,
 }
 
 #[tokio::main]
@@ -521,6 +530,11 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
     } else {
         None
     };
+    let screenshot_persist = if let Some(value) = args.screenshot_persist.as_deref() {
+        Some(ScreenshotPersist::from_str(value)?)
+    } else {
+        None
+    };
 
     Ok(CliOverrides {
         max_steps: args.max_steps,
@@ -555,6 +569,8 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
         llm_output_cost_per_million: None,
         llm_actions_file: args.llm_actions_file.clone(),
         extract_output: args.extract_output.clone(),
+        screenshot_enabled: args.screenshot_enabled,
+        screenshot_persist,
     })
 }
 
@@ -564,6 +580,11 @@ fn build_bench_cli_overrides(
 ) -> Result<CliOverrides, ConfigError> {
     let llm_mode = if let Some(mode) = args.llm_mode.as_deref() {
         Some(LlmMode::from_str(mode)?)
+    } else {
+        None
+    };
+    let screenshot_persist = if let Some(value) = args.screenshot_persist.as_deref() {
+        Some(ScreenshotPersist::from_str(value)?)
     } else {
         None
     };
@@ -582,6 +603,8 @@ fn build_bench_cli_overrides(
         llm_max_tokens: args.llm_max_tokens,
         llm_input_cost_per_million: args.llm_input_cost_per_million,
         llm_output_cost_per_million: args.llm_output_cost_per_million,
+        screenshot_enabled: args.screenshot_enabled,
+        screenshot_persist,
         ..CliOverrides::default()
     })
 }
@@ -600,7 +623,7 @@ fn build_clients(config: &LlmConfig) -> Result<LlmClients, Box<dyn Error>> {
             let path = config
                 .actions_file
                 .as_ref()
-                .ok_or_else(|| "llm.actions_file is required for scripted mode")?;
+                .ok_or("llm.actions_file is required for scripted mode")?;
             let client = ScriptedLlm::from_path(path)?;
             Ok(LlmClients::new(
                 Box::new(client.clone()),
@@ -612,7 +635,7 @@ fn build_clients(config: &LlmConfig) -> Result<LlmClients, Box<dyn Error>> {
             let api_key = config
                 .api_key
                 .as_ref()
-                .ok_or_else(|| "llm.api_key is required for openai mode")?;
+                .ok_or("llm.api_key is required for openai mode")?;
             let timeout = Duration::from_millis(config.timeout_ms);
             let fast = OpenAiClient::new(OpenAiConfig {
                 api_key: api_key.to_string(),
@@ -848,6 +871,7 @@ struct ConfigLog {
     validator: ValidatorLog,
     llm: LlmLog,
     output: OutputLog,
+    screenshot: ScreenshotLog,
 }
 
 impl From<&mbus::config::AppConfig> for ConfigLog {
@@ -907,6 +931,10 @@ impl From<&mbus::config::AppConfig> for ConfigLog {
                     .extract_output
                     .as_ref()
                     .map(|value| value.display().to_string()),
+            },
+            screenshot: ScreenshotLog {
+                enabled: config.screenshot.enabled,
+                persist: config.screenshot.persist.as_str().to_string(),
             },
         }
     }
@@ -980,6 +1008,11 @@ struct OutputLog {
     extract_output: Option<String>,
 }
 
+#[derive(Serialize)]
+struct ScreenshotLog {
+    enabled: bool,
+    persist: String,
+}
 #[derive(Serialize)]
 struct BenchConfigLog {
     #[serde(rename = "type")]

@@ -295,12 +295,14 @@ impl From<chromiumoxide::error::CdpError> for BrowserError {
 
 impl Drop for CdpBrowser {
     fn drop(&mut self) {
-        if !self.session.closed.load(Ordering::SeqCst) {
-            if let Ok(mut handler_opt) = self.session.handler_task.try_lock() {
-                if let Some(handle) = handler_opt.take() {
-                    handle.abort();
-                }
-            }
+        if self.session.closed.load(Ordering::SeqCst) {
+            return;
+        }
+        let Ok(mut handler_opt) = self.session.handler_task.try_lock() else {
+            return;
+        };
+        if let Some(handle) = handler_opt.take() {
+            handle.abort();
         }
     }
 }

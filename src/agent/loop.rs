@@ -815,7 +815,7 @@ mod tests {
         assert_eq!(result.status, RunStatus::Done);
         assert_eq!(agent.memory().history().len(), 2);
         assert_eq!(agent.memory().steps().len(), 2);
-        assert_eq!(agent.memory().steps()[0].result.ok, false);
+        assert!(!agent.memory().steps()[0].result.ok);
         assert_eq!(
             agent.memory().steps()[0]
                 .result

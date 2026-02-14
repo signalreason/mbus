@@ -80,7 +80,7 @@ pub fn task_id_for(task: &str) -> String {
 
 pub fn current_timestamp() -> Result<String, time::error::Format> {
     use time::format_description::well_known::Rfc3339;
-    Ok(time::OffsetDateTime::now_utc().format(&Rfc3339)?)
+    time::OffsetDateTime::now_utc().format(&Rfc3339)
 }
 
 pub fn run_id_for(task_id: &str, timestamp: &str) -> String {
@@ -131,13 +131,13 @@ pub fn build_extract_output(
 }
 
 pub fn write_extract_output(path: &Path, output: &ExtractOutput) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)?;
     }
-    let data =
-        serde_json::to_vec(output).map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+    let data = serde_json::to_vec(output).map_err(io::Error::other)?;
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .read(true)

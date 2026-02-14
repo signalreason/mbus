@@ -248,26 +248,21 @@ impl LlmClient for OpenAiClient {
             };
             let mut payload = payload;
             let mut action = self.parse_action(&payload);
-            if let Err(err) = action.as_ref() {
-                if is_retryable_empty_output_error(err) {
-                    log_empty_output_diagnostics(&self.config.model, &payload, err, 1);
-                    tracing::info!(
-                        event = "llm_retry_empty_output",
-                        model = %self.config.model,
-                        error_code = err.code
-                    );
-                    payload = self.send_chat_request(&body).await?;
-                    action = self.parse_action(&payload);
-                    if let Err(retry_err) = action.as_ref() {
-                        if is_retryable_empty_output_error(retry_err) {
-                            log_empty_output_diagnostics(
-                                &self.config.model,
-                                &payload,
-                                retry_err,
-                                2,
-                            );
-                        }
-                    }
+            if let Err(err) = action.as_ref()
+                && is_retryable_empty_output_error(err)
+            {
+                log_empty_output_diagnostics(&self.config.model, &payload, err, 1);
+                tracing::info!(
+                    event = "llm_retry_empty_output",
+                    model = %self.config.model,
+                    error_code = err.code
+                );
+                payload = self.send_chat_request(&body).await?;
+                action = self.parse_action(&payload);
+                if let Err(retry_err) = action.as_ref()
+                    && is_retryable_empty_output_error(retry_err)
+                {
+                    log_empty_output_diagnostics(&self.config.model, &payload, retry_err, 2);
                 }
             }
             let action = action?;
@@ -298,7 +293,7 @@ impl OpenAiClient {
     fn parse_action(&self, payload: &ChatResponse) -> LlmResult<Action> {
         let content = payload
             .choices
-            .get(0)
+            .first()
             .and_then(|choice| choice.message.content.as_ref())
             .ok_or_else(|| LlmError::new("empty_response", "missing content"))?;
         let content_text = extract_content(content)?;

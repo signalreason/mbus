@@ -38,17 +38,12 @@ pub struct BenchExpectations {
     pub final_visible_text_contains: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum BenchExpectedStatus {
+    #[default]
     Done,
     MaxSteps,
-}
-
-impl Default for BenchExpectedStatus {
-    fn default() -> Self {
-        Self::Done
-    }
 }
 
 fn default_done_status() -> BenchExpectedStatus {
@@ -220,20 +215,22 @@ pub fn render_actions(actions: &[Action], base_url: &str) -> Result<String, Stri
 }
 
 pub fn write_actions_file(path: &Path, actions_json: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|err| {
-                format!(
-                    "failed to create actions file directory {}: {err}",
-                    parent.display()
-                )
-            })?;
-        }
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent).map_err(|err| {
+            format!(
+                "failed to create actions file directory {}: {err}",
+                parent.display()
+            )
+        })?;
     }
     std::fs::write(path, actions_json)
         .map_err(|err| format!("failed to write actions file {}: {err}", path.display()))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn evaluate_task(
     task: &BenchTask,
     status: BenchObservedStatus,
@@ -268,26 +265,22 @@ pub fn evaluate_task(
                 steps, max_steps_per_task
             ));
         }
-        if passed {
-            if let Some(expected) = task.expect.final_url_contains.as_deref() {
-                let observed = final_url.unwrap_or_default();
-                if !observed.contains(expected) {
-                    passed = false;
-                    failure_reason = Some(format!(
-                        "final_url_mismatch: expected substring '{expected}', observed '{observed}'"
-                    ));
-                }
+        if passed && let Some(expected) = task.expect.final_url_contains.as_deref() {
+            let observed = final_url.unwrap_or_default();
+            if !observed.contains(expected) {
+                passed = false;
+                failure_reason = Some(format!(
+                    "final_url_mismatch: expected substring '{expected}', observed '{observed}'"
+                ));
             }
         }
-        if passed {
-            if let Some(expected) = task.expect.final_visible_text_contains.as_deref() {
-                let observed = final_visible_text.unwrap_or_default();
-                if !observed.contains(expected) {
-                    passed = false;
-                    failure_reason = Some(format!(
-                        "visible_text_mismatch: expected substring '{expected}'"
-                    ));
-                }
+        if passed && let Some(expected) = task.expect.final_visible_text_contains.as_deref() {
+            let observed = final_visible_text.unwrap_or_default();
+            if !observed.contains(expected) {
+                passed = false;
+                failure_reason = Some(format!(
+                    "visible_text_mismatch: expected substring '{expected}'"
+                ));
             }
         }
     }
@@ -361,20 +354,21 @@ fn percentile_rounded(values: &[u64], percentile: u8) -> Option<u64> {
     if percentile == 0 {
         return Some(values[0]);
     }
-    let rank = ((values.len() - 1) * percentile as usize + 99) / 100;
+    let rank = ((values.len() - 1) * percentile as usize).div_ceil(100);
     values.get(rank).copied()
 }
 
 pub fn write_report(report_path: &Path, report: &BenchReport) -> Result<(), String> {
-    if let Some(parent) = report_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|err| {
-                format!(
-                    "failed to create report directory {}: {err}",
-                    parent.display()
-                )
-            })?;
-        }
+    if let Some(parent) = report_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent).map_err(|err| {
+            format!(
+                "failed to create report directory {}: {err}",
+                parent.display()
+            )
+        })?;
     }
     let data = serde_json::to_vec_pretty(report)
         .map_err(|err| format!("failed to serialize report: {err}"))?;

@@ -58,16 +58,16 @@ fn parse_candidate(content: &str) -> Option<Value> {
         return Some(value);
     }
 
-    if let Some(block) = extract_fenced_block(content) {
-        if let Ok(value) = serde_json::from_str::<Value>(&block) {
-            return Some(value);
-        }
+    if let Some(block) = extract_fenced_block(content)
+        && let Ok(value) = serde_json::from_str::<Value>(&block)
+    {
+        return Some(value);
     }
 
-    if let Some(block) = extract_balanced_json(content) {
-        if let Ok(value) = serde_json::from_str::<Value>(&block) {
-            return Some(value);
-        }
+    if let Some(block) = extract_balanced_json(content)
+        && let Ok(value) = serde_json::from_str::<Value>(&block)
+    {
+        return Some(value);
     }
 
     None
@@ -125,9 +125,7 @@ fn extract_balanced_json(content: &str) -> Option<String> {
             '"' => in_string = true,
             '{' | '[' => stack.push(ch),
             '}' | ']' => {
-                if stack.pop().is_none() {
-                    return None;
-                }
+                stack.pop()?;
                 if stack.is_empty() {
                     let start_idx = start?;
                     return Some(content[start_idx..=idx].to_string());
@@ -144,13 +142,12 @@ fn normalize_value(value: Value) -> (Value, bool) {
     let mut repaired = false;
     let mut current = value;
 
-    if let Value::String(text) = &current {
-        if looks_like_json(text) {
-            if let Ok(parsed) = serde_json::from_str::<Value>(text) {
-                current = parsed;
-                repaired = true;
-            }
-        }
+    if let Value::String(text) = &current
+        && looks_like_json(text)
+        && let Ok(parsed) = serde_json::from_str::<Value>(text)
+    {
+        current = parsed;
+        repaired = true;
     }
 
     if let Value::Object(map) = current {
@@ -208,11 +205,11 @@ fn normalize_action_value(value: Value) -> (Value, bool) {
     };
     let mut repaired = false;
 
-    if !map.contains_key("type") {
-        if let Some(Value::String(action_type)) = map.remove("action_type") {
-            map.insert("type".to_string(), Value::String(action_type));
-            repaired = true;
-        }
+    if !map.contains_key("type")
+        && let Some(Value::String(action_type)) = map.remove("action_type")
+    {
+        map.insert("type".to_string(), Value::String(action_type));
+        repaired = true;
     }
 
     let action_type = match map.get("type") {
@@ -220,56 +217,49 @@ fn normalize_action_value(value: Value) -> (Value, bool) {
         _ => return (Value::Object(map), repaired),
     };
 
-    if action_type == "select" && !map.contains_key("value") {
-        if let Some(value) = map.remove("option") {
-            map.insert("value".to_string(), value);
-            repaired = true;
-        }
+    if action_type == "select"
+        && !map.contains_key("value")
+        && let Some(value) = map.remove("option")
+    {
+        map.insert("value".to_string(), value);
+        repaired = true;
     }
 
-    if action_type == "type" {
-        if let Some(value) = map.get_mut("submit") {
-            if !matches!(value, Value::Bool(_)) {
-                if let Some(parsed) = coerce_bool(value) {
-                    *value = Value::Bool(parsed);
-                    repaired = true;
-                }
-            }
-        }
+    if action_type == "type"
+        && let Some(value) = map.get_mut("submit")
+        && let Some(parsed) = coerce_bool(value)
+    {
+        *value = Value::Bool(parsed);
+        repaired = true;
     }
 
     if matches!(
         action_type.as_str(),
         "click" | "type" | "select" | "extract"
-    ) {
-        if let Some(value) = map.get_mut("id") {
-            if !matches!(value, Value::String(_)) {
-                if let Some(parsed) = coerce_string(value) {
-                    *value = Value::String(parsed);
-                    repaired = true;
-                }
-            }
-        }
+    ) && let Some(value) = map.get_mut("id")
+        && let Some(parsed) = coerce_string(value)
+    {
+        *value = Value::String(parsed);
+        repaired = true;
     }
 
     if action_type == "scroll" {
         for field in ["dx", "dy"] {
-            if let Some(value) = map.get_mut(field) {
-                if let Some(parsed) = coerce_i64(value) {
-                    *value = Value::Number(Number::from(parsed));
-                    repaired = true;
-                }
-            }
-        }
-    }
-
-    if action_type == "wait" {
-        if let Some(value) = map.get_mut("ms") {
-            if let Some(parsed) = coerce_u64(value) {
+            if let Some(value) = map.get_mut(field)
+                && let Some(parsed) = coerce_i64(value)
+            {
                 *value = Value::Number(Number::from(parsed));
                 repaired = true;
             }
         }
+    }
+
+    if action_type == "wait"
+        && let Some(value) = map.get_mut("ms")
+        && let Some(parsed) = coerce_u64(value)
+    {
+        *value = Value::Number(Number::from(parsed));
+        repaired = true;
     }
 
     let allowed = allowed_fields(&action_type);

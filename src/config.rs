@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct AppConfig {
     pub agent: AgentPolicy,
     pub browser: CdpConfig,
@@ -16,32 +16,15 @@ pub struct AppConfig {
     pub validator: ValidatorConfig,
     pub llm: LlmConfig,
     pub output: OutputConfig,
+    pub screenshot: ScreenshotConfig,
 }
 
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            agent: AgentPolicy::default(),
-            browser: CdpConfig::default(),
-            router: RouterConfig::default(),
-            validator: ValidatorConfig::default(),
-            llm: LlmConfig::default(),
-            output: OutputConfig::default(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum LlmMode {
+    #[default]
     Stub,
     OpenAi,
     Scripted,
-}
-
-impl Default for LlmMode {
-    fn default() -> Self {
-        LlmMode::Stub
-    }
 }
 
 impl FromStr for LlmMode {
@@ -105,6 +88,45 @@ impl Default for OutputConfig {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum ScreenshotPersist {
+    #[default]
+    None,
+    OnError,
+    Always,
+}
+
+impl ScreenshotPersist {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ScreenshotPersist::None => "none",
+            ScreenshotPersist::OnError => "on_error",
+            ScreenshotPersist::Always => "always",
+        }
+    }
+}
+
+impl FromStr for ScreenshotPersist {
+    type Err = ConfigError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_lowercase().as_str() {
+            "none" | "off" | "disabled" => Ok(ScreenshotPersist::None),
+            "on_error" | "on-error" | "error" => Ok(ScreenshotPersist::OnError),
+            "always" | "all" => Ok(ScreenshotPersist::Always),
+            other => Err(ConfigError::invalid(format!(
+                "unknown screenshot persist mode '{other}'"
+            ))),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ScreenshotConfig {
+    pub enabled: bool,
+    pub persist: ScreenshotPersist,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct CliOverrides {
     pub max_steps: Option<usize>,
@@ -139,6 +161,8 @@ pub struct CliOverrides {
     pub llm_output_cost_per_million: Option<f64>,
     pub llm_actions_file: Option<PathBuf>,
     pub extract_output: Option<PathBuf>,
+    pub screenshot_enabled: Option<bool>,
+    pub screenshot_persist: Option<ScreenshotPersist>,
 }
 
 #[derive(Debug)]
@@ -209,6 +233,8 @@ struct FileConfig {
     llm: Option<FileLlmConfig>,
     #[serde(default)]
     output: Option<FileOutputConfig>,
+    #[serde(default)]
+    screenshot: Option<FileScreenshotConfig>,
 }
 
 impl FileConfig {
@@ -263,9 +289,20 @@ impl FileConfig {
             }
         }
 
-        if let Some(output) = self.output.as_ref() {
-            if let Some(path) = output.extract_output.as_ref() {
-                config.output.extract_output = Some(PathBuf::from(path));
+        if let Some(path) = self
+            .output
+            .as_ref()
+            .and_then(|output| output.extract_output.as_ref())
+        {
+            config.output.extract_output = Some(PathBuf::from(path));
+        }
+
+        if let Some(screenshot) = self.screenshot.as_ref() {
+            if let Some(value) = screenshot.enabled {
+                config.screenshot.enabled = value;
+            }
+            if let Some(value) = screenshot.persist.as_deref() {
+                config.screenshot.persist = ScreenshotPersist::from_str(value)?;
             }
         }
 
@@ -405,6 +442,12 @@ struct FileOutputConfig {
     extract_output: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+struct FileScreenshotConfig {
+    enabled: Option<bool>,
+    persist: Option<String>,
+}
+
 #[derive(Clone, Debug, Default)]
 struct EnvOverrides {
     inner: CliOverrides,
@@ -489,6 +532,12 @@ impl EnvOverrides {
                 }
                 "MBUS_LLM_ACTIONS_FILE" => overrides.llm_actions_file = Some(PathBuf::from(value)),
                 "MBUS_EXTRACT_OUTPUT" => overrides.extract_output = Some(PathBuf::from(value)),
+                "MBUS_SCREENSHOT_ENABLED" => {
+                    overrides.screenshot_enabled = Some(parse_bool(&key, &value)?)
+                }
+                "MBUS_SCREENSHOT_PERSIST" => {
+                    overrides.screenshot_persist = Some(ScreenshotPersist::from_str(&value)?)
+                }
                 _ => {}
             }
         }
@@ -596,6 +645,12 @@ impl CliOverrides {
         }
         if let Some(value) = self.extract_output.as_ref() {
             config.output.extract_output = Some(value.to_path_buf());
+        }
+        if let Some(value) = self.screenshot_enabled {
+            config.screenshot.enabled = value;
+        }
+        if let Some(value) = self.screenshot_persist.as_ref() {
+            config.screenshot.persist = value.clone();
         }
 
         Ok(())
@@ -719,7 +774,7 @@ mod tests {
             ..FileConfig::default()
         };
         file.apply(&mut config).expect("file apply");
-        assert_eq!(config.browser.headful, false);
+        assert!(!config.browser.headful);
     }
 
     #[test]
@@ -769,6 +824,52 @@ mod tests {
         assert_eq!(config.router.failures_to_strong, 7);
         assert_eq!(config.router.no_progress_to_mid, 3);
         assert_eq!(config.router.no_progress_to_strong, 6);
+    }
+
+    #[test]
+    fn parses_screenshot_persist_from_env() {
+        let env = EnvOverrides::from_pairs(vec![(
+            "MBUS_SCREENSHOT_PERSIST".to_string(),
+            "on_error".to_string(),
+        )])
+        .expect("env overrides");
+        assert_eq!(
+            env.inner.screenshot_persist,
+            Some(ScreenshotPersist::OnError)
+        );
+    }
+
+    #[test]
+    fn screenshot_config_respects_precedence() {
+        let mut config = AppConfig::default();
+        let file = FileConfig {
+            screenshot: Some(FileScreenshotConfig {
+                enabled: Some(true),
+                persist: Some("always".to_string()),
+            }),
+            ..FileConfig::default()
+        };
+        file.apply(&mut config).expect("file apply");
+
+        let env = EnvOverrides::from_pairs(vec![
+            ("MBUS_SCREENSHOT_ENABLED".to_string(), "false".to_string()),
+            (
+                "MBUS_SCREENSHOT_PERSIST".to_string(),
+                "on_error".to_string(),
+            ),
+        ])
+        .expect("env overrides");
+        env.apply(&mut config).expect("env apply");
+
+        let cli = CliOverrides {
+            screenshot_enabled: Some(true),
+            screenshot_persist: Some(ScreenshotPersist::None),
+            ..CliOverrides::default()
+        };
+        cli.apply(&mut config).expect("cli apply");
+
+        assert!(config.screenshot.enabled);
+        assert_eq!(config.screenshot.persist, ScreenshotPersist::None);
     }
 
     #[test]

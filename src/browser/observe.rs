@@ -433,7 +433,7 @@ async fn fetch_ax_nodes(page: &Page) -> BrowserResult<Vec<AxNode>> {
 }
 
 fn is_actionable_role(role: &str) -> bool {
-    ACTIONABLE_ROLES.iter().any(|value| role == *value)
+    ACTIONABLE_ROLES.contains(&role)
 }
 
 fn ax_value_string(value: Option<&AxValue>) -> Option<String> {
