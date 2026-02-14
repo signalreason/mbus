@@ -710,6 +710,7 @@ async fn execute_agent(
     let mut browser_config = config.browser.clone();
     browser_config.max_scroll = config.validator.max_scroll;
     browser_config.max_wait_ms = config.validator.max_wait_ms;
+    browser_config.screenshot_enabled = config.screenshot.enabled;
     let browser = CdpBrowser::start(browser_config).await?;
     let clients = build_clients(&config.llm)?;
 

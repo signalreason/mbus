@@ -328,6 +328,31 @@ async fn e2e_snapshot_metadata() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_snapshot_screenshot_bytes() {
+    let server = TestServer::start().await;
+    let url = server.url("/harness");
+    let config = CdpConfig {
+        initial_url: url,
+        screenshot_enabled: true,
+        ..CdpConfig::default()
+    };
+    let browser = CdpBrowser::launch(config).await.expect("launch browser");
+
+    let _snapshot = browser.snapshot().await.expect("snapshot");
+    let screenshot = browser
+        .take_last_screenshot()
+        .await
+        .expect("screenshot bytes");
+    assert!(
+        !screenshot.is_empty(),
+        "expected non-empty screenshot bytes"
+    );
+
+    browser.shutdown().await.expect("shutdown browser");
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn e2e_snapshot_actionable_nodes() {
     let server = TestServer::start().await;
     let url = server.url("/harness");

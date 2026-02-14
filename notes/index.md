@@ -104,4 +104,5 @@
 - 2026-02-14 LLM empty-output diagnostics + recovery: `notes/2026-02-14-llm-004-empty-output-diagnostics-and-recovery.md`
 - 2026-02-14 PRD M4 atomic task breakdown: `notes/2026-02-14-prd-m4-atomic-task-breakdown.md`
 - 2026-02-14 SHOT-001 screenshot config policy: `notes/2026-02-14-shot-001-screenshot-config.md`
+- 2026-02-14 SHOT-002 snapshot screenshot bytes: `notes/2026-02-14-shot-002-snapshot-screenshot-bytes.md`
 - 2026-02-14 DEV-001 quality gate notes: `notes/2026-02-14-dev-001-quality-gate.md`

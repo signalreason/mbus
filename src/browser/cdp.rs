@@ -4,8 +4,9 @@ use crate::browser::{Browser, BrowserError, BrowserResult};
 use crate::types::{Action, Observation, StepResult};
 use async_trait::async_trait;
 use chromiumoxide::browser::{Browser as ChromiumBrowser, BrowserConfig};
-use chromiumoxide::page::Page;
+use chromiumoxide::page::{Page, ScreenshotParams};
 use chromiumoxide_cdp::cdp::browser_protocol::dom::BackendNodeId;
+use chromiumoxide_cdp::cdp::browser_protocol::page::CaptureScreenshotFormat;
 use futures::StreamExt;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -27,6 +28,7 @@ pub struct CdpConfig {
     pub max_text_len: usize,
     pub max_scroll: i64,
     pub max_wait_ms: u64,
+    pub screenshot_enabled: bool,
 }
 
 impl Default for CdpConfig {
@@ -41,6 +43,7 @@ impl Default for CdpConfig {
             max_text_len: 4000,
             max_scroll: 2000,
             max_wait_ms: 30_000,
+            screenshot_enabled: false,
         }
     }
 }
@@ -188,6 +191,8 @@ pub struct CdpBrowser {
     applier: ActionApplier,
     timeouts: Timeouts,
     element_map: Mutex<HashMap<String, BackendNodeId>>,
+    screenshot_enabled: bool,
+    last_screenshot: Mutex<Option<Vec<u8>>>,
 }
 
 impl CdpBrowser {
@@ -225,6 +230,8 @@ impl CdpBrowser {
                 action: config.action_timeout,
             },
             element_map: Mutex::new(HashMap::new()),
+            screenshot_enabled: config.screenshot_enabled,
+            last_screenshot: Mutex::new(None),
         }
     }
 }
@@ -232,8 +239,8 @@ impl CdpBrowser {
 #[async_trait]
 impl Browser for CdpBrowser {
     async fn snapshot(&self) -> BrowserResult<Observation> {
+        let page = self.session.page().await;
         let snapshot = {
-            let page = self.session.page().await;
             let result = timeout(self.timeouts.snapshot, self.observer.snapshot(&page)).await;
             match result {
                 Ok(snapshot) => snapshot?,
@@ -245,6 +252,14 @@ impl Browser for CdpBrowser {
                 }
             }
         };
+
+        let screenshot = if self.screenshot_enabled {
+            Some(capture_viewport_screenshot(&page, self.timeouts.snapshot).await?)
+        } else {
+            None
+        };
+        let mut last_screenshot = self.last_screenshot.lock().await;
+        *last_screenshot = screenshot;
 
         let mut map = self.element_map.lock().await;
         *map = snapshot.element_map;
@@ -287,6 +302,12 @@ impl Browser for CdpBrowser {
     }
 }
 
+impl CdpBrowser {
+    pub async fn take_last_screenshot(&self) -> Option<Vec<u8>> {
+        self.last_screenshot.lock().await.take()
+    }
+}
+
 impl From<chromiumoxide::error::CdpError> for BrowserError {
     fn from(err: chromiumoxide::error::CdpError) -> Self {
         BrowserError::new("cdp_error", err.to_string())
@@ -305,4 +326,30 @@ impl Drop for CdpBrowser {
             handle.abort();
         }
     }
+}
+
+async fn capture_viewport_screenshot(
+    page: &Page,
+    timeout_duration: Duration,
+) -> BrowserResult<Vec<u8>> {
+    let params = ScreenshotParams::builder()
+        .format(CaptureScreenshotFormat::Png)
+        .build();
+    let result = timeout(timeout_duration, page.screenshot(params)).await;
+    let bytes = match result {
+        Ok(Ok(bytes)) => bytes,
+        Ok(Err(err)) => {
+            return Err(BrowserError::new(
+                "screenshot_failed",
+                format!("screenshot capture failed: {err}"),
+            ));
+        }
+        Err(err) => {
+            return Err(BrowserError::new(
+                "timeout",
+                format!("screenshot timed out: {err}"),
+            ));
+        }
+    };
+    Ok(bytes)
 }
