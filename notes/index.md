@@ -86,5 +86,8 @@
 - 2026-02-12 BENCH-004 aggregate usage + cost: `notes/2026-02-12-bench-004-aggregate-cost.md`
 - 2026-02-12 BENCH-005 benchmark report schema: `notes/2026-02-12-bench-005-report-schema.md`
 - 2026-02-12 BENCH-006 benchmark tests: `notes/2026-02-12-bench-006-tests.md`
+- 2026-02-12 M3-BENCH-007 run commands: `notes/2026-02-12-m3-bench-007-run-commands.md`
 
 - 2026-02-12 BROW-010 e2e launch/profile isolation + status visibility: `notes/2026-02-12-brow-010-e2e-launch-visible-status.md`
+- 2026-02-14 Site analysis: `notes/2026-02-14-site-001-browser-navigation-challenge.md`
+- 2026-02-14 Site live revalidation: `notes/2026-02-14-site-002-live-revalidation.md`
