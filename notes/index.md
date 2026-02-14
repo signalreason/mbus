@@ -91,4 +91,5 @@
 - 2026-02-12 BROW-010 e2e launch/profile isolation + status visibility: `notes/2026-02-12-brow-010-e2e-launch-visible-status.md`
 - 2026-02-14 Site analysis: `notes/2026-02-14-site-001-browser-navigation-challenge.md`
 - 2026-02-14 Site live revalidation: `notes/2026-02-14-site-002-live-revalidation.md`
+- 2026-02-14 Site entrypoint + empty-content failure: `notes/2026-02-14-site-003-netlify-entrypoint-and-empty-content.md`
 - 2026-02-14 LLM chat-endpoint model compatibility: `notes/2026-02-14-llm-003-chat-endpoint-model-compat.md`
