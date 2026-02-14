@@ -1,0 +1,19 @@
+[agent]
+max_steps = 220
+max_no_progress_steps = 5
+
+[browser]
+headless = true
+initial_url = "https://serene-frangipane-7fd25b.netlify.app/"
+snapshot_timeout_ms = 2500
+action_timeout_ms = 5000
+max_elements = 120
+max_text_len = 6000
+
+[llm]
+mode = "openai"
+temperature = 1.0
+max_tokens = 1024
+model_fast = "gpt-5"
+model_mid = "gpt-5.1"
+model_strong = "gpt-5.2"
