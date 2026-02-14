@@ -75,6 +75,7 @@ impl OpenAiClient {
     fn parse_content(&self, content: &str) -> LlmResult<Action> {
         let value = match self.parse_json_value(content) {
             Ok(value) => value,
+            Err(err) if is_retryable_empty_output_error(&err) => return Err(err),
             Err(err) => return self.attempt_repair(err, content),
         };
 
@@ -236,13 +237,20 @@ impl LlmClient for OpenAiClient {
                 }
                 Err(err) => return Err(err),
             };
-            let content = payload
-                .choices
-                .get(0)
-                .and_then(|choice| choice.message.content.as_ref())
-                .ok_or_else(|| LlmError::new("empty_response", "missing content"))?;
-            let content_text = extract_content(content)?;
-            let action = self.parse_content(&content_text)?;
+            let mut payload = payload;
+            let mut action = self.parse_action(&payload);
+            if let Err(err) = action.as_ref() {
+                if is_retryable_empty_output_error(err) {
+                    tracing::info!(
+                        event = "llm_retry_empty_output",
+                        model = %self.config.model,
+                        error_code = err.code
+                    );
+                    payload = self.send_chat_request(&body).await?;
+                    action = self.parse_action(&payload);
+                }
+            }
+            let action = action?;
             let usage = payload.usage.map(|usage| TokenUsage {
                 prompt_tokens: usage.prompt_tokens,
                 completion_tokens: usage.completion_tokens,
@@ -263,6 +271,18 @@ impl LlmClient for OpenAiClient {
             );
         }
         result
+    }
+}
+
+impl OpenAiClient {
+    fn parse_action(&self, payload: &ChatResponse) -> LlmResult<Action> {
+        let content = payload
+            .choices
+            .get(0)
+            .and_then(|choice| choice.message.content.as_ref())
+            .ok_or_else(|| LlmError::new("empty_response", "missing content"))?;
+        let content_text = extract_content(content)?;
+        self.parse_content(&content_text)
     }
 }
 
@@ -433,7 +453,13 @@ mod prompt_tests {
 
 fn extract_content(value: &Value) -> LlmResult<String> {
     match value {
-        Value::String(text) => Ok(text.to_string()),
+        Value::String(text) => {
+            if text.trim().is_empty() {
+                Err(LlmError::new("empty_response", "missing content text"))
+            } else {
+                Ok(text.to_string())
+            }
+        }
         Value::Array(parts) => {
             let mut out = String::new();
             for part in parts {
@@ -449,6 +475,10 @@ fn extract_content(value: &Value) -> LlmResult<String> {
         }
         _ => Err(LlmError::new("empty_response", "unexpected content format")),
     }
+}
+
+fn is_retryable_empty_output_error(err: &LlmError) -> bool {
+    err.code == "empty_response" || (err.code == "invalid_json" && err.message.contains("empty response"))
 }
 
 #[cfg(test)]
@@ -500,6 +530,16 @@ mod parse_tests {
             .parse_content("not json")
             .expect_err("expected invalid json");
         assert_eq!(err.code, "invalid_json");
+    }
+
+    #[test]
+    fn parse_content_empty_keeps_empty_response_message() {
+        let client = test_client();
+        let err = client
+            .parse_content("")
+            .expect_err("expected invalid json");
+        assert_eq!(err.code, "invalid_json");
+        assert_eq!(err.message, "empty response");
     }
 
     #[test]
@@ -571,5 +611,27 @@ mod parse_tests {
                 id: "el_9".to_string()
             }
         );
+    }
+
+    #[test]
+    fn extract_content_rejects_empty_string_content() {
+        let err = extract_content(&Value::String(" ".to_string()))
+            .expect_err("expected empty response");
+        assert_eq!(err.code, "empty_response");
+    }
+
+    #[test]
+    fn retryable_empty_output_error_covers_known_empty_signals() {
+        let empty_response = LlmError::new("empty_response", "missing content");
+        assert!(is_retryable_empty_output_error(&empty_response));
+
+        let empty_json = LlmError::new(
+            "invalid_json",
+            "empty response; repair_failed: invalid json: empty content",
+        );
+        assert!(is_retryable_empty_output_error(&empty_json));
+
+        let invalid = LlmError::new("invalid_json", "expected value at line 1 column 1");
+        assert!(!is_retryable_empty_output_error(&invalid));
     }
 }
