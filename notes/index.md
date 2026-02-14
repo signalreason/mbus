@@ -92,4 +92,6 @@
 - 2026-02-14 Site analysis: `notes/2026-02-14-site-001-browser-navigation-challenge.md`
 - 2026-02-14 Site live revalidation: `notes/2026-02-14-site-002-live-revalidation.md`
 - 2026-02-14 Site entrypoint + empty-content failure: `notes/2026-02-14-site-003-netlify-entrypoint-and-empty-content.md`
+- 2026-02-14 Site repeated-click no-progress loop: `notes/2026-02-14-site-004-no-progress-repeated-click-loop.md`
+- 2026-02-14 Site no-progress threshold signature: `notes/2026-02-14-site-005-no-progress-threshold-signature.md`
 - 2026-02-14 LLM chat-endpoint model compatibility: `notes/2026-02-14-llm-003-chat-endpoint-model-compat.md`
