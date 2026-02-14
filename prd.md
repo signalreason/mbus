@@ -3,7 +3,7 @@
 ## Executive Summary
 - Build a Rust-based browser automation agent that uses LLMs to choose single-step actions through a strict JSON schema.
 - Target internal automation and evaluation workflows that need fast, deterministic, and observable browser steps.
-- Provide a pluggable browser backend (CDP) and pluggable LLM clients with explicit model escalation.
+- Provide a pluggable browser backend (CDP) and pluggable LLM clients with explicit model and effort escalation.
 - Emphasize performance and telemetry so bottlenecks are measurable rather than guessed.
 - Ship a CLI-driven MVP first, then harden with repair and progress heuristics.
 Success definition: On a 10-task internal web harness, the agent completes at least 8 tasks within 40 steps each, and produces structured logs + metrics for every run.
@@ -12,15 +12,16 @@ Success definition: On a 10-task internal web harness, the agent completes at le
 ### In scope:
 - Core state-machine agent loop with max-step limits and deterministic termination.
 - CDP-based browser adapter (Chromium via chromiumoxide) with snapshot + action apply.
-- Observation model with stable element refs and compact visible text.
+- Observation model with stable element refs, compact visible text, and per-step viewport screenshot context.
 - Strict action schema, validation, and error handling.
-- LLM router with fast -> mid -> strong escalation based on failure/no-progress streaks.
+- LLM router with fast -> mid -> strong escalation based on failure/no-progress streaks, plus effort escalation (`low|medium|high`) within a model tier.
 - Memory of plan, last N observations, and action history.
 - CLI entrypoint and config file support.
 - Tracing and metrics for per-step timing and failures.
 ### Out of scope:
 - CAPTCHA solving, bot evasion, or adversarial browsing behavior.
-- Vision-first browsing or heavy OCR pipelines.
+- Vision-only execution that drops structured DOM/actionable element contracts.
+- Heavy OCR pipelines as a hard runtime dependency.
 - Multi-agent coordination or distributed execution.
 - UI dashboard for managing runs.
 ### Non-goals:
@@ -32,16 +33,18 @@ Success definition: On a 10-task internal web harness, the agent completes at le
 ### Functional requirements:
 1. Accept a task string and optional plan; execute up to `max_steps` and return a final summary or error.
 2. Launch or connect to a headless Chromium instance via CDP and keep the session warm.
-3. Produce an `Observation` with URL, title, viewport, focused element, compact visible text, element list, and a stable `state_hash`.
+3. Produce an `Observation` with URL, title, viewport, focused element, compact visible text, element list, a viewport screenshot artifact, and a stable `state_hash`.
 4. Generate exactly one `Action` per step from an LLM client via the JSON schema.
 5. Validate actions deterministically against the current observation before execution.
 6. Apply actions (click/type/select/scroll/wait/navigate/back/extract/done) and return `StepResult` including `ok`, `error`, and `new_state_hash` when available.
-7. Escalate models based on failure and no-progress counters; reset counters on progress.
+7. Escalate using two axes: model tier and reasoning effort; trigger effort escalation on unchanged-state streaks and repeated validation codes (for example `repeat_no_progress_action`) and reset both counters after confirmed progress.
 8. Maintain action history and recent observations for context and debugging.
 9. Stop on `Done` action, or on `max_steps`, and return a machine-readable final record.
 10. Provide a CLI that outputs step-by-step JSON logs and final summary.
+11. If screenshot capture fails, continue with structured text-only observation and emit structured diagnostics.
 ### Non-functional requirements:
 - Performance: Observation and action execution should each complete within 1 second on typical pages (excluding LLM latency).
+- Performance: Screenshot capture + packaging should add no more than 300ms p95 snapshot overhead on harness pages.
 - Reliability: No panics in normal operation; all errors returned as structured results.
 - Security: Do not log secrets or form input by default; restrict navigation to http/https unless explicitly allowed.
 - Observability: Structured logs, traces, and metrics for every step and LLM call.
@@ -53,7 +56,7 @@ Success definition: On a 10-task internal web harness, the agent completes at le
 - Privacy: Treat page content as sensitive; do not persist raw DOM or screenshots without explicit opt-in.
 ### Integration requirements:
 - Browser: Chromium via CDP (chromiumoxide).
-- LLM: OpenAI-compatible HTTP API client; pluggable trait for other providers.
+- LLM: OpenAI-compatible HTTP API client with multimodal message support (image + text); pluggable trait for other providers.
 - Metrics: Prometheus or OpenTelemetry exporter (optional but supported).
 ### Edge cases / failure modes:
 1. Element id not found or detached between snapshot and action.
@@ -63,6 +66,9 @@ Success definition: On a 10-task internal web harness, the agent completes at le
 5. Page with very few actionable nodes (canvas, PDF viewer).
 6. Form fields requiring focus or special input types.
 7. Slow network or long-running navigation timeouts.
+8. Screenshot capture fails or returns empty bytes for a step.
+9. Visual content changes while state hash remains unchanged (animation/overlay churn).
+10. Image token budget inflates latency/cost and suppresses overall step throughput.
 
 ## UX / API Contract
 User-facing flow (CLI):
@@ -87,6 +93,7 @@ Observation schema (JSON example):
   "viewport": [1280, 800],
   "focused": "el_7",
   "visible_text": "Cart Total $19.99 ...",
+  "screenshot": { "mime_type": "image/png", "artifact_ref": "step://20260214T001500Z/screenshot.png", "sha256": "9f1a..." },
   "state_hash": "ab12cd",
   "elements": [
     { "id": "el_7", "role": "textbox", "name": "Email", "value": null, "bbox": [10, 120, 400, 36], "flags": [] }
@@ -100,12 +107,15 @@ Validation rules and invariants:
 - `Type.text` length <= 2000 characters.
 - `Wait.ms` <= 30000.
 - `Scroll.dx/dy` are bounded to +/- 2000 per action.
+- `Observation.elements` remains the only authority for `Action.id`; screenshots are reasoning context only.
 
 ## Observability + Operations
 ### Metrics:
 - `step_duration_ms`, `snapshot_duration_ms`, `apply_duration_ms`
 - `llm_duration_ms`, `llm_failures_total`
 - `actions_total{type}`, `steps_total`, `no_progress_streak`
+- `screenshot_capture_duration_ms`, `screenshot_bytes`
+- `effort_level_changes_total`, `repeat_validation_code_total{code}`
 ### Logs and traces:
 - Structured JSON logs per step, including action, outcome, and timings.
 - Trace spans for snapshot, LLM call, validation, action apply.
@@ -175,6 +185,20 @@ Validation rules and invariants:
 - Run `mbus bench` in `openai` mode on the 10-task harness and produce a report artifact.
 - Show gate result plus aggregate duration, token totals, and estimated cost.
 - Run `mbus bench` in `scripted` mode to confirm backward compatibility.
+
+### Milestone 4: Visual-state grounding + effort escalation
+- Add per-step screenshot context to improve scene understanding while preserving deterministic DOM-based execution.
+- Extend routing policy to escalate both model tier and reasoning effort before/alongside model swaps.
+- Add diagnostics for unchanged-state loops and repeated validation errors to verify escalation quality.
+#### Acceptance criteria:
+- `mbus run` artifacts include one viewport screenshot per step when enabled, and fall back cleanly when screenshot capture fails.
+- LLM routing supports an ordered ladder such as `gpt-5.1 medium -> gpt-5.2 medium -> gpt-5.2 high`, configurable via policy.
+- Unchanged `state_hash` streaks and repeated validation codes trigger effort escalation; confirmed progress resets the escalation state.
+- Step logs and run summary expose screenshot metrics, effort transitions, and repeated-validation counters.
+#### Demo checklist:
+- Reproduce a known no-progress loop case and show escalation events before hard failure.
+- Show a successful run where effort escalates without requiring a model swap.
+- Show deterministic `Action.id` validation still anchored to `Observation.elements` with screenshot context enabled.
 
 ## Task List for Engineering (engineer-ready)
 
@@ -373,12 +397,69 @@ Validation rules and invariants:
 | Test notes           | Unit tests for report aggregation math and config parsing; integration benchmark test in scripted mode plus mocked-usage openai path. |
 | Observability notes  | Emit benchmark-level metrics/log fields for usage and cost, with explicit currency and pricing config used for the run.             |
 
+### Milestone M4
+
+18. [Build] Snapshot screenshot artifact channel
+
+| Field                | Value                                                                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Goal/Rationale       | Improve page-scene understanding without giving up deterministic element-id execution.                                      |
+| Implementation notes | Capture viewport screenshot at each snapshot, attach artifact metadata to `Observation`, and gate persistence by config.    |
+| Dependencies         | Tasks 5, 6, 10                                                                                                              |
+| Acceptance criteria  | Observation contains screenshot artifact refs when enabled; capture failures surface structured diagnostics and do not halt runs. |
+| Test notes           | Unit tests for observation serialization; integration test for screenshot capture on a harness page.                        |
+| Observability notes  | Emit screenshot duration and size metrics with failure codes.                                                                |
+
+19. [Build] Multimodal LLM prompt contract
+
+| Field                | Value                                                                                                                      |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Goal/Rationale       | Feed image context to the planner while preserving compact text/element channels.                                         |
+| Implementation notes | Extend LLM request builder to include screenshot references and compact text; keep strict single-action JSON response contract. |
+| Dependencies         | Tasks 4, 8, 18                                                                                                            |
+| Acceptance criteria  | Prompt payloads include both screenshot and structured observation channels; action parsing/validation behavior is unchanged. |
+| Test notes           | Golden tests for multimodal payload shape and response parsing.                                                           |
+| Observability notes  | Log multimodal payload mode and token usage fields where available.                                                       |
+
+20. [Build] Two-axis escalation policy (model + effort)
+
+| Field                | Value                                                                                                                               |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Goal/Rationale       | Reduce repeated no-progress loops by increasing reasoning depth before/alongside model swaps.                                      |
+| Implementation notes | Add configurable escalation ladder over `(model, effort)` pairs and trigger rules keyed by no-progress streaks and validation codes. |
+| Dependencies         | Tasks 8, 9, 19                                                                                                                      |
+| Acceptance criteria  | Policy transitions follow configured ladder, with reset on confirmed progress and structured reason codes for each transition.       |
+| Test notes           | Unit tests for ladder traversal and reset semantics; integration test covering repeated `repeat_no_progress_action` transitions.     |
+| Observability notes  | Emit escalation transition counters by trigger reason and resulting `(model, effort)`.                                             |
+
+21. [Build] Regression suite for unchanged-state/repeat-validation loops
+
+| Field                | Value                                                                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Goal/Rationale       | Prevent regressions on the class of failures seen in AGENT-007 and related site-loop analyses.                                    |
+| Implementation notes | Add replayable scenarios that generate unchanged state-hash streaks and repeated validation codes, then assert escalation behavior. |
+| Dependencies         | Tasks 12, 20                                                                                                                       |
+| Acceptance criteria  | Tests fail if escalation does not trigger/reset as specified or if the agent repeats blocked actions beyond configured thresholds. |
+| Test notes           | Harness integration tests with deterministic fixtures and expected transition traces.                                              |
+| Observability notes  | Persist test-run trace snippets for escalation reasoning audits.                                                                   |
+
+22. [Spike] Visual diff + OCR evaluator utility (optional)
+
+| Field                | Value                                                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Goal/Rationale       | Quantify whether visual artifacts materially improve planner quality before committing to heavier vision stack investments.           |
+| Implementation notes | Build a local utility that stores before/after screenshots, OCR text, and changed regions for selected runs; keep outside hot path. |
+| Dependencies         | Task 18                                                                                                                              |
+| Acceptance criteria  | Utility can generate a compact report from run artifacts showing changed regions and extracted OCR text for manual comparison.       |
+| Test notes           | Smoke test on one harness task plus one dynamic site recording.                                                                      |
+| Observability notes  | Record utility runtime and output artifact sizes only.                                                                               |
+
 ## Open Questions / Assumptions
 ### Questions blocking execution:
 - Which LLM provider(s) and model names are approved for MVP? -- OpenAI; gpt-5.2-codex, gpt-5.2, gpt-5.1-codex-max, gpt-5.1-codex-mini.
 - Is a headless Chromium binary available in the target runtime environment? -- Include a script to install, or at least instructions.
 ### Questions that can wait:
-- Should we support vision-based fallback in M2 or later? -- later
+- Should we support vision-based fallback in M2 or later? -- Yes; implement screenshot-grounded multimodal context in M4, without making OCR mandatory.
 - Do we need multi-tab or multi-session support? -- not yet.
 ### Assumptions made (with rationale):
 - We can use an OpenAI-compatible HTTP API for the initial LLM client to keep scope small. -- ok.
@@ -389,6 +470,7 @@ Validation rules and invariants:
 - Risk: CDP integration instability on dynamic sites. Severity: High. Mitigation: Start with limited harness and robust timeouts.
 - Risk: Prompt injection causing unsafe actions. Severity: High. Mitigation: Strict schema validation and navigation allowlist.
 - Risk: LLM latency dominates step time. Severity: Medium. Mitigation: Fast model default and tier escalation.
+- Risk: Screenshot + multimodal input increases latency/token cost. Severity: Medium. Mitigation: Configurable screenshot policy and effort ladder with clear budgets.
 - Risk: Observation too large or unstable. Severity: Medium. Mitigation: Aggressive minimization and stable ids.
 - Tradeoff: Speed vs correctness, favoring fast models with escalation.
 - Tradeoff: Scope vs polish, keeping MVP minimal to ship quickly.
