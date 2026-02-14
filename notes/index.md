@@ -102,3 +102,4 @@
 - 2026-02-14 OBS-004 AX node id churn repeat-action gap: `notes/2026-02-14-obs-004-ax-node-id-churn-repeat-action-gap.md`
 - 2026-02-14 LLM chat-endpoint model compatibility: `notes/2026-02-14-llm-003-chat-endpoint-model-compat.md`
 - 2026-02-14 LLM empty-output diagnostics + recovery: `notes/2026-02-14-llm-004-empty-output-diagnostics-and-recovery.md`
+- 2026-02-14 PRD M4 atomic task breakdown: `notes/2026-02-14-prd-m4-atomic-task-breakdown.md`
