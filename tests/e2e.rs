@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
+use mbus::agent::memory::StepRecord;
 use mbus::agent::policy::AgentPolicy;
 use mbus::browser::{Browser, CdpBrowser, CdpConfig};
 use mbus::llm::client::{LlmClient, LlmError, LlmResponse};
@@ -206,6 +207,7 @@ impl LlmClient for HarnessLlm {
         observation: &Observation,
         _observations: &VecDeque<Observation>,
         _history: &[Action],
+        _steps: &[StepRecord],
     ) -> Result<LlmResponse, LlmError> {
         let mut guard = self.step.lock().await;
         let action = match (self.mode, *guard) {

@@ -1,3 +1,4 @@
+use crate::agent::memory::StepRecord;
 use crate::llm::client::{LlmClient, LlmError, LlmResponse, LlmResult};
 use crate::telemetry;
 use crate::types::Action;
@@ -30,6 +31,7 @@ impl LlmClient for StubLlm {
         _observation: &crate::types::Observation,
         _observations: &VecDeque<crate::types::Observation>,
         _history: &[Action],
+        _steps: &[StepRecord],
     ) -> LlmResult<LlmResponse> {
         telemetry::inc_llm_call();
         let start = Instant::now();
@@ -75,6 +77,7 @@ impl LlmClient for ScriptedLlm {
         _observation: &crate::types::Observation,
         _observations: &VecDeque<crate::types::Observation>,
         _history: &[Action],
+        _steps: &[StepRecord],
     ) -> LlmResult<LlmResponse> {
         telemetry::inc_llm_call();
         let start = Instant::now();

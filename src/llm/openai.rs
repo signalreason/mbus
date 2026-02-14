@@ -1,3 +1,4 @@
+use crate::agent::memory::StepRecord;
 use crate::llm::client::{LlmClient, LlmError, LlmResponse, LlmResult};
 use crate::llm::prompts::SYSTEM_PROMPT;
 use crate::llm::repair::repair_action;
@@ -56,6 +57,7 @@ impl OpenAiClient {
         observation: &Observation,
         observations: &std::collections::VecDeque<Observation>,
         history: &[Action],
+        steps: &[StepRecord],
     ) -> LlmResult<String> {
         let observation_json = serde_json::to_string(observation)
             .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
@@ -65,13 +67,15 @@ impl OpenAiClient {
             .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
         let history_tail_json = serde_json::to_string(&history_tail(history, 8))
             .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
+        let step_feedback_json = serde_json::to_string(&step_feedback_tail(steps, 8))
+            .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
         let schema_json = serde_json::to_string(self.schema.json())
             .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
         let plan_text = plan.unwrap_or("(none)");
         let state_hash_streak = trailing_state_hash_streak(observations);
 
         Ok(format!(
-            "Task: {task}\nPlan: {plan_text}\nObservation: {observation_json}\nRecentObservations: {observations_json}\nStateHashStreak: {state_hash_streak}\nHistory: {history_json}\nRecentHistoryTail: {history_tail_json}\nExecutionRules: [\"If StateHashStreak > 0, do not repeat the same exact action from RecentHistoryTail[-1]\", \"Use different element ids or action types when the state hash is unchanged\", \"Keep scroll deltas within |dx|<=2000 and |dy|<=2000\", \"Keep wait.ms <= 30000\"]\nSchema: {schema_json}\nReturn exactly one JSON action object matching the schema and nothing else.",
+            "Task: {task}\nPlan: {plan_text}\nObservation: {observation_json}\nRecentObservations: {observations_json}\nStateHashStreak: {state_hash_streak}\nHistory: {history_json}\nRecentHistoryTail: {history_tail_json}\nRecentStepFeedback: {step_feedback_json}\nExecutionRules: [\"If StateHashStreak > 0, do not repeat the same exact action from RecentHistoryTail[-1]\", \"If RecentStepFeedback shows validation_code=repeat_no_progress_action, do not propose that blocked action/id again\", \"Use different element ids or action types when the state hash is unchanged\", \"Keep scroll deltas within |dx|<=2000 and |dy|<=2000\", \"Keep wait.ms <= 30000\"]\nSchema: {schema_json}\nReturn exactly one JSON action object matching the schema and nothing else.",
         ))
     }
 
@@ -207,12 +211,14 @@ impl LlmClient for OpenAiClient {
         observation: &Observation,
         observations: &std::collections::VecDeque<Observation>,
         history: &[Action],
+        steps: &[StepRecord],
     ) -> LlmResult<LlmResponse> {
         telemetry::inc_llm_call();
         let start = Instant::now();
         let span = tracing::info_span!("llm_call", model = %self.config.model);
         let result = async {
-            let prompt = self.build_prompt(task, plan, observation, observations, history)?;
+            let prompt =
+                self.build_prompt(task, plan, observation, observations, history, steps)?;
             let mut body = json!({
                 "model": self.config.model,
                 "messages": [
@@ -367,6 +373,52 @@ fn history_tail(history: &[Action], max_items: usize) -> &[Action] {
     &history[start..]
 }
 
+#[derive(serde::Serialize)]
+struct PromptStepFeedback<'a> {
+    action: &'a Action,
+    outcome: &'a str,
+    result_ok: bool,
+    error_code: Option<&'a str>,
+    validation_code: Option<&'a str>,
+    validation_codes: Vec<&'a str>,
+    new_state_hash: Option<&'a str>,
+}
+
+fn step_feedback_tail(steps: &[StepRecord], max_items: usize) -> Vec<PromptStepFeedback<'_>> {
+    let start = steps.len().saturating_sub(max_items);
+    steps[start..]
+        .iter()
+        .map(|step| PromptStepFeedback {
+            action: &step.action,
+            outcome: outcome_label(&step.outcome),
+            result_ok: step.result.ok,
+            error_code: step.result.error.as_ref().map(|error| error.code.as_str()),
+            validation_code: step
+                .result
+                .error
+                .as_ref()
+                .and_then(|error| error.validation_code.as_deref()),
+            validation_codes: step
+                .validation
+                .errors
+                .iter()
+                .map(|error| error.code.as_str())
+                .collect(),
+            new_state_hash: step.result.new_state_hash.as_deref(),
+        })
+        .collect()
+}
+
+fn outcome_label(outcome: &crate::agent::memory::StepOutcomeLog) -> &'static str {
+    match outcome {
+        crate::agent::memory::StepOutcomeLog::Done => "done",
+        crate::agent::memory::StepOutcomeLog::ValidationFailed => "validation_failed",
+        crate::agent::memory::StepOutcomeLog::ApplyFailed => "apply_failed",
+        crate::agent::memory::StepOutcomeLog::NoProgress => "no_progress",
+        crate::agent::memory::StepOutcomeLog::Progress => "progress",
+    }
+}
+
 fn is_unsupported_temperature_error(status: reqwest::StatusCode, body: &str) -> bool {
     if status != reqwest::StatusCode::BAD_REQUEST {
         return false;
@@ -472,7 +524,7 @@ mod prompt_tests {
         let current = sample_observation("hash-2");
 
         let prompt = client
-            .build_prompt("task", None, &current, &observations, &[])
+            .build_prompt("task", None, &current, &observations, &[], &[])
             .expect("prompt");
 
         let line = prompt
@@ -506,13 +558,69 @@ mod prompt_tests {
         let current = sample_observation("hash-2");
 
         let prompt = client
-            .build_prompt("task", None, &current, &observations, &[])
+            .build_prompt("task", None, &current, &observations, &[], &[])
             .expect("prompt");
 
         assert!(
             prompt.contains("StateHashStreak: 2"),
             "expected prompt to include trailing streak count"
         );
+    }
+
+    #[test]
+    fn prompt_includes_recent_step_feedback() {
+        let client = OpenAiClient::new(OpenAiConfig {
+            api_key: "test-key".to_string(),
+            base_url: "http://localhost".to_string(),
+            model: "test".to_string(),
+            timeout: Duration::from_secs(1),
+            temperature: 0.0,
+            max_tokens: None,
+        })
+        .expect("client");
+
+        let mut observations = VecDeque::new();
+        observations.push_back(sample_observation("hash-1"));
+        let current = sample_observation("hash-1");
+        let step = StepRecord {
+            action: Action::Click {
+                id: "el_1".to_string(),
+            },
+            validation: crate::agent::memory::ValidationOutcome::failure(vec![
+                crate::verify::rules::ValidationError {
+                    code: "repeat_no_progress_action".to_string(),
+                    field: None,
+                    message: "blocked".to_string(),
+                },
+            ]),
+            result: crate::types::StepResult {
+                ok: false,
+                error: Some(crate::types::StepError {
+                    code: "invalid_action".to_string(),
+                    message: "blocked".to_string(),
+                    validation_code: Some("repeat_no_progress_action".to_string()),
+                }),
+                new_state_hash: Some("hash-1".to_string()),
+                scroll: None,
+                extract: None,
+            },
+            outcome: crate::agent::memory::StepOutcomeLog::ValidationFailed,
+            timings: crate::agent::memory::StepTimings {
+                step_duration_ms: 1,
+                llm_duration_ms: 1,
+                apply_duration_ms: 0,
+                snapshot_duration_ms: 0,
+            },
+            llm_usage: None,
+        };
+
+        let prompt = client
+            .build_prompt("task", None, &current, &observations, &[], &[step])
+            .expect("prompt");
+
+        assert!(prompt.contains("RecentStepFeedback: "));
+        assert!(prompt.contains("repeat_no_progress_action"));
+        assert!(prompt.contains("validation_failed"));
     }
 }
 

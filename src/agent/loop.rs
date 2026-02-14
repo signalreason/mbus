@@ -94,6 +94,8 @@ struct LoopState {
     state_hash_streak: u32,
 }
 
+const REPEAT_NO_PROGRESS_VALIDATION_LIMIT: u32 = 3;
+
 impl LoopState {
     fn new(initial_hash: String) -> Self {
         Self {
@@ -220,6 +222,7 @@ impl<B: Browser> AgentLoop<B> {
                         &observation,
                         self.memory.observations(),
                         self.memory.history(),
+                        self.memory.steps(),
                     )
                     .instrument(llm_span)
                     .await
@@ -279,6 +282,9 @@ impl<B: Browser> AgentLoop<B> {
                     }
                 });
                 if let Err(errors) = validation_check {
+                    let has_repeat_no_progress_error = errors
+                        .iter()
+                        .any(|error| error.code == "repeat_no_progress_action");
                     let error_count = errors.len();
                     telemetry::inc_validation_failure();
                     let mut result = validation_result(errors.clone());
@@ -308,6 +314,27 @@ impl<B: Browser> AgentLoop<B> {
                         tier = ?tier_after,
                         step_duration_ms = duration.as_millis() as u64
                     );
+                    if has_repeat_no_progress_error {
+                        let repeat_streak = repeat_no_progress_validation_streak(
+                            self.memory.steps(),
+                            observation.state_hash.as_str(),
+                        );
+                        if repeat_streak >= REPEAT_NO_PROGRESS_VALIDATION_LIMIT {
+                            let final_action = Action::Done {
+                                summary: format!(
+                                    "no progress after {} repeated blocked actions",
+                                    repeat_streak
+                                ),
+                            };
+                            tracing::warn!(
+                                event = "repeat_no_progress_termination",
+                                repeat_no_progress_validation_streak = repeat_streak,
+                                state_hash = %observation.state_hash,
+                                limit = REPEAT_NO_PROGRESS_VALIDATION_LIMIT
+                            );
+                            return Ok(StepControl::Done(final_action, RunStatus::NoProgress));
+                        }
+                    }
                     return Ok(StepControl::Continue);
                 }
 
@@ -561,6 +588,25 @@ fn repeated_no_progress_validation_error(
     None
 }
 
+fn repeat_no_progress_validation_streak(steps: &[StepRecord], state_hash: &str) -> u32 {
+    let mut streak = 0_u32;
+    for step in steps.iter().rev() {
+        if step.result.new_state_hash.as_deref() != Some(state_hash) {
+            break;
+        }
+        if step
+            .result
+            .error
+            .as_ref()
+            .and_then(|error| error.validation_code.as_deref())
+            == Some("repeat_no_progress_action")
+        {
+            streak = streak.saturating_add(1);
+        }
+    }
+    streak
+}
+
 fn duration_ms(duration: Duration) -> u64 {
     duration.as_millis() as u64
 }
@@ -657,6 +703,7 @@ mod tests {
             _observation: &Observation,
             _observations: &VecDeque<Observation>,
             _history: &[Action],
+            _steps: &[StepRecord],
         ) -> Result<LlmResponse, LlmError> {
             let mut guard = self.actions.lock().await;
             let action = guard
@@ -678,6 +725,7 @@ mod tests {
             _observation: &Observation,
             _observations: &VecDeque<Observation>,
             _history: &[Action],
+            _steps: &[StepRecord],
         ) -> Result<LlmResponse, LlmError> {
             let mut guard = self.responses.lock().await;
             let response = guard
@@ -1081,6 +1129,68 @@ mod tests {
                 .as_deref(),
             Some("repeat_no_progress_action")
         );
+        let applied = agent.browser.applied().await;
+        assert_eq!(applied.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn terminates_when_repeat_no_progress_validation_loops() {
+        let obs_a = sample_observation("obs1", "hash1", vec![element("el_1")]);
+        let obs_b = sample_observation("obs2", "hash1", vec![element("el_1")]);
+        let browser = FakeBrowser::new(
+            vec![obs_a.clone(), obs_b.clone()],
+            vec![StepResult {
+                ok: true,
+                error: None,
+                new_state_hash: None,
+                scroll: None,
+                extract: None,
+            }],
+        );
+        let llm = ScriptedLlm::new(vec![
+            Action::Click {
+                id: "el_1".to_string(),
+            },
+            Action::Click {
+                id: "el_1".to_string(),
+            },
+            Action::Click {
+                id: "el_1".to_string(),
+            },
+            Action::Click {
+                id: "el_1".to_string(),
+            },
+        ]);
+        let clients = LlmClients::new(
+            Box::new(llm),
+            Box::new(ScriptedLlm::new(vec![])),
+            Box::new(ScriptedLlm::new(vec![])),
+        );
+        let router = Router::new(crate::llm::router::RouterConfig {
+            failures_to_mid: 10,
+            failures_to_strong: 20,
+            no_progress_to_mid: 10,
+            no_progress_to_strong: 20,
+            low_actionability_to_mid: 10,
+            low_actionability_to_strong: 20,
+        });
+        let mut agent = AgentLoop::new(browser, clients, "task")
+            .with_router(router)
+            .with_policy(AgentPolicy {
+                max_steps: 10,
+                max_no_progress_steps: 8,
+                ..AgentPolicy::default()
+            });
+
+        let result = agent.run().await.expect("run");
+        assert_eq!(result.status, RunStatus::NoProgress);
+        assert_eq!(
+            result.final_action,
+            Action::Done {
+                summary: "no progress after 3 repeated blocked actions".to_string()
+            }
+        );
+        assert_eq!(agent.memory().steps().len(), 4);
         let applied = agent.browser.applied().await;
         assert_eq!(applied.len(), 1);
     }

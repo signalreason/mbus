@@ -1,3 +1,4 @@
+use crate::agent::memory::StepRecord;
 use crate::types::{Action, Observation, TokenUsage};
 use async_trait::async_trait;
 use std::collections::VecDeque;
@@ -43,5 +44,6 @@ pub trait LlmClient: Send + Sync {
         observation: &Observation,
         observations: &VecDeque<Observation>,
         history: &[Action],
+        steps: &[StepRecord],
     ) -> LlmResult<LlmResponse>;
 }

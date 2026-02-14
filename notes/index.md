@@ -96,5 +96,6 @@
 - 2026-02-14 Site no-progress threshold signature: `notes/2026-02-14-site-005-no-progress-threshold-signature.md`
 - 2026-02-14 Site repeat-validation thrash in unchanged state: `notes/2026-02-14-site-006-repeat-validation-thrash.md`
 - 2026-02-14 AGENT-005 repeat no-progress action guard: `notes/2026-02-14-agent-005-repeat-no-progress-guard.md`
+- 2026-02-14 AGENT-006 repeat-validation recovery hardening: `notes/2026-02-14-agent-006-repeat-validation-recovery.md`
 - 2026-02-14 LLM chat-endpoint model compatibility: `notes/2026-02-14-llm-003-chat-endpoint-model-compat.md`
 - 2026-02-14 LLM empty-output diagnostics + recovery: `notes/2026-02-14-llm-004-empty-output-diagnostics-and-recovery.md`

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
+use mbus::agent::memory::StepRecord;
 use mbus::agent::policy::AgentPolicy;
 use mbus::bench::aggregate::aggregate_usage_from_steps;
 use mbus::browser::{Browser, BrowserError};
@@ -62,6 +63,7 @@ impl LlmClient for UsageLlm {
         _observation: &Observation,
         _observations: &VecDeque<Observation>,
         _history: &[Action],
+        _steps: &[StepRecord],
     ) -> Result<LlmResponse, LlmError> {
         Ok(LlmResponse {
             action: Action::Done {
