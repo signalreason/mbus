@@ -241,6 +241,7 @@ impl LlmClient for OpenAiClient {
             let mut action = self.parse_action(&payload);
             if let Err(err) = action.as_ref() {
                 if is_retryable_empty_output_error(err) {
+                    log_empty_output_diagnostics(&self.config.model, &payload, err, 1);
                     tracing::info!(
                         event = "llm_retry_empty_output",
                         model = %self.config.model,
@@ -248,6 +249,16 @@ impl LlmClient for OpenAiClient {
                     );
                     payload = self.send_chat_request(&body).await?;
                     action = self.parse_action(&payload);
+                    if let Err(retry_err) = action.as_ref() {
+                        if is_retryable_empty_output_error(retry_err) {
+                            log_empty_output_diagnostics(
+                                &self.config.model,
+                                &payload,
+                                retry_err,
+                                2,
+                            );
+                        }
+                    }
                 }
             }
             let action = action?;
@@ -295,11 +306,13 @@ struct ChatResponse {
 #[derive(Debug, Deserialize)]
 struct Choice {
     message: Message,
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct Message {
     content: Option<Value>,
+    refusal: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -478,7 +491,111 @@ fn extract_content(value: &Value) -> LlmResult<String> {
 }
 
 fn is_retryable_empty_output_error(err: &LlmError) -> bool {
-    err.code == "empty_response" || (err.code == "invalid_json" && err.message.contains("empty response"))
+    err.code == "empty_response"
+        || (err.code == "invalid_json" && err.message.contains("empty response"))
+}
+
+fn log_empty_output_diagnostics(model: &str, payload: &ChatResponse, err: &LlmError, attempt: u8) {
+    let diagnostics = collect_empty_output_diagnostics(payload);
+    tracing::warn!(
+        event = "llm_empty_output",
+        model = model,
+        attempt = attempt as u64,
+        error_code = err.code,
+        error_message_len = err.message.chars().count(),
+        finish_reason = ?diagnostics.finish_reason,
+        content_kind = diagnostics.content_kind,
+        content_text_chars = diagnostics.content_text_chars as u64,
+        content_part_types = ?diagnostics.content_part_types,
+        refusal_kind = diagnostics.refusal_kind,
+        refusal_chars = diagnostics.refusal_chars as u64,
+        prompt_tokens = ?diagnostics.prompt_tokens,
+        completion_tokens = ?diagnostics.completion_tokens,
+        total_tokens = ?diagnostics.total_tokens
+    );
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct EmptyOutputDiagnostics {
+    finish_reason: Option<String>,
+    content_kind: &'static str,
+    content_text_chars: usize,
+    content_part_types: Vec<String>,
+    refusal_kind: &'static str,
+    refusal_chars: usize,
+    prompt_tokens: Option<u64>,
+    completion_tokens: Option<u64>,
+    total_tokens: Option<u64>,
+}
+
+fn collect_empty_output_diagnostics(payload: &ChatResponse) -> EmptyOutputDiagnostics {
+    let usage = payload.usage.as_ref();
+    let mut diagnostics = EmptyOutputDiagnostics {
+        finish_reason: None,
+        content_kind: "missing_choice",
+        content_text_chars: 0,
+        content_part_types: Vec::new(),
+        refusal_kind: "none",
+        refusal_chars: 0,
+        prompt_tokens: usage.and_then(|value| value.prompt_tokens),
+        completion_tokens: usage.and_then(|value| value.completion_tokens),
+        total_tokens: usage.and_then(|value| value.total_tokens),
+    };
+
+    let Some(choice) = payload.choices.first() else {
+        return diagnostics;
+    };
+    diagnostics.finish_reason = choice.finish_reason.clone();
+
+    let (content_kind, content_text_chars, content_part_types) =
+        collect_content_diagnostics(choice.message.content.as_ref());
+    diagnostics.content_kind = content_kind;
+    diagnostics.content_text_chars = content_text_chars;
+    diagnostics.content_part_types = content_part_types;
+
+    let (refusal_kind, refusal_chars) =
+        collect_refusal_diagnostics(choice.message.refusal.as_ref());
+    diagnostics.refusal_kind = refusal_kind;
+    diagnostics.refusal_chars = refusal_chars;
+
+    diagnostics
+}
+
+fn collect_content_diagnostics(content: Option<&Value>) -> (&'static str, usize, Vec<String>) {
+    match content {
+        None => ("none", 0, Vec::new()),
+        Some(Value::String(text)) => ("string", text.chars().count(), Vec::new()),
+        Some(Value::Array(parts)) => {
+            let mut text_chars = 0;
+            let mut part_types = Vec::new();
+            for part in parts {
+                if let Some(part_type) = part.get("type").and_then(|value| value.as_str()) {
+                    part_types.push(part_type.to_string());
+                }
+                if let Some(text) = part.get("text").and_then(|value| value.as_str()) {
+                    text_chars += text.chars().count();
+                }
+            }
+            ("array", text_chars, part_types)
+        }
+        Some(_) => ("other", 0, Vec::new()),
+    }
+}
+
+fn collect_refusal_diagnostics(refusal: Option<&Value>) -> (&'static str, usize) {
+    match refusal {
+        None => ("none", 0),
+        Some(Value::String(text)) => ("string", text.chars().count()),
+        Some(Value::Array(values)) => {
+            let chars = values
+                .iter()
+                .filter_map(|value| value.as_str())
+                .map(|text| text.chars().count())
+                .sum();
+            ("array", chars)
+        }
+        Some(_) => ("other", 0),
+    }
 }
 
 #[cfg(test)]
@@ -535,9 +652,7 @@ mod parse_tests {
     #[test]
     fn parse_content_empty_keeps_empty_response_message() {
         let client = test_client();
-        let err = client
-            .parse_content("")
-            .expect_err("expected invalid json");
+        let err = client.parse_content("").expect_err("expected invalid json");
         assert_eq!(err.code, "invalid_json");
         assert_eq!(err.message, "empty response");
     }
@@ -615,8 +730,8 @@ mod parse_tests {
 
     #[test]
     fn extract_content_rejects_empty_string_content() {
-        let err = extract_content(&Value::String(" ".to_string()))
-            .expect_err("expected empty response");
+        let err =
+            extract_content(&Value::String(" ".to_string())).expect_err("expected empty response");
         assert_eq!(err.code, "empty_response");
     }
 
@@ -633,5 +748,39 @@ mod parse_tests {
 
         let invalid = LlmError::new("invalid_json", "expected value at line 1 column 1");
         assert!(!is_retryable_empty_output_error(&invalid));
+    }
+
+    #[test]
+    fn collect_empty_output_diagnostics_reads_finish_reason_and_usage() {
+        let payload = ChatResponse {
+            choices: vec![Choice {
+                message: Message {
+                    content: Some(Value::Array(vec![
+                        serde_json::json!({"type":"text","text":" "}),
+                        serde_json::json!({"type":"output_text","text":""}),
+                    ])),
+                    refusal: Some(Value::String("".to_string())),
+                },
+                finish_reason: Some("length".to_string()),
+            }],
+            usage: Some(Usage {
+                prompt_tokens: Some(123),
+                completion_tokens: Some(7),
+                total_tokens: Some(130),
+            }),
+        };
+
+        let diagnostics = collect_empty_output_diagnostics(&payload);
+        assert_eq!(diagnostics.finish_reason.as_deref(), Some("length"));
+        assert_eq!(diagnostics.content_kind, "array");
+        assert_eq!(diagnostics.content_text_chars, 1);
+        assert_eq!(
+            diagnostics.content_part_types,
+            vec!["text".to_string(), "output_text".to_string()]
+        );
+        assert_eq!(diagnostics.refusal_kind, "string");
+        assert_eq!(diagnostics.prompt_tokens, Some(123));
+        assert_eq!(diagnostics.completion_tokens, Some(7));
+        assert_eq!(diagnostics.total_tokens, Some(130));
     }
 }

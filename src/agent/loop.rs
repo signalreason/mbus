@@ -230,6 +230,18 @@ impl<B: Browser> AgentLoop<B> {
                         telemetry::record_step_duration(duration);
                         telemetry::record_apply_duration(Duration::from_millis(0));
                         telemetry::record_snapshot_duration(Duration::from_millis(0));
+                        if is_recoverable_llm_error(&err) {
+                            let tier_after = self.router.record(StepOutcome::Failure);
+                            telemetry::set_no_progress_streak(self.router.counters().no_progress);
+                            tracing::warn!(
+                                event = "llm_error_recoverable",
+                                error_code = err.code,
+                                error_message_len = err.message.chars().count(),
+                                tier = ?tier_after,
+                                step_duration_ms = duration.as_millis() as u64
+                            );
+                            return Ok(StepControl::Continue);
+                        }
                         tracing::error!(
                             event = "llm_error",
                             error_code = err.code,
@@ -516,6 +528,10 @@ fn duration_ms(duration: Duration) -> u64 {
     duration.as_millis() as u64
 }
 
+fn is_recoverable_llm_error(err: &LlmError) -> bool {
+    err.code == "empty_response"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -582,6 +598,19 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct ScriptedLlmResponses {
+        responses: Mutex<VecDeque<Result<Action, LlmError>>>,
+    }
+
+    impl ScriptedLlmResponses {
+        fn new(responses: Vec<Result<Action, LlmError>>) -> Self {
+            Self {
+                responses: Mutex::new(VecDeque::from(responses)),
+            }
+        }
+    }
+
     #[async_trait]
     impl LlmClient for ScriptedLlm {
         async fn propose_action(
@@ -597,6 +626,27 @@ mod tests {
                 .pop_front()
                 .ok_or_else(|| LlmError::new("no_action", "no action queued"))?;
             Ok(LlmResponse {
+                action,
+                usage: None,
+            })
+        }
+    }
+
+    #[async_trait]
+    impl LlmClient for ScriptedLlmResponses {
+        async fn propose_action(
+            &self,
+            _task: &str,
+            _plan: Option<&str>,
+            _observation: &Observation,
+            _observations: &VecDeque<Observation>,
+            _history: &[Action],
+        ) -> Result<LlmResponse, LlmError> {
+            let mut guard = self.responses.lock().await;
+            let response = guard
+                .pop_front()
+                .ok_or_else(|| LlmError::new("no_action", "no response queued"))?;
+            response.map(|action| LlmResponse {
                 action,
                 usage: None,
             })
@@ -702,6 +752,72 @@ mod tests {
         );
         let applied = agent.browser.applied().await;
         assert!(applied.is_empty());
+    }
+
+    #[tokio::test]
+    async fn empty_response_error_escalates_and_recovers() {
+        let obs = sample_observation("obs1", "hash1", vec![element("el_1")]);
+        let browser = FakeBrowser::new(vec![obs.clone()], vec![]);
+        let clients = LlmClients::new(
+            Box::new(ScriptedLlmResponses::new(vec![Err(LlmError::new(
+                "empty_response",
+                "missing content text",
+            ))])),
+            Box::new(ScriptedLlmResponses::new(vec![Ok(Action::Done {
+                summary: "recovered".to_string(),
+            })])),
+            Box::new(ScriptedLlmResponses::new(vec![])),
+        );
+        let router = Router::new(crate::llm::router::RouterConfig {
+            failures_to_mid: 1,
+            failures_to_strong: 3,
+            no_progress_to_mid: 10,
+            no_progress_to_strong: 20,
+            low_actionability_to_mid: 10,
+            low_actionability_to_strong: 20,
+        });
+        let mut agent = AgentLoop::new(browser, clients, "task")
+            .with_router(router)
+            .with_policy(AgentPolicy {
+                max_steps: 3,
+                ..AgentPolicy::default()
+            });
+
+        let result = agent.run().await.expect("run");
+        assert_eq!(result.status, RunStatus::Done);
+        assert_eq!(
+            result.final_action,
+            Action::Done {
+                summary: "recovered".to_string()
+            }
+        );
+        assert_eq!(agent.memory().steps().len(), 1);
+        assert_eq!(agent.memory().history().len(), 1);
+        let applied = agent.browser.applied().await;
+        assert!(applied.is_empty());
+    }
+
+    #[tokio::test]
+    async fn non_recoverable_llm_error_still_terminates() {
+        let obs = sample_observation("obs1", "hash1", vec![element("el_1")]);
+        let browser = FakeBrowser::new(vec![obs.clone()], vec![]);
+        let clients = LlmClients::new(
+            Box::new(ScriptedLlmResponses::new(vec![Err(LlmError::new(
+                "timeout",
+                "request timed out",
+            ))])),
+            Box::new(ScriptedLlmResponses::new(vec![Ok(Action::Done {
+                summary: "unused".to_string(),
+            })])),
+            Box::new(ScriptedLlmResponses::new(vec![])),
+        );
+        let mut agent = AgentLoop::new(browser, clients, "task");
+
+        let err = agent.run().await.expect_err("expected timeout error");
+        match err {
+            AgentError::Llm(inner) => assert_eq!(inner.code, "timeout"),
+            other => panic!("unexpected error type: {other}"),
+        }
     }
 
     #[tokio::test]

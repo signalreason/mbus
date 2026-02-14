@@ -95,3 +95,4 @@
 - 2026-02-14 Site repeated-click no-progress loop: `notes/2026-02-14-site-004-no-progress-repeated-click-loop.md`
 - 2026-02-14 Site no-progress threshold signature: `notes/2026-02-14-site-005-no-progress-threshold-signature.md`
 - 2026-02-14 LLM chat-endpoint model compatibility: `notes/2026-02-14-llm-003-chat-endpoint-model-compat.md`
+- 2026-02-14 LLM empty-output diagnostics + recovery: `notes/2026-02-14-llm-004-empty-output-diagnostics-and-recovery.md`
