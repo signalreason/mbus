@@ -39,9 +39,9 @@ OpenAI mode:
 ```bash
 MBUS_LLM_MODE=openai MBUS_LLM_API_KEY=... \
   cargo run -- run --task "Find the shipping address" \
-  --llm-model-fast gpt-5.2-codex \
-  --llm-model-mid gpt-5.2 \
-  --llm-model-strong gpt-5.1-codex-max
+  --llm-model-fast gpt-5-mini \
+  --llm-model-mid gpt-5.1 \
+  --llm-model-strong gpt-5.2
 ```
 
 Scripted mode (feed actions from a file):
@@ -159,11 +159,11 @@ max_scroll = 2000
 mode = "stub"
 base_url = "https://api.openai.com/v1"
 api_key = ""
-model_fast = "gpt-5.2-codex"
-model_mid = "gpt-5.2"
-model_strong = "gpt-5.1-codex-max"
+model_fast = "gpt-5-mini"
+model_mid = "gpt-5.1"
+model_strong = "gpt-5.2"
 timeout_ms = 30000
-temperature = 0.0
+temperature = 1.0
 max_tokens = 256
 actions_file = "actions.jsonl"
 

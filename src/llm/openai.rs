@@ -161,6 +161,37 @@ impl OpenAiClient {
             }
         }
     }
+
+    async fn send_chat_request(&self, body: &Value) -> LlmResult<ChatResponse> {
+        let response = self
+            .http
+            .post(self.config.endpoint())
+            .bearer_auth(&self.config.api_key)
+            .json(body)
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<no body>".to_string());
+            if is_unsupported_temperature_error(status, &text) {
+                return Err(LlmError::new(
+                    "unsupported_temperature",
+                    format!("status {status}: {text}"),
+                ));
+            }
+            return Err(LlmError::new(
+                "http_error",
+                format!("status {status}: {text}"),
+            ));
+        }
+
+        response.json().await.map_err(map_reqwest_error)
+    }
 }
 
 #[async_trait]
@@ -183,36 +214,28 @@ impl LlmClient for OpenAiClient {
                 "messages": [
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt}
-                ],
-                "temperature": self.config.temperature
+                ]
             });
+            body["temperature"] = json!(self.config.temperature);
             if let Some(max_tokens) = self.config.max_tokens {
                 // OpenAI chat completions now prefer max_completion_tokens.
                 body["max_completion_tokens"] = json!(max_tokens);
             }
 
-            let response = self
-                .http
-                .post(self.config.endpoint())
-                .bearer_auth(&self.config.api_key)
-                .json(&body)
-                .send()
-                .await
-                .map_err(map_reqwest_error)?;
-
-            if !response.status().is_success() {
-                let status = response.status();
-                let text = response
-                    .text()
-                    .await
-                    .unwrap_or_else(|_| "<no body>".to_string());
-                return Err(LlmError::new(
-                    "http_error",
-                    format!("status {status}: {text}"),
-                ));
-            }
-
-            let payload: ChatResponse = response.json().await.map_err(map_reqwest_error)?;
+            let payload = match self.send_chat_request(&body).await {
+                Ok(payload) => payload,
+                Err(err) if err.code == "unsupported_temperature" => {
+                    tracing::info!(
+                        event = "llm_retry_without_temperature",
+                        model = %self.config.model
+                    );
+                    if let Value::Object(map) = &mut body {
+                        map.remove("temperature");
+                    }
+                    self.send_chat_request(&body).await?
+                }
+                Err(err) => return Err(err),
+            };
             let content = payload
                 .choices
                 .get(0)
@@ -260,6 +283,18 @@ struct Message {
 }
 
 #[derive(Debug, Deserialize)]
+struct ApiErrorEnvelope {
+    error: Option<ApiErrorBody>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiErrorBody {
+    message: Option<String>,
+    param: Option<String>,
+    code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct Usage {
     prompt_tokens: Option<u64>,
     completion_tokens: Option<u64>,
@@ -273,6 +308,75 @@ fn map_reqwest_error(err: reqwest::Error) -> LlmError {
         LlmError::new("transport_error", err.to_string())
     } else {
         LlmError::new("http_error", err.to_string())
+    }
+}
+
+fn is_unsupported_temperature_error(status: reqwest::StatusCode, body: &str) -> bool {
+    if status != reqwest::StatusCode::BAD_REQUEST {
+        return false;
+    }
+
+    let parsed: ApiErrorEnvelope = match serde_json::from_str(body) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    let Some(error) = parsed.error else {
+        return false;
+    };
+    if error.param.as_deref() != Some("temperature") {
+        return false;
+    }
+
+    if error.code.as_deref() == Some("unsupported_value") {
+        return true;
+    }
+
+    error
+        .message
+        .as_deref()
+        .map(|message| {
+            let lowered = message.to_ascii_lowercase();
+            lowered.contains("temperature") && lowered.contains("default")
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::is_unsupported_temperature_error;
+
+    #[test]
+    fn detects_unsupported_temperature_error() {
+        let body = r#"{
+            "error": {
+                "message": "Unsupported value: 'temperature' does not support 0.2 with this model. Only the default (1) value is supported.",
+                "type": "invalid_request_error",
+                "param": "temperature",
+                "code": "unsupported_value"
+            }
+        }"#;
+
+        assert!(is_unsupported_temperature_error(
+            reqwest::StatusCode::BAD_REQUEST,
+            body
+        ));
+    }
+
+    #[test]
+    fn ignores_non_temperature_errors() {
+        let body = r#"{
+            "error": {
+                "message": "Unsupported value: 'max_tokens'.",
+                "type": "invalid_request_error",
+                "param": "max_tokens",
+                "code": "unsupported_value"
+            }
+        }"#;
+
+        assert!(!is_unsupported_temperature_error(
+            reqwest::StatusCode::BAD_REQUEST,
+            body
+        ));
     }
 }
 

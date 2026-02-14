@@ -36,7 +36,7 @@ Every section below ties failure symptoms to structured log events, error codes 
   1. Ensure `MBUS_LLM_API_KEY` (or `llm.api_key` in `mbus.toml`) is correct and not expired.  
   2. If `timeout`/`transport_error` persists, verify network connectivity and throttle reuse; consider increasing `llm.timeout_ms`.  
   3. JSON parsing codes (`invalid_json`, `schema_violation`, `multi_action`) mean the model produced malformed output. Drop the run into `--llm-mode scripted` to reproduce the raw response, inspect the trace via `tracing_subscriber` (set `RUST_LOG=trace`), and, if necessary, tighten the prompt or stash a shorter `plan`.  
-  4. Watch `repair_failed` events and `repair_error` text—if repair fails consistently, the schema may need updates or the model choice should change (switch to `gpt-5.1-codex-max` via `--llm-model-strong` or use `--llm-mode stub` for testing).  
+  4. Watch `repair_failed` events and `repair_error` text—if repair fails consistently, the schema may need updates or the model choice should change (switch to `gpt-5.2` via `--llm-model-strong` or use `--llm-mode stub` for testing).  
   5. After adjusting config, rerun the verification checklist below.
 
 ### 2. Validation rejects (`validation_failed`, `step_result.error_code`)
