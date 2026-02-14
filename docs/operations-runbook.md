@@ -44,12 +44,13 @@ Every section below ties failure symptoms to structured log events, error codes 
   * `validation_failed` event shows `error_count`.  
   * The follow-up `step_result` has `error_code="invalid_action"` and `step_result.outcome` stays `Failure`.  
   * `StepResult.error.validation_code` (exposed via in-memory records) mirrors the first `ValidationError`.  
-**Validation `code`s:** `missing_id`, `unknown_id`, `text_too_long`, `scroll_out_of_bounds`, `wait_too_long`, `missing_url`, `invalid_url`, `insecure_url`.  
+**Validation `code`s:** `missing_id`, `unknown_id`, `text_too_long`, `scroll_out_of_bounds`, `wait_too_long`, `missing_url`, `invalid_url`, `insecure_url`, `repeat_no_progress_action`.  
 **Recovery:**  
   1. Confirm the observation still contains the element referenced by the action (look at `Observation.elements`). If the page changed, adjust the task or plan to match the new DOM.  
   2. For `text_too_long`, `wait_too_long`, or `scroll_out_of_bounds`, raise the relevant caps in `[validator]` (see `mbus.toml`) or break the work into smaller actions.  
   3. `invalid_url`/`insecure_url` typically mean the model is trying to navigate to a blocked scheme—either allow it via `validator.allow_insecure = true` (after assessing the risk) or constrain the prompt to http(s).  
-  4. Re-run the offending step with `--plan` or `--task-file` to replicate the action history; once the validation codes stop firing, proceed with the run.
+  4. `repeat_no_progress_action` means the same action was already attempted in the current unchanged state hash. Change action type/target before retrying.
+  5. Re-run the offending step with `--plan` or `--task-file` to replicate the action history; once the validation codes stop firing, proceed with the run.
 
 ### 3. Browser-level failures (`apply_error`, `snapshot_error`)
 **Log signals:** `apply_error`/`snapshot_error` events with `error_code`, `error_message`, `step_duration_ms`. Subsequent `step_result.error_code` inherits the same `BrowserError`.  

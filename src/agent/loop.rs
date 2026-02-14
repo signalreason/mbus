@@ -267,8 +267,17 @@ impl<B: Browser> AgentLoop<B> {
                     step_index = step_number,
                     tier = ?tier
                 );
-                let validation_check =
-                    validation_span.in_scope(|| self.validator.validate(&action, &observation));
+                let validation_check = validation_span.in_scope(|| {
+                    if let Some(error) = repeated_no_progress_validation_error(
+                        self.memory.steps(),
+                        &observation,
+                        &action,
+                    ) {
+                        Err(vec![error])
+                    } else {
+                        self.validator.validate(&action, &observation)
+                    }
+                });
                 if let Err(errors) = validation_check {
                     let error_count = errors.len();
                     telemetry::inc_validation_failure();
@@ -522,6 +531,34 @@ fn done_result(observation: &Observation) -> StepResult {
         scroll: None,
         extract: None,
     }
+}
+
+fn repeated_no_progress_validation_error(
+    steps: &[StepRecord],
+    observation: &Observation,
+    action: &Action,
+) -> Option<ValidationError> {
+    let hash = observation.state_hash.as_str();
+    for step in steps.iter().rev() {
+        if step.result.new_state_hash.as_deref() != Some(hash) {
+            break;
+        }
+        if !matches!(
+            step.outcome,
+            StepOutcomeLog::NoProgress | StepOutcomeLog::ValidationFailed
+        ) {
+            continue;
+        }
+        if step.action == *action {
+            return Some(ValidationError {
+                code: "repeat_no_progress_action".to_string(),
+                field: None,
+                message: "action already attempted in unchanged state; choose a different action"
+                    .to_string(),
+            });
+        }
+    }
+    None
 }
 
 fn duration_ms(duration: Duration) -> u64 {
@@ -877,9 +914,9 @@ mod tests {
 
     #[tokio::test]
     async fn stops_on_no_progress_streak() {
-        let obs_a = sample_observation("obs1", "hash1", vec![element("el_1")]);
-        let obs_b = sample_observation("obs2", "hash1", vec![element("el_1")]);
-        let obs_c = sample_observation("obs3", "hash1", vec![element("el_1")]);
+        let obs_a = sample_observation("obs1", "hash1", vec![element("el_1"), element("el_2")]);
+        let obs_b = sample_observation("obs2", "hash1", vec![element("el_1"), element("el_2")]);
+        let obs_c = sample_observation("obs3", "hash1", vec![element("el_1"), element("el_2")]);
         let browser = FakeBrowser::new(
             vec![obs_a.clone(), obs_b.clone(), obs_c.clone()],
             vec![
@@ -904,7 +941,7 @@ mod tests {
                 id: "el_1".to_string(),
             },
             Action::Click {
-                id: "el_1".to_string(),
+                id: "el_2".to_string(),
             },
         ];
         let clients = LlmClients::new(
@@ -912,11 +949,21 @@ mod tests {
             Box::new(ScriptedLlm::new(actions.clone())),
             Box::new(ScriptedLlm::new(actions)),
         );
-        let mut agent = AgentLoop::new(browser, clients, "task").with_policy(AgentPolicy {
-            max_steps: 5,
-            max_no_progress_steps: 2,
-            ..AgentPolicy::default()
+        let router = Router::new(crate::llm::router::RouterConfig {
+            failures_to_mid: 10,
+            failures_to_strong: 20,
+            no_progress_to_mid: 10,
+            no_progress_to_strong: 20,
+            low_actionability_to_mid: 10,
+            low_actionability_to_strong: 20,
         });
+        let mut agent = AgentLoop::new(browser, clients, "task")
+            .with_router(router)
+            .with_policy(AgentPolicy {
+                max_steps: 5,
+                max_no_progress_steps: 2,
+                ..AgentPolicy::default()
+            });
 
         let result = agent.run().await.expect("run");
         assert_eq!(result.status, RunStatus::NoProgress);
@@ -972,6 +1019,70 @@ mod tests {
         let (outcome, heuristics) = step_outcome(&result, &prev, &next, 0);
         assert_eq!(outcome, StepOutcome::Progress);
         assert!(!heuristics.state_hash_unchanged);
+    }
+
+    #[tokio::test]
+    async fn rejects_repeated_action_after_no_progress_in_same_state() {
+        let obs_a = sample_observation("obs1", "hash1", vec![element("el_1")]);
+        let obs_b = sample_observation("obs2", "hash1", vec![element("el_1")]);
+        let browser = FakeBrowser::new(
+            vec![obs_a.clone(), obs_b.clone()],
+            vec![StepResult {
+                ok: true,
+                error: None,
+                new_state_hash: None,
+                scroll: None,
+                extract: None,
+            }],
+        );
+        let llm = ScriptedLlm::new(vec![
+            Action::Click {
+                id: "el_1".to_string(),
+            },
+            Action::Click {
+                id: "el_1".to_string(),
+            },
+            Action::Done {
+                summary: "done".to_string(),
+            },
+        ]);
+        let clients = LlmClients::new(
+            Box::new(llm),
+            Box::new(ScriptedLlm::new(vec![])),
+            Box::new(ScriptedLlm::new(vec![])),
+        );
+        let router = Router::new(crate::llm::router::RouterConfig {
+            failures_to_mid: 10,
+            failures_to_strong: 20,
+            no_progress_to_mid: 10,
+            no_progress_to_strong: 20,
+            low_actionability_to_mid: 10,
+            low_actionability_to_strong: 20,
+        });
+        let mut agent = AgentLoop::new(browser, clients, "task")
+            .with_router(router)
+            .with_policy(AgentPolicy {
+                max_steps: 3,
+                max_no_progress_steps: 8,
+                ..AgentPolicy::default()
+            });
+
+        let result = agent.run().await.expect("run");
+        assert_eq!(result.status, RunStatus::Done);
+        assert_eq!(agent.memory().steps().len(), 3);
+        assert!(!agent.memory().steps()[1].validation.ok);
+        assert_eq!(
+            agent.memory().steps()[1]
+                .result
+                .error
+                .as_ref()
+                .expect("validation error")
+                .validation_code
+                .as_deref(),
+            Some("repeat_no_progress_action")
+        );
+        let applied = agent.browser.applied().await;
+        assert_eq!(applied.len(), 1);
     }
 
     trait ActionMatch {

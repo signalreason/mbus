@@ -63,12 +63,15 @@ impl OpenAiClient {
             .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
         let history_json = serde_json::to_string(history)
             .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
+        let history_tail_json = serde_json::to_string(&history_tail(history, 8))
+            .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
         let schema_json = serde_json::to_string(self.schema.json())
             .map_err(|err| LlmError::new("serialize_error", err.to_string()))?;
         let plan_text = plan.unwrap_or("(none)");
+        let state_hash_streak = trailing_state_hash_streak(observations);
 
         Ok(format!(
-            "Task: {task}\nPlan: {plan_text}\nObservation: {observation_json}\nRecentObservations: {observations_json}\nHistory: {history_json}\nSchema: {schema_json}\nReturn exactly one JSON action object matching the schema and nothing else.",
+            "Task: {task}\nPlan: {plan_text}\nObservation: {observation_json}\nRecentObservations: {observations_json}\nStateHashStreak: {state_hash_streak}\nHistory: {history_json}\nRecentHistoryTail: {history_tail_json}\nExecutionRules: [\"If StateHashStreak > 0, do not repeat the same exact action from RecentHistoryTail[-1]\", \"Use different element ids or action types when the state hash is unchanged\", \"Keep scroll deltas within |dx|<=2000 and |dy|<=2000\", \"Keep wait.ms <= 30000\"]\nSchema: {schema_json}\nReturn exactly one JSON action object matching the schema and nothing else.",
         ))
     }
 
@@ -344,6 +347,26 @@ fn map_reqwest_error(err: reqwest::Error) -> LlmError {
     }
 }
 
+fn trailing_state_hash_streak(observations: &std::collections::VecDeque<Observation>) -> u32 {
+    let Some(latest) = observations.back() else {
+        return 0;
+    };
+    let mut streak = 0_u32;
+    for observation in observations.iter().rev().skip(1) {
+        if observation.state_hash == latest.state_hash {
+            streak = streak.saturating_add(1);
+        } else {
+            break;
+        }
+    }
+    streak
+}
+
+fn history_tail(history: &[Action], max_items: usize) -> &[Action] {
+    let start = history.len().saturating_sub(max_items);
+    &history[start..]
+}
+
 fn is_unsupported_temperature_error(status: reqwest::StatusCode, body: &str) -> bool {
     if status != reqwest::StatusCode::BAD_REQUEST {
         return false;
@@ -461,6 +484,35 @@ mod prompt_tests {
 
         let hashes: Vec<String> = parsed.into_iter().map(|obs| obs.state_hash).collect();
         assert_eq!(hashes, vec!["hash-1".to_string(), "hash-2".to_string()]);
+    }
+
+    #[test]
+    fn prompt_includes_state_hash_streak() {
+        let client = OpenAiClient::new(OpenAiConfig {
+            api_key: "test-key".to_string(),
+            base_url: "http://localhost".to_string(),
+            model: "test".to_string(),
+            timeout: Duration::from_secs(1),
+            temperature: 0.0,
+            max_tokens: None,
+        })
+        .expect("client");
+
+        let mut observations = VecDeque::new();
+        observations.push_back(sample_observation("hash-1"));
+        observations.push_back(sample_observation("hash-2"));
+        observations.push_back(sample_observation("hash-2"));
+        observations.push_back(sample_observation("hash-2"));
+        let current = sample_observation("hash-2");
+
+        let prompt = client
+            .build_prompt("task", None, &current, &observations, &[])
+            .expect("prompt");
+
+        assert!(
+            prompt.contains("StateHashStreak: 2"),
+            "expected prompt to include trailing streak count"
+        );
     }
 }
 
