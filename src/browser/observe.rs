@@ -387,8 +387,7 @@ async fn collect_actionable(page: &Page, limit: usize) -> BrowserResult<Collecte
             Err(_) => flags.bbox_missing = Some(true),
         }
 
-        let signature =
-            stable_signature(&role, &name, node.node_id.inner(), node.frame_id.as_ref());
+        let signature = stable_signature(&role, &name, &backend_id, node.frame_id.as_ref());
 
         out.push(ActionableElement {
             backend_id,
@@ -539,7 +538,7 @@ fn quad_bbox(quad: &[f64]) -> Option<[f64; 4]> {
 fn stable_signature(
     role: &str,
     name: &Option<String>,
-    ax_node_id: &str,
+    backend_node_id: &BackendNodeId,
     frame_id: Option<&chromiumoxide_cdp::cdp::browser_protocol::page::FrameId>,
 ) -> String {
     let mut parts = Vec::new();
@@ -555,7 +554,7 @@ fn stable_signature(
     if let Some(frame_id) = frame_id {
         parts.push(format!("frame={}", frame_id.inner()));
     }
-    parts.push(format!("node={}", ax_node_id));
+    parts.push(format!("backend={}", backend_node_id.inner()));
     parts.join("|")
 }
 
@@ -738,6 +737,31 @@ mod tests {
         let id_a = stable_element_id(signature);
         let id_b = stable_element_id("button|button|Cancel|id=cancel-btn");
         assert_ne!(id_a, id_b);
+    }
+
+    #[test]
+    fn stable_signature_uses_backend_node_id() {
+        let backend = BackendNodeId::new(42);
+        let signature_a = stable_signature("button", &Some("Save".to_string()), &backend, None);
+        let signature_b = stable_signature("button", &Some("Save".to_string()), &backend, None);
+        assert_eq!(signature_a, signature_b);
+    }
+
+    #[test]
+    fn stable_signature_changes_with_backend_node_id() {
+        let signature_a = stable_signature(
+            "button",
+            &Some("Save".to_string()),
+            &BackendNodeId::new(41),
+            None,
+        );
+        let signature_b = stable_signature(
+            "button",
+            &Some("Save".to_string()),
+            &BackendNodeId::new(42),
+            None,
+        );
+        assert_ne!(signature_a, signature_b);
     }
 
     #[test]
