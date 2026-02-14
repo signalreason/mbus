@@ -11,3 +11,8 @@
   note of it.
 - if any instructions are confusing or contradictory, stop and ask for
   clarification.
+
+the purpose of this repository is to build an autonomous browser agent capable
+of operating a browser as a human would, especially with regard to the various
+obstacles (e.g. popups) encountered in typical web browsing. deterministic
+solutions that rely on knowledge a human wouldn't have are disallowed.
