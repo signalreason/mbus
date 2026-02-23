@@ -108,3 +108,4 @@
 - 2026-02-14 DEV-001 quality gate notes: `notes/2026-02-14-dev-001-quality-gate.md`
 - 2026-02-23 GIT-001 ignore `.ralph/` tracking: `notes/2026-02-23-git-001-ignore-ralph.md`
 - 2026-02-23 SHOT-003 screenshot artifacts: `notes/2026-02-23-shot-003-screenshot-artifacts.md`
+- 2026-02-23 SHOT-003 step screenshot alignment fix: `notes/2026-02-23-shot-003-step-screenshot-alignment.md`

@@ -192,6 +192,7 @@ impl<B: Browser> AgentLoop<B> {
             }
         };
         self.memory.record_observation(observation.clone());
+        let mut observation_screenshot = self.browser.take_last_screenshot().await?;
         let mut loop_state = LoopState::new(observation.state_hash.clone());
 
         for step_index in 0..self.policy.max_steps {
@@ -307,7 +308,7 @@ impl<B: Browser> AgentLoop<B> {
                         },
                         llm_usage,
                     });
-                    step_screenshots.push(None);
+                    step_screenshots.push(observation_screenshot.clone());
                     let tier_after = self.router.record(StepOutcome::Failure);
                     telemetry::set_no_progress_streak(self.router.counters().no_progress);
                     telemetry::record_step_duration(duration);
@@ -359,7 +360,7 @@ impl<B: Browser> AgentLoop<B> {
                         },
                         llm_usage,
                     });
-                    step_screenshots.push(None);
+                    step_screenshots.push(observation_screenshot.clone());
                     telemetry::record_step_duration(duration);
                     tracing::info!(
                         event = "done",
@@ -423,7 +424,7 @@ impl<B: Browser> AgentLoop<B> {
                 let snapshot_duration = snapshot_start.elapsed();
                 telemetry::record_snapshot_duration(snapshot_duration);
                 self.memory.record_observation(next_observation.clone());
-                let screenshot = self.browser.take_last_screenshot().await?;
+                let next_screenshot = self.browser.take_last_screenshot().await?;
                 let new_hash = next_observation.state_hash.clone();
                 result.new_state_hash = Some(new_hash.clone());
                 let state_hash_streak = loop_state.update_hash(&new_hash);
@@ -450,7 +451,7 @@ impl<B: Browser> AgentLoop<B> {
                     },
                     llm_usage,
                 });
-                step_screenshots.push(screenshot);
+                step_screenshots.push(observation_screenshot.clone());
                 self.memory.update_last_step_state_hash(new_hash);
 
                 let tier_after = self
@@ -485,6 +486,7 @@ impl<B: Browser> AgentLoop<B> {
                 );
 
                 observation = next_observation;
+                observation_screenshot = next_screenshot;
 
                 if self.policy.max_no_progress_steps > 0
                     && state_hash_streak as usize >= self.policy.max_no_progress_steps
@@ -636,14 +638,25 @@ mod tests {
     #[derive(Debug)]
     struct FakeBrowser {
         snapshots: Mutex<VecDeque<Observation>>,
+        screenshots: Mutex<VecDeque<Option<Vec<u8>>>>,
         apply_results: Mutex<VecDeque<StepResult>>,
         applied_actions: Mutex<Vec<Action>>,
     }
 
     impl FakeBrowser {
         fn new(snapshots: Vec<Observation>, apply_results: Vec<StepResult>) -> Self {
+            let screenshot_count = snapshots.len();
+            Self::new_with_screenshots(snapshots, apply_results, vec![None; screenshot_count])
+        }
+
+        fn new_with_screenshots(
+            snapshots: Vec<Observation>,
+            apply_results: Vec<StepResult>,
+            screenshots: Vec<Option<Vec<u8>>>,
+        ) -> Self {
             Self {
                 snapshots: Mutex::new(VecDeque::from(snapshots)),
+                screenshots: Mutex::new(VecDeque::from(screenshots)),
                 apply_results: Mutex::new(VecDeque::from(apply_results)),
                 applied_actions: Mutex::new(Vec::new()),
             }
@@ -673,6 +686,10 @@ mod tests {
 
         async fn shutdown(&self) -> BrowserResult<()> {
             Ok(())
+        }
+
+        async fn take_last_screenshot(&self) -> BrowserResult<Option<Vec<u8>>> {
+            Ok(self.screenshots.lock().await.pop_front().flatten())
         }
     }
 
@@ -772,7 +789,8 @@ mod tests {
     #[tokio::test]
     async fn stops_on_done_without_applying_action() {
         let obs = sample_observation("obs1", "hash1", vec![element("el_1")]);
-        let browser = FakeBrowser::new(vec![obs.clone()], vec![]);
+        let browser =
+            FakeBrowser::new_with_screenshots(vec![obs.clone()], vec![], vec![Some(vec![1, 2, 3])]);
         let llm = ScriptedLlm::new(vec![Action::Done {
             summary: "ok".to_string(),
         }]);
@@ -781,7 +799,15 @@ mod tests {
             Box::new(ScriptedLlm::new(vec![])),
             Box::new(ScriptedLlm::new(vec![])),
         );
-        let mut agent = AgentLoop::new(browser, clients, "task");
+        let router = Router::new(crate::llm::router::RouterConfig {
+            failures_to_mid: 10,
+            failures_to_strong: 20,
+            no_progress_to_mid: 10,
+            no_progress_to_strong: 20,
+            low_actionability_to_mid: 10,
+            low_actionability_to_strong: 20,
+        });
+        let mut agent = AgentLoop::new(browser, clients, "task").with_router(router);
 
         let result = agent.run().await.expect("run");
         assert_eq!(result.status, RunStatus::Done);
@@ -796,8 +822,77 @@ mod tests {
         assert!(agent.memory().history()[0].matches_done());
         assert!(agent.memory().steps()[0].result.ok);
         assert!(agent.memory().observations().len() == 1);
+        assert_eq!(result.step_screenshots, vec![Some(vec![1, 2, 3])]);
         let applied = agent.browser.applied().await;
         assert!(applied.is_empty());
+    }
+
+    #[tokio::test]
+    async fn tracks_observation_screenshots_for_each_step() {
+        let obs_a = sample_observation("obs1", "hash1", vec![element("el_1")]);
+        let obs_b = sample_observation("obs2", "hash2", vec![element("el_1")]);
+        let browser = FakeBrowser::new_with_screenshots(
+            vec![obs_a.clone(), obs_b.clone()],
+            vec![StepResult {
+                ok: true,
+                error: None,
+                new_state_hash: None,
+                scroll: None,
+                extract: None,
+            }],
+            vec![Some(vec![7]), Some(vec![8])],
+        );
+        let llm = ScriptedLlm::new(vec![
+            Action::Click {
+                id: "el_1".to_string(),
+            },
+            Action::Done {
+                summary: "done".to_string(),
+            },
+        ]);
+        let clients = LlmClients::new(
+            Box::new(llm),
+            Box::new(ScriptedLlm::new(vec![])),
+            Box::new(ScriptedLlm::new(vec![])),
+        );
+        let router = Router::new(crate::llm::router::RouterConfig {
+            failures_to_mid: 10,
+            failures_to_strong: 20,
+            no_progress_to_mid: 10,
+            no_progress_to_strong: 20,
+            low_actionability_to_mid: 10,
+            low_actionability_to_strong: 20,
+        });
+        let mut agent = AgentLoop::new(browser, clients, "task").with_router(router);
+
+        let result = agent.run().await.expect("run");
+        assert_eq!(result.status, RunStatus::Done);
+        assert_eq!(result.step_screenshots, vec![Some(vec![7]), Some(vec![8])]);
+    }
+
+    #[tokio::test]
+    async fn reuses_same_observation_screenshot_after_validation_failure() {
+        let obs = sample_observation("obs1", "hash1", vec![element("el_1")]);
+        let browser =
+            FakeBrowser::new_with_screenshots(vec![obs.clone()], vec![], vec![Some(vec![9])]);
+        let llm = ScriptedLlm::new(vec![
+            Action::Click {
+                id: "missing".to_string(),
+            },
+            Action::Done {
+                summary: "done".to_string(),
+            },
+        ]);
+        let clients = LlmClients::new(
+            Box::new(llm),
+            Box::new(ScriptedLlm::new(vec![])),
+            Box::new(ScriptedLlm::new(vec![])),
+        );
+        let mut agent = AgentLoop::new(browser, clients, "task");
+
+        let result = agent.run().await.expect("run");
+        assert_eq!(result.status, RunStatus::Done);
+        assert_eq!(result.step_screenshots, vec![Some(vec![9]), Some(vec![9])]);
     }
 
     #[tokio::test]
