@@ -47,10 +47,16 @@
         "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260214T092337Z-20536 started (attempt 1)",
+        "last_run_id": "20260214T092337Z-20536",
+        "last_update_utc": "2026-02-14T09:23:37Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Reuse existing artifact conventions from benchmark/run outputs to avoid introducing a parallel storage shape."
       },
-      "status": "unstarted",
+      "status": "started",
       "task_id": "M4-SHOT-003",
       "title": "Persist screenshot artifacts with deterministic metadata"
     },
