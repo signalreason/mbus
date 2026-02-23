@@ -186,6 +186,9 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
     let config_path = resolve_config_path(args.config.as_deref());
     let cli_overrides = build_cli_overrides(&args)?;
     let config = load_config(config_path.as_deref(), cli_overrides)?;
+    let task_id = mbus::output::task_id_for(&task);
+    let run_timestamp = mbus::output::current_timestamp()?;
+    let run_id = mbus::output::run_id_for(&task_id, &run_timestamp);
 
     emit_json(&ConfigLog::from(&config))?;
     let repair_start = telemetry::snapshot();
@@ -213,6 +216,7 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
         result,
         steps,
         final_observation,
+        step_screenshots,
     } = execution;
 
     let mut errors = Vec::new();
@@ -238,9 +242,23 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    match write_extract_output(&task, &config, &steps) {
+    match write_extract_output(&task, &config, &steps, &task_id, &run_timestamp) {
         Ok(Some(artifact)) => output_artifacts.push(artifact),
         Ok(None) => {}
+        Err(err) => {
+            errors.push(run_error_summary(
+                "output_error",
+                err.to_string(),
+                Some("output"),
+            ));
+            if return_error.is_none() {
+                return_error = Some(err);
+            }
+        }
+    }
+
+    match write_screenshot_artifacts(&config, &run_id, &terminal_state, &step_screenshots) {
+        Ok(artifacts) => output_artifacts.extend(artifacts),
         Err(err) => {
             errors.push(run_error_summary(
                 "output_error",
@@ -674,6 +692,7 @@ struct RunExecution {
     result: Result<mbus::agent::r#loop::RunResult, mbus::agent::r#loop::AgentError>,
     steps: Vec<mbus::agent::memory::StepRecord>,
     final_observation: Option<mbus::types::Observation>,
+    step_screenshots: Vec<Option<Vec<u8>>>,
 }
 
 fn run_error_summary(
@@ -723,6 +742,10 @@ async fn execute_agent(
     }
 
     let run_result = agent.run().await;
+    let step_screenshots = match &run_result {
+        Ok(result) => result.step_screenshots.clone(),
+        Err(_) => Vec::new(),
+    };
     let steps = agent.memory().steps().to_vec();
     let final_observation = agent.memory().observations().back().cloned();
     let shutdown_result = agent.shutdown().await;
@@ -734,6 +757,7 @@ async fn execute_agent(
         result: run_result,
         steps,
         final_observation,
+        step_screenshots,
     })
 }
 
@@ -786,22 +810,64 @@ fn write_extract_output(
     task: &str,
     config: &mbus::config::AppConfig,
     steps: &[mbus::agent::memory::StepRecord],
+    task_id: &str,
+    run_timestamp: &str,
 ) -> Result<Option<mbus::output::OutputArtifact>, Box<dyn Error>> {
     let Some(path) = config.output.extract_output.as_ref() else {
         return Ok(None);
     };
-    let task_id = mbus::output::task_id_for(task);
-    let timestamp = mbus::output::current_timestamp()?;
-    if let Some(output) = mbus::output::build_extract_output(task, task_id, timestamp, steps) {
+    if let Some(output) = mbus::output::build_extract_output(task, task_id, run_timestamp, steps) {
         let record_count = Some(output.extracts.len());
         mbus::output::write_extract_output(path, &output)?;
         return Ok(Some(mbus::output::OutputArtifact {
             kind: "extract_output".to_string(),
             path: path.display().to_string(),
             record_count,
+            step_index: None,
+            artifact_ref: None,
+            mime_type: None,
+            sha256: None,
+            bytes: None,
         }));
     }
     Ok(None)
+}
+
+fn write_screenshot_artifacts(
+    config: &mbus::config::AppConfig,
+    run_id: &str,
+    terminal_state: &mbus::output::TerminalState,
+    step_screenshots: &[Option<Vec<u8>>],
+) -> Result<Vec<mbus::output::OutputArtifact>, Box<dyn Error>> {
+    if !config.screenshot.enabled {
+        return Ok(Vec::new());
+    }
+    if !should_persist_screenshots(&config.screenshot.persist, terminal_state) {
+        return Ok(Vec::new());
+    }
+
+    let mut artifacts = Vec::new();
+    for (index, screenshot) in step_screenshots.iter().enumerate() {
+        let Some(bytes) = screenshot.as_ref() else {
+            continue;
+        };
+        let artifact = mbus::output::write_screenshot_artifact(run_id, index + 1, bytes)?;
+        artifacts.push(artifact);
+    }
+    Ok(artifacts)
+}
+
+fn should_persist_screenshots(
+    policy: &mbus::config::ScreenshotPersist,
+    terminal_state: &mbus::output::TerminalState,
+) -> bool {
+    match policy {
+        mbus::config::ScreenshotPersist::None => false,
+        mbus::config::ScreenshotPersist::Always => true,
+        mbus::config::ScreenshotPersist::OnError => {
+            !matches!(terminal_state, mbus::output::TerminalState::Done)
+        }
+    }
 }
 
 fn emit_json<T: Serialize>(value: &T) -> Result<(), Box<dyn Error>> {

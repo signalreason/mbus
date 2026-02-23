@@ -342,6 +342,7 @@ async fn e2e_snapshot_screenshot_bytes() {
     let screenshot = browser
         .take_last_screenshot()
         .await
+        .expect("screenshot capture")
         .expect("screenshot bytes");
     assert!(
         !screenshot.is_empty(),

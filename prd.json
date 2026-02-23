@@ -48,15 +48,15 @@
       ],
       "model": "gpt-5.2-codex",
       "observability": {
-        "last_note": "Run 20260223T202650Z-45573 progress. reported_outcome=blocked dod_met=false verify_ok=true. See .ralph/runs/M4-SHOT-003/20260223T202650Z-45573/result.json",
-        "last_run_id": "20260223T202650Z-45573",
-        "last_update_utc": "2026-02-23T20:29:50Z",
+        "last_note": "Run 20260223T220000Z-codex completed",
+        "last_run_id": "20260223T220000Z-codex",
+        "last_update_utc": "2026-02-23T22:00:00Z",
         "run_attempts": 1
       },
       "recommended": {
         "approach": "Reuse existing artifact conventions from benchmark/run outputs to avoid introducing a parallel storage shape."
       },
-      "status": "started",
+      "status": "completed",
       "task_id": "M4-SHOT-003",
       "title": "Persist screenshot artifacts with deterministic metadata"
     },
