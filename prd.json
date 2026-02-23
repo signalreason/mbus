@@ -48,10 +48,10 @@
       ],
       "model": "gpt-5.2-codex",
       "observability": {
-        "last_note": "Run 20260223T220000Z-codex completed",
-        "last_run_id": "20260223T220000Z-codex",
-        "last_update_utc": "2026-02-23T22:00:00Z",
-        "run_attempts": 1
+        "last_note": "Run 20260223T203355Z-48403 completed",
+        "last_run_id": "20260223T203355Z-48403",
+        "last_update_utc": "2026-02-23T20:43:14Z",
+        "run_attempts": 2
       },
       "recommended": {
         "approach": "Reuse existing artifact conventions from benchmark/run outputs to avoid introducing a parallel storage shape."
