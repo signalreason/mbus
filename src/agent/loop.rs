@@ -47,6 +47,7 @@ pub struct RunResult {
     pub final_action: Action,
     pub steps: Vec<StepRecord>,
     pub final_observation: Observation,
+    pub step_screenshots: Vec<Option<Vec<u8>>>,
 }
 
 #[derive(Debug)]
@@ -167,6 +168,7 @@ impl<B: Browser> AgentLoop<B> {
             Done(Action, RunStatus),
         }
 
+        let mut step_screenshots: Vec<Option<Vec<u8>>> = Vec::new();
         let snapshot_start = Instant::now();
         let initial_tier = self.router.tier();
         let snapshot_span = tracing::info_span!(
@@ -305,6 +307,7 @@ impl<B: Browser> AgentLoop<B> {
                         },
                         llm_usage,
                     });
+                    step_screenshots.push(None);
                     let tier_after = self.router.record(StepOutcome::Failure);
                     telemetry::set_no_progress_streak(self.router.counters().no_progress);
                     telemetry::record_step_duration(duration);
@@ -356,6 +359,7 @@ impl<B: Browser> AgentLoop<B> {
                         },
                         llm_usage,
                     });
+                    step_screenshots.push(None);
                     telemetry::record_step_duration(duration);
                     tracing::info!(
                         event = "done",
@@ -419,6 +423,7 @@ impl<B: Browser> AgentLoop<B> {
                 let snapshot_duration = snapshot_start.elapsed();
                 telemetry::record_snapshot_duration(snapshot_duration);
                 self.memory.record_observation(next_observation.clone());
+                let screenshot = self.browser.take_last_screenshot().await?;
                 let new_hash = next_observation.state_hash.clone();
                 result.new_state_hash = Some(new_hash.clone());
                 let state_hash_streak = loop_state.update_hash(&new_hash);
@@ -445,6 +450,7 @@ impl<B: Browser> AgentLoop<B> {
                     },
                     llm_usage,
                 });
+                step_screenshots.push(screenshot);
                 self.memory.update_last_step_state_hash(new_hash);
 
                 let tier_after = self
@@ -505,6 +511,7 @@ impl<B: Browser> AgentLoop<B> {
                     final_action: action,
                     steps: self.memory.steps().to_vec(),
                     final_observation: observation,
+                    step_screenshots,
                 });
             }
         }
@@ -518,6 +525,7 @@ impl<B: Browser> AgentLoop<B> {
             final_action,
             steps: self.memory.steps().to_vec(),
             final_observation: observation,
+            step_screenshots,
         })
     }
 }

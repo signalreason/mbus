@@ -1,1 +1,0 @@
-{"definition_of_done":["Back triggers browser history navigation","No-history cases return a non-panicking structured error"],"model":"gpt-5.2-codex","recommended":{"approach":"Use browser history APIs and confirm URL/title change in follow-up snapshot."},"status":"unstarted","task_id":"M1-BROW-008","title":"Implement back navigation action"}

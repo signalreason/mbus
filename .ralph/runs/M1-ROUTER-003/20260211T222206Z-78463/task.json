@@ -1,1 +1,0 @@
-{"definition_of_done":["Failure and no-progress counters reset when progress is detected","Unit tests cover reset behavior after mixed outcomes"],"model":"gpt-5.2-codex","recommended":{"approach":"Define one progress predicate and reuse it in router and loop code paths."},"status":"unstarted","task_id":"M1-ROUTER-003","title":"Reset router counters on confirmed progress"}

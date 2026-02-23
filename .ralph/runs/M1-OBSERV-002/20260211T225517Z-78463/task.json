@@ -1,1 +1,0 @@
-{"definition_of_done":["llm_duration_ms and llm_failures_total metrics are emitted","Failures are tagged by structured error code"],"model":"gpt-5.2-codex","recommended":{"approach":"Wrap client calls with timing and outcome capture in a single adapter layer."},"status":"unstarted","task_id":"M1-OBSERV-002","title":"Instrument LLM latency and failure counters"}

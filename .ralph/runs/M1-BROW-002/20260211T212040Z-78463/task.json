@@ -1,1 +1,0 @@
-{"definition_of_done":["Navigate supports http and https by default","Non-allowed schemes are rejected with structured validation errors"],"model":"gpt-5.2-codex","recommended":{"approach":"Enforce URL policy in validator before browser calls."},"status":"unstarted","task_id":"M1-BROW-002","title":"Implement navigate action with scheme restrictions"}

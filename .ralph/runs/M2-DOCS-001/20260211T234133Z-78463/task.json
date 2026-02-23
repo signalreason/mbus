@@ -1,1 +1,0 @@
-{"definition_of_done":["Docs cover prerequisites, install, and first successful run","Commands are validated against current CLI behavior"],"model":"gpt-5.1-codex-mini","recommended":{"approach":"Add a concise quickstart path first, then extend with optional configuration detail."},"status":"unstarted","task_id":"M2-DOCS-001","title":"Document install and quickstart workflow"}

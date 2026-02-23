@@ -1,1 +1,0 @@
-{"definition_of_done":["Equivalent page states produce identical hashes","Navigation or meaningful DOM changes alter the hash"],"model":"gpt-5.2-codex","recommended":{"approach":"Hash URL, title, and a stable subset of actionable elements in normalized order."},"status":"unstarted","task_id":"M1-OBS-001","title":"Compute deterministic state hash from compact snapshot features"}

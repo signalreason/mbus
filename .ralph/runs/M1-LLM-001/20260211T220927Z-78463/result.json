@@ -1,1 +1,0 @@
-{"task_id":"M1-LLM-001","outcome":"completed","dod_met":true,"summary":"Added typed timeout/transport error mapping for OpenAI client requests, updated task status, and documented the change in notes.","tests":{"ran":false,"commands":[],"passed":false},"notes":"Changes are in src/llm/openai.rs; task status updated in prd.json; note added to notes/ and index.","blockers":[]}

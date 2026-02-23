@@ -1,10 +1,11 @@
 use crate::agent::memory::StepRecord;
 use crate::types::Action;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub const EXTRACT_OUTPUT_SCHEMA_VERSION: u32 = 1;
 
@@ -41,7 +42,22 @@ pub struct OutputArtifact {
     pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub step_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<usize>,
 }
+
+pub const SCREENSHOT_ARTIFACT_KIND: &str = "screenshot";
+pub const SCREENSHOT_FILENAME: &str = "screenshot.png";
+pub const SCREENSHOT_MIME_TYPE: &str = "image/png";
+const SCREENSHOT_ARTIFACT_ROOT: &str = ".ralph/runs";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct RunErrorSummary {
@@ -85,6 +101,53 @@ pub fn current_timestamp() -> Result<String, time::error::Format> {
 
 pub fn run_id_for(task_id: &str, timestamp: &str) -> String {
     format!("{task_id}_{timestamp}")
+}
+
+pub fn screenshot_artifact_ref(run_id: &str, step_index: usize) -> String {
+    format!("step://{run_id}/step-{step_index}/{SCREENSHOT_FILENAME}")
+}
+
+pub fn screenshot_artifact_path(run_id: &str, step_index: usize) -> PathBuf {
+    PathBuf::from(SCREENSHOT_ARTIFACT_ROOT)
+        .join(run_id)
+        .join("steps")
+        .join(format!("step-{step_index}"))
+        .join(SCREENSHOT_FILENAME)
+}
+
+pub fn write_screenshot_artifact(
+    run_id: &str,
+    step_index: usize,
+    bytes: &[u8],
+) -> io::Result<OutputArtifact> {
+    let path = screenshot_artifact_path(run_id, step_index);
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, bytes)?;
+    let digest = sha256_hex(bytes);
+    Ok(OutputArtifact {
+        kind: SCREENSHOT_ARTIFACT_KIND.to_string(),
+        path: path.display().to_string(),
+        record_count: None,
+        step_index: Some(step_index),
+        artifact_ref: Some(screenshot_artifact_ref(run_id, step_index)),
+        mime_type: Some(SCREENSHOT_MIME_TYPE.to_string()),
+        sha256: Some(digest),
+        bytes: Some(bytes.len()),
+    })
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        output.push_str(&format!("{byte:02x}"));
+    }
+    output
 }
 
 pub fn build_extract_output(
@@ -268,6 +331,22 @@ mod tests {
         let first = task_id_for("find price");
         let second = task_id_for("find price");
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn screenshot_artifact_ref_is_step_scoped() {
+        let value = screenshot_artifact_ref("task_1_now", 3);
+        assert_eq!(value, "step://task_1_now/step-3/screenshot.png");
+    }
+
+    #[test]
+    fn sha256_hex_is_deterministic() {
+        let digest = sha256_hex(b"hello");
+        assert_eq!(
+            digest,
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+        assert_eq!(digest, sha256_hex(b"hello"));
     }
 
     #[test]

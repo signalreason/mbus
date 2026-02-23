@@ -300,11 +300,8 @@ impl Browser for CdpBrowser {
     async fn shutdown(&self) -> BrowserResult<()> {
         self.session.shutdown().await
     }
-}
-
-impl CdpBrowser {
-    pub async fn take_last_screenshot(&self) -> Option<Vec<u8>> {
-        self.last_screenshot.lock().await.take()
+    async fn take_last_screenshot(&self) -> BrowserResult<Option<Vec<u8>>> {
+        Ok(self.last_screenshot.lock().await.take())
     }
 }
 

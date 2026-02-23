@@ -39,4 +39,7 @@ pub trait Browser: Send + Sync {
     async fn snapshot(&self) -> BrowserResult<Observation>;
     async fn apply(&self, action: &Action) -> BrowserResult<StepResult>;
     async fn shutdown(&self) -> BrowserResult<()>;
+    async fn take_last_screenshot(&self) -> BrowserResult<Option<Vec<u8>>> {
+        Ok(None)
+    }
 }

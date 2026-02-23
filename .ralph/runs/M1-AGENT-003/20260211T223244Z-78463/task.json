@@ -1,1 +1,0 @@
-{"definition_of_done":["Agent keeps the configured last N observations","Window is provided to LLM prompt builder in stable order"],"model":"gpt-5.2-codex","recommended":{"approach":"Use a bounded deque and avoid retaining full raw DOM snapshots."},"status":"unstarted","task_id":"M1-AGENT-003","title":"Retain rolling window of recent observations for context"}
