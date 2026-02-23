@@ -1,1 +1,0 @@
-{"definition_of_done":["Select can choose an option by value or visible label","Invalid options return structured errors"],"model":"gpt-5.2-codex","recommended":{"approach":"Resolve options from DOM at runtime and verify selected state post-action."},"status":"unstarted","task_id":"M1-BROW-005","title":"Implement select action execution"}

@@ -1,1 +1,0 @@
-{"task_id":"M2-DOCS-002","outcome":"completed","dod_met":true,"summary":"Added a dedicated operations runbook that lays out the structured logs/metrics, troubleshooting tips keyed to error codes, and verification/rollback recipes, then wired the README to point there.","tests":{"ran":false,"commands":[],"passed":false},"notes":"","blockers":[]}

@@ -1,1 +1,0 @@
-{"definition_of_done":["Each LLM step yields exactly one parsed action","Non-JSON or multi-action outputs produce structured errors"],"model":"gpt-5.2-codex","recommended":{"approach":"Constrain prompt format and parse with strict schema validation."},"status":"unstarted","task_id":"M1-LLM-002","title":"Enforce single-action JSON response contract from LLM"}

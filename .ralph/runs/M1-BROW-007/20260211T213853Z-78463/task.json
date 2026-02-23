@@ -1,1 +1,0 @@
-{"definition_of_done":["Wait pauses execution for allowed durations only","Duration above configured max is rejected"],"model":"gpt-5.2-codex","recommended":{"approach":"Treat wait as a first-class action so timing appears in logs and metrics."},"status":"unstarted","task_id":"M1-BROW-007","title":"Implement wait action with max duration guard"}

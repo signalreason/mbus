@@ -1,1 +1,0 @@
-{"definition_of_done":["Config file values are read and merged with env overrides","Secret values are not printed in startup logs"],"model":"gpt-5.2-codex","recommended":{"approach":"Apply a deterministic config precedence order and redact sensitive keys in logs."},"status":"unstarted","task_id":"M1-CLI-002","title":"Load configuration from file and environment variables"}

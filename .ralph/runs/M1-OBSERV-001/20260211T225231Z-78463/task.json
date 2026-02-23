@@ -1,1 +1,0 @@
-{"definition_of_done":["snapshot_duration_ms and apply_duration_ms are emitted for each step","Metrics labels remain low-cardinality"],"model":"gpt-5.2-codex","recommended":{"approach":"Emit metrics in one telemetry module and call from loop boundaries only."},"status":"unstarted","task_id":"M1-OBSERV-001","title":"Instrument snapshot and apply duration metrics"}

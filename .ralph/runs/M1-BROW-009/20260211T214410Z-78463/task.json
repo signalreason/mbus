@@ -1,1 +1,0 @@
-{"definition_of_done":["Extract produces a structured payload in StepResult","Extraction outputs are schema-stable across runs"],"model":"gpt-5.2-codex","recommended":{"approach":"Define extraction payload shape in core types and keep it deterministic."},"status":"unstarted","task_id":"M1-BROW-009","title":"Implement extract action output contract"}

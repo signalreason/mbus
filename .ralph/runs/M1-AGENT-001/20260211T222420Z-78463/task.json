@@ -1,1 +1,0 @@
-{"definition_of_done":["Loop terminates on done action or max step limit","Termination state is explicit in the final result object"],"model":"gpt-5.2-codex","recommended":{"approach":"Implement a linear state machine: snapshot, propose, validate, apply, record."},"status":"unstarted","task_id":"M1-AGENT-001","title":"Implement deterministic max-step agent loop"}

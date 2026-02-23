@@ -1,1 +1,0 @@
-{"definition_of_done":["Summary includes terminal state, step count, errors, and output artifacts","Summary object is emitted even on failure paths"],"model":"gpt-5.2-codex","recommended":{"approach":"Build final summary from history records rather than ad hoc state flags."},"status":"unstarted","task_id":"M1-AGENT-004","title":"Implement final machine-readable run summary"}

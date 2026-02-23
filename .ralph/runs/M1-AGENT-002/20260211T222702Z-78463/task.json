@@ -1,1 +1,0 @@
-{"definition_of_done":["History records action input, validation outcome, apply result, and timings","Final summary includes history-derived counts"],"model":"gpt-5.2-codex","recommended":{"approach":"Use a single append-only step record type shared by logging and summaries."},"status":"unstarted","task_id":"M1-AGENT-002","title":"Persist per-step action history in memory"}

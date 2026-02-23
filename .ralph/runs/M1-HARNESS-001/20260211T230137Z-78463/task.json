@@ -1,1 +1,0 @@
-{"definition_of_done":["Harness includes deterministic pages for core action types","Pages are version-controlled and runnable in CI"],"model":"gpt-5.2-codex","recommended":{"approach":"Keep pages intentionally simple with stable selectors and expected outcomes."},"status":"unstarted","task_id":"M1-HARNESS-001","title":"Create local static pages for click/type/select coverage"}

@@ -106,3 +106,4 @@
 - 2026-02-14 SHOT-001 screenshot config policy: `notes/2026-02-14-shot-001-screenshot-config.md`
 - 2026-02-14 SHOT-002 snapshot screenshot bytes: `notes/2026-02-14-shot-002-snapshot-screenshot-bytes.md`
 - 2026-02-14 DEV-001 quality gate notes: `notes/2026-02-14-dev-001-quality-gate.md`
+- 2026-02-23 GIT-001 ignore `.ralph/` tracking: `notes/2026-02-23-git-001-ignore-ralph.md`

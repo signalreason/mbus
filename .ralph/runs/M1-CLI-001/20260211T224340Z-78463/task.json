@@ -1,1 +1,0 @@
-{"definition_of_done":["CLI accepts task string and max step parameters","Invalid arguments return actionable CLI errors"],"model":"gpt-5.2-codex","recommended":{"approach":"Define command options with clap and map directly to runtime config."},"status":"unstarted","task_id":"M1-CLI-001","title":"Implement mbus run CLI command with task and step flags"}
