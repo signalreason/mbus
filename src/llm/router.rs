@@ -1,4 +1,4 @@
-use crate::types::{Observation, StepResult};
+use crate::types::{Observation, ReasoningEffort, StepResult};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tier {
@@ -40,6 +40,7 @@ pub struct RouterConfig {
     pub no_progress_to_strong: u32,
     pub low_actionability_to_mid: u32,
     pub low_actionability_to_strong: u32,
+    pub reasoning_effort: ReasoningEffort,
 }
 
 impl Default for RouterConfig {
@@ -51,6 +52,7 @@ impl Default for RouterConfig {
             no_progress_to_strong: 4,
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
+            reasoning_effort: ReasoningEffort::default(),
         }
     }
 }
@@ -61,6 +63,7 @@ pub struct Router {
     failures: u32,
     no_progress: u32,
     low_actionability: u32,
+    reasoning_effort: ReasoningEffort,
 }
 
 impl Default for Router {
@@ -98,6 +101,7 @@ pub fn step_outcome(
 impl Router {
     pub fn new(config: RouterConfig) -> Self {
         Self {
+            reasoning_effort: config.reasoning_effort,
             config,
             failures: 0,
             no_progress: 0,
@@ -161,6 +165,14 @@ impl Router {
         )
     }
 
+    pub fn effort(&self) -> ReasoningEffort {
+        self.reasoning_effort
+    }
+
+    pub fn set_effort(&mut self, effort: ReasoningEffort) {
+        self.reasoning_effort = effort;
+    }
+
     pub fn counters(&self) -> RouterCounters {
         RouterCounters {
             failures: self.failures,
@@ -173,6 +185,7 @@ impl Router {
         self.failures = 0;
         self.no_progress = 0;
         self.low_actionability = 0;
+        self.reasoning_effort = self.config.reasoning_effort;
     }
 
     pub fn config(&self) -> &RouterConfig {
@@ -256,7 +269,7 @@ fn role_weight(role: &str) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{ElementFlags, ElementRef, Observation, StepResult};
+    use crate::types::{ElementFlags, ElementRef, Observation, ReasoningEffort, StepResult};
 
     fn sample_observation(hash: &str) -> Observation {
         observation_with_elements(hash, Vec::new())
@@ -306,6 +319,7 @@ mod tests {
             no_progress_to_strong: 5,
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
+            reasoning_effort: ReasoningEffort::Medium,
         });
         assert_eq!(router.tier(), Tier::Fast);
         assert_eq!(router.record(StepOutcome::Failure), Tier::Fast);
@@ -323,6 +337,7 @@ mod tests {
             no_progress_to_strong: 2,
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
+            reasoning_effort: ReasoningEffort::Medium,
         });
         assert_eq!(router.record(StepOutcome::NoProgress), Tier::Mid);
         assert_eq!(router.record(StepOutcome::NoProgress), Tier::Strong);
@@ -337,6 +352,7 @@ mod tests {
             no_progress_to_strong: 2,
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
+            reasoning_effort: ReasoningEffort::Medium,
         });
         assert_eq!(router.record(StepOutcome::Failure), Tier::Fast);
         assert_eq!(router.record(StepOutcome::Failure), Tier::Mid);
@@ -353,6 +369,7 @@ mod tests {
             no_progress_to_strong: 2,
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
+            reasoning_effort: ReasoningEffort::Medium,
         });
         router.record(StepOutcome::Failure);
         router.record(StepOutcome::NoProgress);
@@ -386,6 +403,7 @@ mod tests {
             no_progress_to_strong: 2,
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
+            reasoning_effort: ReasoningEffort::Medium,
         });
 
         let prev = sample_observation("hash1");
@@ -432,6 +450,7 @@ mod tests {
             no_progress_to_strong: 5,
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
+            reasoning_effort: ReasoningEffort::Medium,
         });
 
         let prev = observation_with_elements("hash1", vec![element("el_1", "button")]);

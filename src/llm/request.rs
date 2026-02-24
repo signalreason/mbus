@@ -1,7 +1,7 @@
 use crate::agent::memory::StepRecord;
 use crate::llm::client::{LlmContext, LlmError, LlmResult};
 use crate::llm::prompts::SYSTEM_PROMPT;
-use crate::types::{Action, LlmPayloadMode, Observation, ScreenshotMetadata};
+use crate::types::{Action, LlmPayloadMode, Observation, ReasoningEffort, ScreenshotMetadata};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde::Serialize;
@@ -12,6 +12,7 @@ use std::collections::VecDeque;
 pub struct LlmRequest {
     pub system: String,
     pub payload_mode: LlmPayloadMode,
+    pub reasoning_effort: ReasoningEffort,
     pub user: LlmUserMessage,
 }
 
@@ -51,6 +52,7 @@ pub fn build_request(context: &LlmContext<'_>, schema_json: &Value) -> LlmResult
         prompt,
         context.observation,
         context.observation_screenshot,
+        context.reasoning_effort,
     ))
 }
 
@@ -58,6 +60,7 @@ pub fn build_request_from_prompt(
     prompt: String,
     observation: &Observation,
     screenshot_bytes: Option<&[u8]>,
+    reasoning_effort: ReasoningEffort,
 ) -> LlmRequest {
     let mut parts = vec![LlmContentPart::Text { text: prompt }];
     let payload_mode =
@@ -70,6 +73,7 @@ pub fn build_request_from_prompt(
     LlmRequest {
         system: SYSTEM_PROMPT.to_string(),
         payload_mode,
+        reasoning_effort,
         user: LlmUserMessage { parts },
     }
 }
@@ -184,7 +188,7 @@ fn outcome_label(outcome: &crate::agent::memory::StepOutcomeLog) -> &'static str
 mod tests {
     use super::*;
     use crate::llm::schema::ActionSchema;
-    use crate::types::{ElementFlags, ElementRef, LlmPayloadMode};
+    use crate::types::{ElementFlags, ElementRef, LlmPayloadMode, ReasoningEffort};
     use serde_json::json;
 
     fn sample_observation(hash: &str) -> Observation {
@@ -341,7 +345,12 @@ mod tests {
             }],
         };
         let prompt = "prompt".to_string();
-        let request = build_request_from_prompt(prompt, &observation, Some(&[0, 1, 2, 3]));
+        let request = build_request_from_prompt(
+            prompt,
+            &observation,
+            Some(&[0, 1, 2, 3]),
+            ReasoningEffort::Medium,
+        );
 
         assert_eq!(request.payload_mode, LlmPayloadMode::Multimodal);
         assert_eq!(request.user.parts.len(), 2);
@@ -386,7 +395,12 @@ mod tests {
             state_hash: "hash-1".to_string(),
             elements: Vec::new(),
         };
-        let request = build_request_from_prompt("prompt".to_string(), &observation, None);
+        let request = build_request_from_prompt(
+            "prompt".to_string(),
+            &observation,
+            None,
+            ReasoningEffort::Medium,
+        );
 
         assert_eq!(request.payload_mode, LlmPayloadMode::TextOnly);
         assert_eq!(request.user.parts.len(), 1);
@@ -408,6 +422,7 @@ mod tests {
             observation_screenshot: None,
             history: &[],
             steps: &[],
+            reasoning_effort: ReasoningEffort::Medium,
         };
 
         let request = build_request(&context, schema.json()).expect("request");
@@ -423,10 +438,33 @@ mod tests {
     }
 
     #[test]
+    fn request_carries_reasoning_effort_from_context() {
+        let schema = ActionSchema::default();
+        let mut observations = VecDeque::new();
+        observations.push_back(sample_observation("hash-1"));
+        let current = sample_observation("hash-1");
+
+        let context = LlmContext {
+            task: "task",
+            plan: None,
+            observation: &current,
+            observations: &observations,
+            observation_screenshot: None,
+            history: &[],
+            steps: &[],
+            reasoning_effort: ReasoningEffort::High,
+        };
+
+        let request = build_request(&context, schema.json()).expect("request");
+        assert_eq!(request.reasoning_effort, ReasoningEffort::High);
+    }
+
+    #[test]
     fn image_part_serializes_metadata_fields() {
         let request = LlmRequest {
             system: "system".to_string(),
             payload_mode: LlmPayloadMode::Multimodal,
+            reasoning_effort: ReasoningEffort::Medium,
             user: LlmUserMessage {
                 parts: vec![LlmContentPart::Image {
                     source: "screenshot".to_string(),

@@ -16,6 +16,7 @@ use mbus::llm::openai::{OpenAiClient, OpenAiConfig};
 use mbus::llm::router::Router;
 use mbus::llm::scripted::{ScriptedLlm, StubLlm};
 use mbus::telemetry;
+use mbus::types::ReasoningEffort;
 use mbus::verify::rules::Validator;
 use serde::Serialize;
 use std::error::Error;
@@ -84,6 +85,8 @@ struct RunArgs {
     router_no_progress_to_mid: Option<u32>,
     #[arg(long)]
     router_no_progress_to_strong: Option<u32>,
+    #[arg(long)]
+    router_reasoning_effort: Option<String>,
     #[arg(long, value_parser = clap::value_parser!(bool))]
     allow_insecure: Option<bool>,
     #[arg(long)]
@@ -537,6 +540,10 @@ fn resolve_optional_text(
     }
 }
 
+fn parse_reasoning_effort(value: &str) -> Result<ReasoningEffort, ConfigError> {
+    ReasoningEffort::from_str(value).map_err(|message| ConfigError::Invalid { message })
+}
+
 fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
     let llm_mode = if let Some(mode) = args.llm_mode.as_deref() {
         Some(LlmMode::from_str(mode)?)
@@ -547,6 +554,11 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
     };
     let screenshot_persist = if let Some(value) = args.screenshot_persist.as_deref() {
         Some(ScreenshotPersist::from_str(value)?)
+    } else {
+        None
+    };
+    let router_reasoning_effort = if let Some(value) = args.router_reasoning_effort.as_deref() {
+        Some(parse_reasoning_effort(value)?)
     } else {
         None
     };
@@ -567,6 +579,7 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
         router_failures_to_strong: args.router_failures_to_strong,
         router_no_progress_to_mid: args.router_no_progress_to_mid,
         router_no_progress_to_strong: args.router_no_progress_to_strong,
+        router_reasoning_effort,
         allow_insecure: args.allow_insecure,
         validator_max_text_len: args.validator_max_text_len,
         validator_max_wait_ms: args.validator_max_wait_ms,

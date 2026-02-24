@@ -144,6 +144,7 @@ impl OpenAiClient {
         let content = openai_content_value(&request.user.parts);
         json!({
             "model": self.config.model,
+            "reasoning_effort": request.reasoning_effort.as_str(),
             "messages": [
                 {"role": "system", "content": request.system},
                 {"role": "user", "content": content}
@@ -555,6 +556,8 @@ fn collect_refusal_diagnostics(refusal: Option<&Value>) -> (&'static str, usize)
 #[cfg(test)]
 mod parse_tests {
     use super::*;
+    use crate::llm::request::{LlmContentPart, LlmRequest, LlmUserMessage};
+    use crate::types::{LlmPayloadMode, ReasoningEffort};
     use serde_json::json;
     use std::time::Duration;
 
@@ -749,6 +752,24 @@ mod parse_tests {
 
         let invalid = LlmError::new("invalid_json", "expected value at line 1 column 1");
         assert!(!is_retryable_empty_output_error(&invalid));
+    }
+
+    #[test]
+    fn chat_body_includes_reasoning_effort() {
+        let client = test_client();
+        let request = LlmRequest {
+            system: "system".to_string(),
+            payload_mode: LlmPayloadMode::TextOnly,
+            reasoning_effort: ReasoningEffort::High,
+            user: LlmUserMessage {
+                parts: vec![LlmContentPart::Text {
+                    text: "hi".to_string(),
+                }],
+            },
+        };
+
+        let body = client.build_chat_body(&request);
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
     }
 
     #[test]

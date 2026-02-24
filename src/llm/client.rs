@@ -1,5 +1,5 @@
 use crate::agent::memory::StepRecord;
-use crate::types::{Action, LlmPayloadMode, Observation, TokenUsage};
+use crate::types::{Action, LlmPayloadMode, Observation, ReasoningEffort, TokenUsage};
 use async_trait::async_trait;
 use std::collections::VecDeque;
 use std::fmt;
@@ -13,6 +13,7 @@ pub struct LlmContext<'a> {
     pub observation_screenshot: Option<&'a [u8]>,
     pub history: &'a [Action],
     pub steps: &'a [StepRecord],
+    pub reasoning_effort: ReasoningEffort,
 }
 
 pub type LlmResult<T> = Result<T, LlmError>;

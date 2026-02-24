@@ -232,6 +232,7 @@ impl<B: Browser> AgentLoop<B> {
                     observation_screenshot: observation_screenshot.as_deref(),
                     history: self.memory.history(),
                     steps: self.memory.steps(),
+                    reasoning_effort: self.router.effort(),
                 };
                 let llm_response = match client.propose_action(&context).instrument(llm_span).await
                 {
@@ -682,9 +683,10 @@ mod tests {
     use super::*;
     use crate::browser::BrowserResult;
     use crate::llm::client::LlmResponse;
-    use crate::types::{ElementFlags, ElementRef};
+    use crate::types::{ElementFlags, ElementRef, LlmPayloadMode, ReasoningEffort};
     use async_trait::async_trait;
     use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex as StdMutex};
     use tokio::sync::Mutex;
 
     #[derive(Debug)]
@@ -763,6 +765,17 @@ mod tests {
     }
 
     #[derive(Debug)]
+    struct CaptureEffortLlm {
+        captured: Arc<StdMutex<Option<ReasoningEffort>>>,
+    }
+
+    impl CaptureEffortLlm {
+        fn new(captured: Arc<StdMutex<Option<ReasoningEffort>>>) -> Self {
+            Self { captured }
+        }
+    }
+
+    #[derive(Debug)]
     struct ScriptedLlm {
         actions: Mutex<VecDeque<Action>>,
     }
@@ -789,6 +802,21 @@ mod tests {
     }
 
     #[async_trait]
+    impl LlmClient for CaptureEffortLlm {
+        async fn propose_action(&self, context: &LlmContext<'_>) -> Result<LlmResponse, LlmError> {
+            let mut guard = self.captured.lock().expect("capture lock");
+            *guard = Some(context.reasoning_effort);
+            Ok(LlmResponse {
+                action: Action::Done {
+                    summary: "ok".to_string(),
+                },
+                usage: None,
+                payload_mode: LlmPayloadMode::TextOnly,
+            })
+        }
+    }
+
+    #[async_trait]
     impl LlmClient for ScriptedLlm {
         async fn propose_action(&self, _context: &LlmContext<'_>) -> Result<LlmResponse, LlmError> {
             let mut guard = self.actions.lock().await;
@@ -798,7 +826,7 @@ mod tests {
             Ok(LlmResponse {
                 action,
                 usage: None,
-                payload_mode: crate::types::LlmPayloadMode::TextOnly,
+                payload_mode: LlmPayloadMode::TextOnly,
             })
         }
     }
@@ -813,7 +841,7 @@ mod tests {
             response.map(|action| LlmResponse {
                 action,
                 usage: None,
-                payload_mode: crate::types::LlmPayloadMode::TextOnly,
+                payload_mode: LlmPayloadMode::TextOnly,
             })
         }
     }
@@ -862,6 +890,7 @@ mod tests {
             no_progress_to_strong: 20,
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
+            reasoning_effort: crate::types::ReasoningEffort::Medium,
         });
         let mut agent = AgentLoop::new(browser, clients, "task").with_router(router);
 
@@ -881,6 +910,34 @@ mod tests {
         assert_eq!(result.step_screenshots, vec![Some(vec![1, 2, 3])]);
         let applied = agent.browser.applied().await;
         assert!(applied.is_empty());
+    }
+
+    #[tokio::test]
+    async fn passes_router_reasoning_effort_into_llm_context() {
+        let obs = sample_observation("obs1", "hash1", vec![element("el_1")]);
+        let browser = FakeBrowser::new(vec![obs.clone()], vec![]);
+        let captured = Arc::new(StdMutex::new(None));
+        let client = CaptureEffortLlm::new(captured.clone());
+        let clients = LlmClients::new(
+            Box::new(CaptureEffortLlm::new(captured.clone())),
+            Box::new(CaptureEffortLlm::new(captured.clone())),
+            Box::new(client),
+        );
+        let router = Router::new(crate::llm::router::RouterConfig {
+            failures_to_mid: 10,
+            failures_to_strong: 20,
+            no_progress_to_mid: 10,
+            no_progress_to_strong: 20,
+            low_actionability_to_mid: 10,
+            low_actionability_to_strong: 20,
+            reasoning_effort: ReasoningEffort::High,
+        });
+        let mut agent = AgentLoop::new(browser, clients, "task").with_router(router);
+
+        let result = agent.run().await.expect("run");
+        assert_eq!(result.status, RunStatus::Done);
+        let effort = captured.lock().expect("capture lock");
+        assert_eq!(*effort, Some(ReasoningEffort::High));
     }
 
     #[tokio::test]
@@ -919,6 +976,7 @@ mod tests {
             no_progress_to_strong: 20,
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
+            reasoning_effort: crate::types::ReasoningEffort::Medium,
         });
         let mut agent = AgentLoop::new(browser, clients, "task").with_router(router);
 
@@ -1046,6 +1104,7 @@ mod tests {
             no_progress_to_strong: 20,
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
+            reasoning_effort: crate::types::ReasoningEffort::Medium,
         });
         let mut agent = AgentLoop::new(browser, clients, "task")
             .with_router(router)
@@ -1194,6 +1253,7 @@ mod tests {
             no_progress_to_strong: 20,
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
+            reasoning_effort: crate::types::ReasoningEffort::Medium,
         });
         let mut agent = AgentLoop::new(browser, clients, "task")
             .with_router(router)
@@ -1299,6 +1359,7 @@ mod tests {
             no_progress_to_strong: 20,
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
+            reasoning_effort: crate::types::ReasoningEffort::Medium,
         });
         let mut agent = AgentLoop::new(browser, clients, "task")
             .with_router(router)
@@ -1367,6 +1428,7 @@ mod tests {
             no_progress_to_strong: 20,
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
+            reasoning_effort: crate::types::ReasoningEffort::Medium,
         });
         let mut agent = AgentLoop::new(browser, clients, "task")
             .with_router(router)

@@ -1,6 +1,7 @@
 use crate::agent::policy::AgentPolicy;
 use crate::browser::CdpConfig;
 use crate::llm::router::RouterConfig;
+use crate::types::ReasoningEffort;
 use crate::verify::rules::ValidatorConfig;
 use serde::Deserialize;
 use std::fmt;
@@ -144,6 +145,7 @@ pub struct CliOverrides {
     pub router_failures_to_strong: Option<u32>,
     pub router_no_progress_to_mid: Option<u32>,
     pub router_no_progress_to_strong: Option<u32>,
+    pub router_reasoning_effort: Option<ReasoningEffort>,
     pub allow_insecure: Option<bool>,
     pub validator_max_text_len: Option<usize>,
     pub validator_max_wait_ms: Option<u64>,
@@ -319,6 +321,10 @@ impl FileConfig {
             if let Some(value) = router.no_progress_to_strong {
                 config.router.no_progress_to_strong = value;
             }
+            if let Some(value) = router.reasoning_effort.as_deref() {
+                config.router.reasoning_effort =
+                    parse_reasoning_effort(value).map_err(ConfigError::invalid)?;
+            }
         }
 
         if let Some(validator) = self.validator.as_ref() {
@@ -411,6 +417,7 @@ struct FileRouterConfig {
     failures_to_strong: Option<u32>,
     no_progress_to_mid: Option<u32>,
     no_progress_to_strong: Option<u32>,
+    reasoning_effort: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -503,6 +510,13 @@ impl EnvOverrides {
                 "MBUS_ROUTER_NO_PROGRESS_TO_STRONG" => {
                     overrides.router_no_progress_to_strong = Some(parse_u32(&key, &value)?)
                 }
+                "MBUS_ROUTER_REASONING_EFFORT" => {
+                    overrides.router_reasoning_effort =
+                        Some(parse_reasoning_effort(&value).map_err(|message| ConfigError::Env {
+                            name: key,
+                            message,
+                        })?);
+                }
                 "MBUS_ALLOW_INSECURE" => overrides.allow_insecure = Some(parse_bool(&key, &value)?),
                 "MBUS_VALIDATOR_MAX_TEXT_LEN" => {
                     overrides.validator_max_text_len = Some(parse_usize(&key, &value)?)
@@ -594,6 +608,9 @@ impl CliOverrides {
         }
         if let Some(value) = self.router_no_progress_to_strong {
             config.router.no_progress_to_strong = value;
+        }
+        if let Some(value) = self.router_reasoning_effort {
+            config.router.reasoning_effort = value;
         }
         if let Some(value) = self.allow_insecure {
             config.validator.allow_insecure = value;
@@ -727,6 +744,10 @@ fn parse_f64(name: &str, value: &str) -> Result<f64, ConfigError> {
     })
 }
 
+fn parse_reasoning_effort(value: &str) -> Result<ReasoningEffort, String> {
+    ReasoningEffort::from_str(value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -816,6 +837,7 @@ mod tests {
                 failures_to_strong: Some(7),
                 no_progress_to_mid: Some(3),
                 no_progress_to_strong: Some(6),
+                reasoning_effort: Some("high".to_string()),
             }),
             ..FileConfig::default()
         };
@@ -824,6 +846,10 @@ mod tests {
         assert_eq!(config.router.failures_to_strong, 7);
         assert_eq!(config.router.no_progress_to_mid, 3);
         assert_eq!(config.router.no_progress_to_strong, 6);
+        assert_eq!(
+            config.router.reasoning_effort,
+            crate::types::ReasoningEffort::High
+        );
     }
 
     #[test]

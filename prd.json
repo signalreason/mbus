@@ -207,10 +207,16 @@
         "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260224T225323Z-26328 completed",
+        "last_run_id": "20260224T225323Z-26328",
+        "last_update_utc": "2026-02-24T23:02:27Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Represent effort as a typed enum shared by config, router, and provider adapters."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M4-ESC-001",
       "title": "Introduce reasoning effort levels in LLM request model"
     },

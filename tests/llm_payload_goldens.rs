@@ -1,6 +1,6 @@
 use mbus::llm::client::LlmContext;
 use mbus::llm::request::build_request;
-use mbus::types::{ElementFlags, ElementRef, Observation, ScreenshotMetadata};
+use mbus::types::{ElementFlags, ElementRef, Observation, ReasoningEffort, ScreenshotMetadata};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
 
@@ -54,6 +54,7 @@ fn golden_multimodal_payload_shape() {
         observation_screenshot: Some(&[0, 1, 2, 3]),
         history: &[],
         steps: &[],
+        reasoning_effort: ReasoningEffort::Medium,
     };
 
     let request = build_request(&context, &schema_json).expect("build request");

@@ -118,3 +118,4 @@
 - 2026-02-24 LLM-007 text-only payload fallback: `notes/2026-02-24-llm-007-text-only-fallback.md`
 - 2026-02-24 LLM-008 multimodal action parsing regression: `notes/2026-02-24-llm-008-multimodal-action-parse-regression.md`
 - 2026-02-24 LLM-009 multimodal usage + payload telemetry: `notes/2026-02-24-llm-009-multimodal-usage-telemetry.md`
+- 2026-02-24 LLM-010 reasoning effort request parameter: `notes/2026-02-24-llm-010-reasoning-effort.md`
