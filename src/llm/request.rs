@@ -11,7 +11,15 @@ use std::collections::VecDeque;
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct LlmRequest {
     pub system: String,
+    pub payload_mode: LlmPayloadMode,
     pub user: LlmUserMessage,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LlmPayloadMode {
+    TextOnly,
+    Multimodal,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -59,11 +67,16 @@ pub fn build_request_from_prompt(
     screenshot_bytes: Option<&[u8]>,
 ) -> LlmRequest {
     let mut parts = vec![LlmContentPart::Text { text: prompt }];
-    if let (Some(metadata), Some(bytes)) = (&observation.screenshot, screenshot_bytes) {
-        parts.push(build_image_part(metadata, bytes));
-    }
+    let payload_mode =
+        if let (Some(metadata), Some(bytes)) = (&observation.screenshot, screenshot_bytes) {
+            parts.push(build_image_part(metadata, bytes));
+            LlmPayloadMode::Multimodal
+        } else {
+            LlmPayloadMode::TextOnly
+        };
     LlmRequest {
         system: SYSTEM_PROMPT.to_string(),
+        payload_mode,
         user: LlmUserMessage { parts },
     }
 }
@@ -336,6 +349,7 @@ mod tests {
         let prompt = "prompt".to_string();
         let request = build_request_from_prompt(prompt, &observation, Some(&[0, 1, 2, 3]));
 
+        assert_eq!(request.payload_mode, LlmPayloadMode::Multimodal);
         assert_eq!(request.user.parts.len(), 2);
         assert!(matches!(request.user.parts[0], LlmContentPart::Text { .. }));
         match &request.user.parts[1] {
@@ -380,14 +394,45 @@ mod tests {
         };
         let request = build_request_from_prompt("prompt".to_string(), &observation, None);
 
+        assert_eq!(request.payload_mode, LlmPayloadMode::TextOnly);
         assert_eq!(request.user.parts.len(), 1);
         assert!(matches!(request.user.parts[0], LlmContentPart::Text { .. }));
+    }
+
+    #[test]
+    fn text_only_request_retains_observation_prompt_fields() {
+        let schema = ActionSchema::default();
+        let mut observations = VecDeque::new();
+        observations.push_back(sample_observation("hash-1"));
+        let current = sample_observation("hash-1");
+
+        let context = LlmContext {
+            task: "task",
+            plan: None,
+            observation: &current,
+            observations: &observations,
+            observation_screenshot: None,
+            history: &[],
+            steps: &[],
+        };
+
+        let request = build_request(&context, schema.json()).expect("request");
+        assert_eq!(request.payload_mode, LlmPayloadMode::TextOnly);
+
+        let text = match &request.user.parts[0] {
+            LlmContentPart::Text { text } => text,
+            _ => panic!("expected text part"),
+        };
+        assert!(text.contains("Observation: "));
+        assert!(text.contains("RecentObservations: "));
+        assert!(text.contains("StateHashStreak: "));
     }
 
     #[test]
     fn image_part_serializes_metadata_fields() {
         let request = LlmRequest {
             system: "system".to_string(),
+            payload_mode: LlmPayloadMode::Multimodal,
             user: LlmUserMessage {
                 parts: vec![LlmContentPart::Image {
                     source: "screenshot".to_string(),

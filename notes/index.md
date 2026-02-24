@@ -115,3 +115,4 @@
 - 2026-02-24 SHOT-006 screenshot metrics + summary: `notes/2026-02-24-shot-006-screenshot-metrics.md`
 - 2026-02-24 LLM-005 multimodal request builder: `notes/2026-02-24-llm-005-multimodal-request-builder.md`
 - 2026-02-24 LLM-006 multimodal request golden order: `notes/2026-02-24-llm-006-multimodal-request-golden-order.md`
+- 2026-02-24 LLM-007 text-only payload fallback: `notes/2026-02-24-llm-007-text-only-fallback.md`
