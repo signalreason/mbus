@@ -112,3 +112,4 @@
 - 2026-02-24 SHOT-003 implementation audit: `notes/2026-02-24-shot-003-implementation-audit.md`
 - 2026-02-24 SHOT-004 observation screenshot metadata: `notes/2026-02-24-shot-004-observation-screenshot-metadata.md`
 - 2026-02-24 SHOT-005 screenshot fallback diagnostics: `notes/2026-02-24-shot-005-screenshot-fallback.md`
+- 2026-02-24 SHOT-006 screenshot metrics + summary: `notes/2026-02-24-shot-006-screenshot-metrics.md`

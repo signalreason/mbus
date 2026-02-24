@@ -1,6 +1,7 @@
 use crate::browser::act::{ActionApplier, ActionError, action_result_err, action_result_ok_with};
 use crate::browser::observe::{Observer, ObserverConfig};
 use crate::browser::{Browser, BrowserError, BrowserResult, ScreenshotCapture};
+use crate::telemetry;
 use crate::types::{Action, Observation, StepResult};
 use async_trait::async_trait;
 use chromiumoxide::browser::{Browser as ChromiumBrowser, BrowserConfig};
@@ -13,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 
@@ -348,19 +349,25 @@ async fn capture_viewport_screenshot(
     page: &Page,
     timeout_duration: Duration,
 ) -> BrowserResult<Vec<u8>> {
+    let started_at = Instant::now();
     let params = ScreenshotParams::builder()
         .format(CaptureScreenshotFormat::Png)
         .build();
     let result = timeout(timeout_duration, page.screenshot(params)).await;
     let bytes = match result {
-        Ok(Ok(bytes)) => bytes,
+        Ok(Ok(bytes)) => {
+            telemetry::record_screenshot_capture(started_at.elapsed(), bytes.len());
+            bytes
+        }
         Ok(Err(err)) => {
+            telemetry::inc_screenshot_failure("screenshot_failed");
             return Err(BrowserError::new(
                 "screenshot_failed",
                 format!("screenshot capture failed: {err}"),
             ));
         }
         Err(err) => {
+            telemetry::inc_screenshot_failure("screenshot_timeout");
             return Err(BrowserError::new(
                 "screenshot_timeout",
                 format!("screenshot timed out: {err}"),

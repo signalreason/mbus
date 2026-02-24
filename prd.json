@@ -107,10 +107,16 @@
         "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260224T222044Z-26328 completed",
+        "last_run_id": "20260224T222044Z-26328",
+        "last_update_utc": "2026-02-24T22:25:11Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Instrument at capture/persist boundaries and aggregate counters in the same summary path used for existing step metrics."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M4-SHOT-006",
       "title": "Emit screenshot metrics and summary counters"
     },

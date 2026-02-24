@@ -27,6 +27,13 @@ pub struct MetricsSnapshot {
     pub last_snapshot_duration_ms: u64,
     pub last_apply_duration_ms: u64,
     pub last_llm_duration_ms: u64,
+    pub screenshot_captures_total: u64,
+    pub screenshot_failures_total: u64,
+    pub screenshot_bytes_total: u64,
+    pub screenshot_duration_ms_total: u64,
+    pub screenshot_persist_failures_total: u64,
+    pub last_screenshot_duration_ms: u64,
+    pub last_screenshot_bytes: u64,
     pub no_progress_streak: u64,
 }
 
@@ -54,6 +61,13 @@ struct Metrics {
     last_snapshot_duration_ms: AtomicU64,
     last_apply_duration_ms: AtomicU64,
     last_llm_duration_ms: AtomicU64,
+    screenshot_captures_total: AtomicU64,
+    screenshot_failures_total: AtomicU64,
+    screenshot_bytes_total: AtomicU64,
+    screenshot_duration_ms_total: AtomicU64,
+    screenshot_persist_failures_total: AtomicU64,
+    last_screenshot_duration_ms: AtomicU64,
+    last_screenshot_bytes: AtomicU64,
     no_progress_streak: AtomicU64,
 }
 
@@ -139,6 +153,29 @@ impl Metrics {
             .store(duration.as_millis() as u64, Ordering::Relaxed);
     }
 
+    fn record_screenshot_capture(&self, duration: Duration, bytes_len: usize) {
+        self.screenshot_captures_total
+            .fetch_add(1, Ordering::Relaxed);
+        self.screenshot_bytes_total
+            .fetch_add(bytes_len as u64, Ordering::Relaxed);
+        self.screenshot_duration_ms_total
+            .fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
+        self.last_screenshot_duration_ms
+            .store(duration.as_millis() as u64, Ordering::Relaxed);
+        self.last_screenshot_bytes
+            .store(bytes_len as u64, Ordering::Relaxed);
+    }
+
+    fn inc_screenshot_failure(&self) {
+        self.screenshot_failures_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn inc_screenshot_persist_failure(&self) {
+        self.screenshot_persist_failures_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
     fn set_no_progress_streak(&self, value: u32) {
         self.no_progress_streak
             .store(value as u64, Ordering::Relaxed);
@@ -167,6 +204,15 @@ impl Metrics {
             last_snapshot_duration_ms: self.last_snapshot_duration_ms.load(Ordering::Relaxed),
             last_apply_duration_ms: self.last_apply_duration_ms.load(Ordering::Relaxed),
             last_llm_duration_ms: self.last_llm_duration_ms.load(Ordering::Relaxed),
+            screenshot_captures_total: self.screenshot_captures_total.load(Ordering::Relaxed),
+            screenshot_failures_total: self.screenshot_failures_total.load(Ordering::Relaxed),
+            screenshot_bytes_total: self.screenshot_bytes_total.load(Ordering::Relaxed),
+            screenshot_duration_ms_total: self.screenshot_duration_ms_total.load(Ordering::Relaxed),
+            screenshot_persist_failures_total: self
+                .screenshot_persist_failures_total
+                .load(Ordering::Relaxed),
+            last_screenshot_duration_ms: self.last_screenshot_duration_ms.load(Ordering::Relaxed),
+            last_screenshot_bytes: self.last_screenshot_bytes.load(Ordering::Relaxed),
             no_progress_streak: self.no_progress_streak.load(Ordering::Relaxed),
         }
     }
@@ -253,6 +299,39 @@ pub fn record_llm_duration(duration: Duration) {
         event = "metric",
         metric_name = "llm_duration_ms",
         value = duration.as_millis() as u64
+    );
+}
+
+pub fn record_screenshot_capture(duration: Duration, bytes_len: usize) {
+    metrics().record_screenshot_capture(duration, bytes_len);
+    tracing::info!(
+        event = "metric",
+        metric_name = "screenshot_duration_ms",
+        value = duration.as_millis() as u64
+    );
+    tracing::info!(
+        event = "metric",
+        metric_name = "screenshot_bytes",
+        value = bytes_len as u64
+    );
+}
+
+pub fn inc_screenshot_failure(code: &'static str) {
+    metrics().inc_screenshot_failure();
+    tracing::info!(
+        event = "metric",
+        metric_name = "screenshot_failures_total",
+        value = 1u64,
+        error_code = code
+    );
+}
+
+pub fn inc_screenshot_persist_failure() {
+    metrics().inc_screenshot_persist_failure();
+    tracing::info!(
+        event = "metric",
+        metric_name = "screenshot_persist_failures_total",
+        value = 1u64
     );
 }
 
@@ -439,6 +518,9 @@ mod tests {
         });
         metrics.record_llm_duration(Duration::from_millis(12));
         metrics.record_step_duration(Duration::from_millis(7));
+        metrics.record_screenshot_capture(Duration::from_millis(5), 120);
+        metrics.inc_screenshot_failure();
+        metrics.inc_screenshot_persist_failure();
         metrics.set_no_progress_streak(3);
 
         let snapshot = metrics.snapshot();
@@ -453,6 +535,13 @@ mod tests {
         assert_eq!(snapshot.actions_click_total, 1);
         assert_eq!(snapshot.last_llm_duration_ms, 12);
         assert_eq!(snapshot.last_step_duration_ms, 7);
+        assert_eq!(snapshot.screenshot_captures_total, 1);
+        assert_eq!(snapshot.screenshot_failures_total, 1);
+        assert_eq!(snapshot.screenshot_bytes_total, 120);
+        assert_eq!(snapshot.screenshot_duration_ms_total, 5);
+        assert_eq!(snapshot.screenshot_persist_failures_total, 1);
+        assert_eq!(snapshot.last_screenshot_duration_ms, 5);
+        assert_eq!(snapshot.last_screenshot_bytes, 120);
         assert_eq!(snapshot.no_progress_streak, 3);
     }
 }

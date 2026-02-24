@@ -73,6 +73,15 @@ pub struct RunErrorSummary {
     pub kind: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct ScreenshotSummary {
+    pub captures: usize,
+    pub failures: usize,
+    pub bytes: usize,
+    pub duration_ms: usize,
+    pub persist_failures: usize,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct RunSummary {
     pub terminal_state: TerminalState,
@@ -86,6 +95,7 @@ pub struct RunSummary {
     pub repair_attempts: usize,
     pub repair_successes: usize,
     pub repair_failures: usize,
+    pub screenshots: ScreenshotSummary,
 }
 
 pub fn task_id_for(task: &str) -> String {
@@ -292,6 +302,7 @@ pub fn build_run_summary(
     mut extra_errors: Vec<RunErrorSummary>,
     output_artifacts: Vec<OutputArtifact>,
     repair_counts: RepairCounts,
+    screenshots: ScreenshotSummary,
 ) -> RunSummary {
     let counts = step_counts(steps);
     let mut errors = step_errors(steps);
@@ -308,6 +319,7 @@ pub fn build_run_summary(
         repair_attempts: repair_counts.attempts,
         repair_successes: repair_counts.successes,
         repair_failures: repair_counts.failures,
+        screenshots,
     }
 }
 

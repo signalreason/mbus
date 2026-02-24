@@ -195,7 +195,9 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
     let execution = match execute_agent(&task, plan.as_deref(), &config).await {
         Ok(execution) => execution,
         Err(err) => {
-            let repair_counts = repair_counts_delta(&repair_start, &telemetry::snapshot());
+            let end_snapshot = telemetry::snapshot();
+            let repair_counts = repair_counts_delta(&repair_start, &end_snapshot);
+            let screenshot_counts = screenshot_counts_delta(&repair_start, &end_snapshot);
             let summary = mbus::output::build_run_summary(
                 mbus::output::TerminalState::Error,
                 &[],
@@ -206,6 +208,7 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
                 )],
                 Vec::new(),
                 repair_counts,
+                screenshot_counts,
             );
             emit_run_logs(&[], &summary, None, None)?;
             return Err(err);
@@ -262,13 +265,16 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
     output_artifacts.extend(screenshot_result.artifacts);
     errors.extend(screenshot_result.errors);
 
-    let repair_counts = repair_counts_delta(&repair_start, &telemetry::snapshot());
+    let end_snapshot = telemetry::snapshot();
+    let repair_counts = repair_counts_delta(&repair_start, &end_snapshot);
+    let screenshot_counts = screenshot_counts_delta(&repair_start, &end_snapshot);
     let summary = mbus::output::build_run_summary(
         terminal_state,
         &steps,
         errors,
         output_artifacts,
         repair_counts,
+        screenshot_counts,
     );
     emit_run_logs(
         &steps,
@@ -794,6 +800,7 @@ fn emit_run_logs(
         repair_attempts: summary.repair_attempts,
         repair_successes: summary.repair_successes,
         repair_failures: summary.repair_failures,
+        screenshots: summary.screenshots.clone(),
         errors: summary.errors.clone(),
         output_artifacts: summary.output_artifacts.clone(),
         final_url: final_observation.map(|value| value.url.clone()),
@@ -851,14 +858,17 @@ fn write_screenshot_artifacts(
         };
         match mbus::output::write_screenshot_artifact(run_id, index + 1, bytes) {
             Ok(artifact) => artifacts.push(artifact),
-            Err(err) => errors.push(mbus::output::RunErrorSummary {
-                code: "screenshot_persist_failed".to_string(),
-                message: err.to_string(),
-                step_index: Some(index + 1),
-                field: None,
-                validation_code: None,
-                kind: Some("screenshot".to_string()),
-            }),
+            Err(err) => {
+                telemetry::inc_screenshot_persist_failure();
+                errors.push(mbus::output::RunErrorSummary {
+                    code: "screenshot_persist_failed".to_string(),
+                    message: err.to_string(),
+                    step_index: Some(index + 1),
+                    field: None,
+                    validation_code: None,
+                    kind: Some("screenshot".to_string()),
+                });
+            }
         }
     }
     ScreenshotPersistResult { artifacts, errors }
@@ -911,6 +921,7 @@ struct SummaryLog {
     repair_attempts: usize,
     repair_successes: usize,
     repair_failures: usize,
+    screenshots: mbus::output::ScreenshotSummary,
     errors: Vec<mbus::output::RunErrorSummary>,
     output_artifacts: Vec<mbus::output::OutputArtifact>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -927,6 +938,31 @@ fn repair_counts_delta(
         attempts: saturating_delta(start.repair_attempts_total, end.repair_attempts_total),
         successes: saturating_delta(start.repair_success_total, end.repair_success_total),
         failures: saturating_delta(start.repair_failures_total, end.repair_failures_total),
+    }
+}
+
+fn screenshot_counts_delta(
+    start: &telemetry::MetricsSnapshot,
+    end: &telemetry::MetricsSnapshot,
+) -> mbus::output::ScreenshotSummary {
+    mbus::output::ScreenshotSummary {
+        captures: saturating_delta(
+            start.screenshot_captures_total,
+            end.screenshot_captures_total,
+        ),
+        failures: saturating_delta(
+            start.screenshot_failures_total,
+            end.screenshot_failures_total,
+        ),
+        bytes: saturating_delta(start.screenshot_bytes_total, end.screenshot_bytes_total),
+        duration_ms: saturating_delta(
+            start.screenshot_duration_ms_total,
+            end.screenshot_duration_ms_total,
+        ),
+        persist_failures: saturating_delta(
+            start.screenshot_persist_failures_total,
+            end.screenshot_persist_failures_total,
+        ),
     }
 }
 
