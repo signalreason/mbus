@@ -3,7 +3,8 @@ use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
 use mbus::agent::policy::AgentPolicy;
 use mbus::browser::{Browser, CdpBrowser, CdpConfig};
 use mbus::llm::client::{LlmClient, LlmContext, LlmError, LlmResponse};
-use mbus::types::{Action, ElementRef, LlmPayloadMode, Observation};
+use mbus::llm::router::{Router, RouterConfig, RouterLadderStep, Tier};
+use mbus::types::{Action, ElementRef, LlmPayloadMode, Observation, ReasoningEffort};
 use mbus::verify::{Validator, ValidatorConfig};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -275,6 +276,28 @@ impl LlmClient for WaitLoopLlm {
     }
 }
 
+#[derive(Clone, Debug)]
+struct RepeatWaitLlm {
+    wait_ms: u64,
+}
+
+impl RepeatWaitLlm {
+    fn new(wait_ms: u64) -> Self {
+        Self { wait_ms }
+    }
+}
+
+#[async_trait]
+impl LlmClient for RepeatWaitLlm {
+    async fn propose_action(&self, _context: &LlmContext<'_>) -> Result<LlmResponse, LlmError> {
+        Ok(LlmResponse {
+            action: Action::Wait { ms: self.wait_ms },
+            usage: None,
+            payload_mode: LlmPayloadMode::TextOnly,
+        })
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn e2e_click_updates_status_via_agent_loop() {
     let server = TestServer::start().await;
@@ -392,6 +415,111 @@ async fn e2e_unchanged_state_hash_loop_records_streaks() {
         })
         .collect();
     assert_eq!(no_progress, vec![1, 2, 3]);
+
+    agent.shutdown().await.expect("shutdown browser");
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_repeat_validation_code_escalates_ladder() {
+    let server = TestServer::start().await;
+    let url = server.url("/loop");
+    let config = CdpConfig {
+        initial_url: url,
+        ..CdpConfig::default()
+    };
+    let browser = CdpBrowser::launch(config).await.expect("launch browser");
+    let llm = RepeatWaitLlm::new(25);
+    let clients = LlmClients::new(Box::new(llm.clone()), Box::new(llm.clone()), Box::new(llm));
+    let mut router_config = RouterConfig::default();
+    router_config.failures_to_mid = 10;
+    router_config.failures_to_strong = 20;
+    router_config.no_progress_to_mid = 10;
+    router_config.no_progress_to_strong = 20;
+    router_config.low_actionability_to_mid = 10;
+    router_config.low_actionability_to_strong = 20;
+    router_config.reasoning_effort = ReasoningEffort::Low;
+    router_config.ladder = vec![
+        RouterLadderStep {
+            model: "fast".to_string(),
+            tier: Tier::Fast,
+            effort: ReasoningEffort::Low,
+        },
+        RouterLadderStep {
+            model: "mid".to_string(),
+            tier: Tier::Mid,
+            effort: ReasoningEffort::Medium,
+        },
+        RouterLadderStep {
+            model: "strong".to_string(),
+            tier: Tier::Strong,
+            effort: ReasoningEffort::High,
+        },
+    ];
+    let router = Router::new(router_config);
+    let mut agent = AgentLoop::new(browser, clients, "repeat-validation test")
+        .with_router(router)
+        .with_policy(AgentPolicy {
+            max_steps: 8,
+            max_no_progress_steps: 10,
+            ..AgentPolicy::default()
+        });
+
+    let result = agent.run().await.expect("run");
+    assert_eq!(result.status, RunStatus::NoProgress);
+    assert_eq!(result.steps.len(), 4);
+    assert_eq!(
+        result.final_action,
+        Action::Done {
+            summary: "no progress after 3 repeated blocked actions".to_string()
+        }
+    );
+
+    let hashes: Vec<&str> = result
+        .steps
+        .iter()
+        .map(|step| step.result.new_state_hash.as_deref().expect("state hash"))
+        .collect();
+    assert!(hashes.iter().all(|hash| *hash == hashes[0]));
+
+    for step in result.steps.iter().skip(1) {
+        assert!(!step.validation.ok);
+        assert_eq!(
+            step.result
+                .error
+                .as_ref()
+                .and_then(|error| error.validation_code.as_deref()),
+            Some("repeat_no_progress_action")
+        );
+    }
+
+    let transition_step = result
+        .steps
+        .iter()
+        .find(|step| {
+            step.router.as_ref().is_some_and(|router| {
+                router
+                    .transitions
+                    .iter()
+                    .any(|transition| transition.reason_code == "repeat_validation_code")
+            })
+        })
+        .expect("expected repeat_validation_code transition");
+    let router_info = transition_step.router.as_ref().expect("router info");
+    assert!(
+        router_info.ladder_index >= 1,
+        "expected ladder index to advance on repeat validation"
+    );
+    let transition = router_info
+        .transitions
+        .iter()
+        .find(|transition| transition.reason_code == "repeat_validation_code")
+        .expect("repeat_validation_code transition");
+    assert_eq!(
+        transition.validation_code.as_deref(),
+        Some("repeat_no_progress_action")
+    );
+    assert_eq!(transition.streak, Some(2));
 
     agent.shutdown().await.expect("shutdown browser");
     server.shutdown().await;

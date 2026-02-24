@@ -352,11 +352,8 @@ impl<B: Browser> AgentLoop<B> {
                     telemetry::record_apply_duration(Duration::from_millis(0));
                     telemetry::record_snapshot_duration(Duration::from_millis(0));
                     let tier_after = self.router.record(StepOutcome::Failure);
-                    let _ = self.apply_ladder_policy(
-                        loop_state.state_hash_streak,
-                        validation_streak,
-                        validation_code.as_deref(),
-                    );
+                    let _ =
+                        self.apply_ladder_policy(0, validation_streak, validation_code.as_deref());
                     let transitions =
                         collect_router_transitions(&self.router, &mut transition_cursor);
                     log_router_transitions(&transitions);
