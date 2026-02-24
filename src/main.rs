@@ -87,6 +87,8 @@ struct RunArgs {
     router_no_progress_to_strong: Option<u32>,
     #[arg(long)]
     router_reasoning_effort: Option<String>,
+    #[arg(long)]
+    router_ladder: Vec<String>,
     #[arg(long, value_parser = clap::value_parser!(bool))]
     allow_insecure: Option<bool>,
     #[arg(long)]
@@ -137,6 +139,8 @@ struct BenchArgs {
     max_steps_per_task: Option<usize>,
     #[arg(long)]
     required_passes: Option<usize>,
+    #[arg(long)]
+    router_ladder: Vec<String>,
     #[arg(long)]
     llm_mode: Option<String>,
     #[arg(long)]
@@ -562,6 +566,11 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
     } else {
         None
     };
+    let router_ladder = if args.router_ladder.is_empty() {
+        None
+    } else {
+        Some(args.router_ladder.clone())
+    };
 
     Ok(CliOverrides {
         max_steps: args.max_steps,
@@ -580,6 +589,7 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
         router_no_progress_to_mid: args.router_no_progress_to_mid,
         router_no_progress_to_strong: args.router_no_progress_to_strong,
         router_reasoning_effort,
+        router_ladder,
         allow_insecure: args.allow_insecure,
         validator_max_text_len: args.validator_max_text_len,
         validator_max_wait_ms: args.validator_max_wait_ms,
@@ -616,10 +626,16 @@ fn build_bench_cli_overrides(
     } else {
         None
     };
+    let router_ladder = if args.router_ladder.is_empty() {
+        None
+    } else {
+        Some(args.router_ladder.clone())
+    };
 
     Ok(CliOverrides {
         max_steps: Some(max_steps_per_task),
         headless: args.headless,
+        router_ladder,
         llm_mode,
         llm_base_url: args.llm_base_url.clone(),
         llm_api_key: args.llm_api_key.clone(),

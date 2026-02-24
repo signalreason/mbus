@@ -14,6 +14,13 @@ pub enum StepOutcome {
     NoProgress,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RouterLadderStep {
+    pub model: String,
+    pub tier: Tier,
+    pub effort: ReasoningEffort,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RouterCounters {
     pub failures: u32,
@@ -41,6 +48,8 @@ pub struct RouterConfig {
     pub low_actionability_to_mid: u32,
     pub low_actionability_to_strong: u32,
     pub reasoning_effort: ReasoningEffort,
+    pub ladder: Vec<RouterLadderStep>,
+    pub(crate) ladder_spec: Option<Vec<String>>,
 }
 
 impl Default for RouterConfig {
@@ -53,6 +62,8 @@ impl Default for RouterConfig {
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
             reasoning_effort: ReasoningEffort::default(),
+            ladder: Vec::new(),
+            ladder_spec: None,
         }
     }
 }
@@ -191,6 +202,10 @@ impl Router {
     pub fn config(&self) -> &RouterConfig {
         &self.config
     }
+
+    pub fn ladder(&self) -> &[RouterLadderStep] {
+        &self.config.ladder
+    }
 }
 
 fn tier_for_count(count: u32, mid: u32, strong: u32) -> Tier {
@@ -320,6 +335,7 @@ mod tests {
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
             reasoning_effort: ReasoningEffort::Medium,
+            ..RouterConfig::default()
         });
         assert_eq!(router.tier(), Tier::Fast);
         assert_eq!(router.record(StepOutcome::Failure), Tier::Fast);
@@ -338,6 +354,7 @@ mod tests {
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
             reasoning_effort: ReasoningEffort::Medium,
+            ..RouterConfig::default()
         });
         assert_eq!(router.record(StepOutcome::NoProgress), Tier::Mid);
         assert_eq!(router.record(StepOutcome::NoProgress), Tier::Strong);
@@ -353,6 +370,7 @@ mod tests {
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
             reasoning_effort: ReasoningEffort::Medium,
+            ..RouterConfig::default()
         });
         assert_eq!(router.record(StepOutcome::Failure), Tier::Fast);
         assert_eq!(router.record(StepOutcome::Failure), Tier::Mid);
@@ -370,6 +388,7 @@ mod tests {
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
             reasoning_effort: ReasoningEffort::Medium,
+            ..RouterConfig::default()
         });
         router.record(StepOutcome::Failure);
         router.record(StepOutcome::NoProgress);
@@ -404,6 +423,7 @@ mod tests {
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
             reasoning_effort: ReasoningEffort::Medium,
+            ..RouterConfig::default()
         });
 
         let prev = sample_observation("hash1");
@@ -451,6 +471,7 @@ mod tests {
             low_actionability_to_mid: 1,
             low_actionability_to_strong: 2,
             reasoning_effort: ReasoningEffort::Medium,
+            ..RouterConfig::default()
         });
 
         let prev = observation_with_elements("hash1", vec![element("el_1", "button")]);

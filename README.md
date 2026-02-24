@@ -148,6 +148,7 @@ failures_to_mid = 2
 failures_to_strong = 4
 no_progress_to_mid = 2
 no_progress_to_strong = 4
+ladder = ["gpt-5-mini:medium", "gpt-5.1:medium", "gpt-5.2:medium"]
 
 [validator]
 allow_insecure = false
@@ -190,6 +191,8 @@ Environment variable overrides (full list):
 - `MBUS_ROUTER_FAILURES_TO_STRONG`
 - `MBUS_ROUTER_NO_PROGRESS_TO_MID`
 - `MBUS_ROUTER_NO_PROGRESS_TO_STRONG`
+- `MBUS_ROUTER_REASONING_EFFORT`
+- `MBUS_ROUTER_LADDER`
 - `MBUS_ALLOW_INSECURE`
 - `MBUS_VALIDATOR_MAX_TEXT_LEN`
 - `MBUS_VALIDATOR_MAX_WAIT_MS`

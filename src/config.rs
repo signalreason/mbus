@@ -1,6 +1,6 @@
 use crate::agent::policy::AgentPolicy;
 use crate::browser::CdpConfig;
-use crate::llm::router::RouterConfig;
+use crate::llm::router::{RouterConfig, RouterLadderStep, Tier};
 use crate::types::ReasoningEffort;
 use crate::verify::rules::ValidatorConfig;
 use serde::Deserialize;
@@ -146,6 +146,7 @@ pub struct CliOverrides {
     pub router_no_progress_to_mid: Option<u32>,
     pub router_no_progress_to_strong: Option<u32>,
     pub router_reasoning_effort: Option<ReasoningEffort>,
+    pub router_ladder: Option<Vec<String>>,
     pub allow_insecure: Option<bool>,
     pub validator_max_text_len: Option<usize>,
     pub validator_max_wait_ms: Option<u64>,
@@ -217,6 +218,8 @@ pub fn load_config(
     env_overrides.apply(&mut config)?;
 
     cli.apply(&mut config)?;
+
+    normalize_router_ladder(&mut config)?;
 
     Ok(config)
 }
@@ -325,6 +328,9 @@ impl FileConfig {
                 config.router.reasoning_effort =
                     parse_reasoning_effort(value).map_err(ConfigError::invalid)?;
             }
+            if let Some(value) = router.ladder.as_ref() {
+                config.router.ladder_spec = Some(value.clone());
+            }
         }
 
         if let Some(validator) = self.validator.as_ref() {
@@ -418,6 +424,7 @@ struct FileRouterConfig {
     no_progress_to_mid: Option<u32>,
     no_progress_to_strong: Option<u32>,
     reasoning_effort: Option<String>,
+    ladder: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -511,11 +518,13 @@ impl EnvOverrides {
                     overrides.router_no_progress_to_strong = Some(parse_u32(&key, &value)?)
                 }
                 "MBUS_ROUTER_REASONING_EFFORT" => {
-                    overrides.router_reasoning_effort =
-                        Some(parse_reasoning_effort(&value).map_err(|message| ConfigError::Env {
-                            name: key,
-                            message,
-                        })?);
+                    overrides.router_reasoning_effort = Some(
+                        parse_reasoning_effort(&value)
+                            .map_err(|message| ConfigError::Env { name: key, message })?,
+                    );
+                }
+                "MBUS_ROUTER_LADDER" => {
+                    overrides.router_ladder = Some(parse_router_ladder_env(&key, &value)?);
                 }
                 "MBUS_ALLOW_INSECURE" => overrides.allow_insecure = Some(parse_bool(&key, &value)?),
                 "MBUS_VALIDATOR_MAX_TEXT_LEN" => {
@@ -611,6 +620,9 @@ impl CliOverrides {
         }
         if let Some(value) = self.router_reasoning_effort {
             config.router.reasoning_effort = value;
+        }
+        if let Some(value) = self.router_ladder.as_ref() {
+            config.router.ladder_spec = Some(value.clone());
         }
         if let Some(value) = self.allow_insecure {
             config.validator.allow_insecure = value;
@@ -748,6 +760,145 @@ fn parse_reasoning_effort(value: &str) -> Result<ReasoningEffort, String> {
     ReasoningEffort::from_str(value)
 }
 
+fn parse_router_ladder_env(name: &str, value: &str) -> Result<Vec<String>, ConfigError> {
+    let entries: Vec<String> = value
+        .split(',')
+        .map(|entry| entry.trim())
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| entry.to_string())
+        .collect();
+    if entries.is_empty() {
+        return Err(ConfigError::Env {
+            name: name.to_string(),
+            message: "expected comma-separated model:effort entries".to_string(),
+        });
+    }
+    Ok(entries)
+}
+
+fn normalize_router_ladder(config: &mut AppConfig) -> Result<(), ConfigError> {
+    let ladder_spec = config.router.ladder_spec.take();
+    let steps = if let Some(spec) = ladder_spec {
+        if spec.is_empty() {
+            return Err(ConfigError::invalid("router ladder must not be empty"));
+        }
+        parse_router_ladder(&spec, &config.llm)?
+    } else if config.router.ladder.is_empty() {
+        let effort = config.router.reasoning_effort;
+        vec![
+            RouterLadderStep {
+                model: config.llm.model_fast.clone(),
+                tier: Tier::Fast,
+                effort,
+            },
+            RouterLadderStep {
+                model: config.llm.model_mid.clone(),
+                tier: Tier::Mid,
+                effort,
+            },
+            RouterLadderStep {
+                model: config.llm.model_strong.clone(),
+                tier: Tier::Strong,
+                effort,
+            },
+        ]
+    } else {
+        config.router.ladder.clone()
+    };
+
+    validate_router_ladder(&steps)?;
+    config.router.ladder = steps;
+    Ok(())
+}
+
+fn parse_router_ladder(
+    spec: &[String],
+    llm: &LlmConfig,
+) -> Result<Vec<RouterLadderStep>, ConfigError> {
+    spec.iter()
+        .map(|entry| parse_router_ladder_entry(entry, llm))
+        .collect()
+}
+
+fn parse_router_ladder_entry(
+    entry: &str,
+    llm: &LlmConfig,
+) -> Result<RouterLadderStep, ConfigError> {
+    let (model, effort) = entry
+        .split_once(':')
+        .ok_or_else(|| ConfigError::invalid(format!("invalid router ladder entry '{entry}'")))?;
+    let model = model.trim();
+    let effort = effort.trim();
+    if model.is_empty() || effort.is_empty() {
+        return Err(ConfigError::invalid(format!(
+            "invalid router ladder entry '{entry}'"
+        )));
+    }
+    let effort = ReasoningEffort::from_str(effort).map_err(|message| {
+        ConfigError::invalid(format!("{message} in router ladder entry '{entry}'"))
+    })?;
+    let tier = ladder_tier_for_model(model, llm).ok_or_else(|| {
+        ConfigError::invalid(format!(
+            "router ladder model '{model}' must match llm.model_fast, llm.model_mid, or llm.model_strong"
+        ))
+    })?;
+    Ok(RouterLadderStep {
+        model: model.to_string(),
+        tier,
+        effort,
+    })
+}
+
+fn ladder_tier_for_model(model: &str, llm: &LlmConfig) -> Option<Tier> {
+    if model == llm.model_fast {
+        Some(Tier::Fast)
+    } else if model == llm.model_mid {
+        Some(Tier::Mid)
+    } else if model == llm.model_strong {
+        Some(Tier::Strong)
+    } else {
+        None
+    }
+}
+
+fn validate_router_ladder(steps: &[RouterLadderStep]) -> Result<(), ConfigError> {
+    if steps.is_empty() {
+        return Err(ConfigError::invalid("router ladder must not be empty"));
+    }
+    for window in steps.windows(2) {
+        let prev = &window[0];
+        let next = &window[1];
+        if tier_rank(next.tier) < tier_rank(prev.tier) {
+            return Err(ConfigError::invalid(format!(
+                "router ladder must not downgrade from {:?} to {:?}",
+                prev.tier, next.tier
+            )));
+        }
+        if next.tier == prev.tier && effort_rank(next.effort) < effort_rank(prev.effort) {
+            return Err(ConfigError::invalid(
+                "router ladder must not decrease effort within the same model tier",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn tier_rank(tier: Tier) -> u8 {
+    match tier {
+        Tier::Fast => 0,
+        Tier::Mid => 1,
+        Tier::Strong => 2,
+    }
+}
+
+fn effort_rank(effort: ReasoningEffort) -> u8 {
+    match effort {
+        ReasoningEffort::Low => 0,
+        ReasoningEffort::Medium => 1,
+        ReasoningEffort::High => 2,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -838,6 +989,7 @@ mod tests {
                 no_progress_to_mid: Some(3),
                 no_progress_to_strong: Some(6),
                 reasoning_effort: Some("high".to_string()),
+                ..FileRouterConfig::default()
             }),
             ..FileConfig::default()
         };
@@ -850,6 +1002,25 @@ mod tests {
             config.router.reasoning_effort,
             crate::types::ReasoningEffort::High
         );
+    }
+
+    #[test]
+    fn rejects_empty_router_ladder() {
+        let mut config = AppConfig::default();
+        config.router.ladder_spec = Some(Vec::new());
+        let err = normalize_router_ladder(&mut config).expect_err("expected error");
+        assert_eq!(err.to_string(), "router ladder must not be empty");
+    }
+
+    #[test]
+    fn rejects_router_ladder_downgrade() {
+        let mut config = AppConfig::default();
+        config.router.ladder_spec = Some(vec![
+            format!("{}:medium", config.llm.model_mid),
+            format!("{}:medium", config.llm.model_fast),
+        ]);
+        let err = normalize_router_ladder(&mut config).expect_err("expected error");
+        assert!(err.to_string().contains("must not downgrade"));
     }
 
     #[test]

@@ -891,6 +891,7 @@ mod tests {
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
             reasoning_effort: crate::types::ReasoningEffort::Medium,
+            ..crate::llm::router::RouterConfig::default()
         });
         let mut agent = AgentLoop::new(browser, clients, "task").with_router(router);
 
@@ -931,6 +932,7 @@ mod tests {
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
             reasoning_effort: ReasoningEffort::High,
+            ..crate::llm::router::RouterConfig::default()
         });
         let mut agent = AgentLoop::new(browser, clients, "task").with_router(router);
 
@@ -977,6 +979,7 @@ mod tests {
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
             reasoning_effort: crate::types::ReasoningEffort::Medium,
+            ..crate::llm::router::RouterConfig::default()
         });
         let mut agent = AgentLoop::new(browser, clients, "task").with_router(router);
 
@@ -1105,6 +1108,7 @@ mod tests {
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
             reasoning_effort: crate::types::ReasoningEffort::Medium,
+            ..crate::llm::router::RouterConfig::default()
         });
         let mut agent = AgentLoop::new(browser, clients, "task")
             .with_router(router)
@@ -1254,6 +1258,7 @@ mod tests {
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
             reasoning_effort: crate::types::ReasoningEffort::Medium,
+            ..crate::llm::router::RouterConfig::default()
         });
         let mut agent = AgentLoop::new(browser, clients, "task")
             .with_router(router)
@@ -1360,6 +1365,7 @@ mod tests {
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
             reasoning_effort: crate::types::ReasoningEffort::Medium,
+            ..crate::llm::router::RouterConfig::default()
         });
         let mut agent = AgentLoop::new(browser, clients, "task")
             .with_router(router)
@@ -1429,6 +1435,7 @@ mod tests {
             low_actionability_to_mid: 10,
             low_actionability_to_strong: 20,
             reasoning_effort: crate::types::ReasoningEffort::Medium,
+            ..crate::llm::router::RouterConfig::default()
         });
         let mut agent = AgentLoop::new(browser, clients, "task")
             .with_router(router)

@@ -227,10 +227,16 @@
         "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260224T230227Z-26328 completed",
+        "last_run_id": "20260224T230227Z-26328",
+        "last_update_utc": "2026-02-24T23:13:43Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Normalize the ladder during config load so runtime routing executes against a prevalidated sequence."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M4-ESC-002",
       "title": "Add configurable escalation ladder over (model, effort) pairs"
     },

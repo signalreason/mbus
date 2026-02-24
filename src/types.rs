@@ -169,10 +169,11 @@ impl LlmPayloadMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ReasoningEffort {
     Low,
+    #[default]
     Medium,
     High,
 }
@@ -184,12 +185,6 @@ impl ReasoningEffort {
             ReasoningEffort::Medium => "medium",
             ReasoningEffort::High => "high",
         }
-    }
-}
-
-impl Default for ReasoningEffort {
-    fn default() -> Self {
-        Self::Medium
     }
 }
 
