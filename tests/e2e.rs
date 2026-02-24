@@ -3,7 +3,7 @@ use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
 use mbus::agent::policy::AgentPolicy;
 use mbus::browser::{Browser, CdpBrowser, CdpConfig};
 use mbus::llm::client::{LlmClient, LlmContext, LlmError, LlmResponse};
-use mbus::types::{Action, ElementRef, Observation};
+use mbus::types::{Action, ElementRef, LlmPayloadMode, Observation};
 use mbus::verify::{Validator, ValidatorConfig};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -226,6 +226,7 @@ impl LlmClient for HarnessLlm {
         Ok(LlmResponse {
             action,
             usage: None,
+            payload_mode: LlmPayloadMode::TextOnly,
         })
     }
 }

@@ -155,6 +155,19 @@ pub struct TokenUsage {
     pub total_tokens: Option<u64>,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LlmPayloadMode {
+    TextOnly,
+    Multimodal,
+}
+
+impl LlmPayloadMode {
+    pub fn image_context_sent(self) -> bool {
+        matches!(self, Self::Multimodal)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct StepResult {
     pub ok: bool,

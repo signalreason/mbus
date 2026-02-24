@@ -779,6 +779,9 @@ fn emit_run_logs(
             result: step.result.clone(),
             outcome: step.outcome.clone(),
             timings: step.timings.clone(),
+            llm_payload_mode: step.llm_payload_mode,
+            image_context_sent: step.llm_payload_mode.image_context_sent(),
+            llm_usage: step.llm_usage.clone(),
         })?;
     }
 
@@ -903,6 +906,10 @@ struct StepLog {
     result: mbus::types::StepResult,
     outcome: mbus::agent::memory::StepOutcomeLog,
     timings: mbus::agent::memory::StepTimings,
+    llm_payload_mode: mbus::types::LlmPayloadMode,
+    image_context_sent: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    llm_usage: Option<mbus::types::TokenUsage>,
 }
 
 #[derive(Serialize)]

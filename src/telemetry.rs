@@ -1,4 +1,4 @@
-use crate::types::Action;
+use crate::types::{Action, LlmPayloadMode};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -8,6 +8,8 @@ use std::time::Duration;
 pub struct MetricsSnapshot {
     pub steps_total: u64,
     pub llm_calls_total: u64,
+    pub llm_calls_text_total: u64,
+    pub llm_calls_multimodal_total: u64,
     pub llm_failures_total: u64,
     pub repair_attempts_total: u64,
     pub repair_success_total: u64,
@@ -41,6 +43,8 @@ pub struct MetricsSnapshot {
 struct Metrics {
     steps_total: AtomicU64,
     llm_calls_total: AtomicU64,
+    llm_calls_text_total: AtomicU64,
+    llm_calls_multimodal_total: AtomicU64,
     llm_failures_total: AtomicU64,
     llm_failures_by_code: Mutex<HashMap<&'static str, u64>>,
     repair_attempts_total: AtomicU64,
@@ -76,8 +80,17 @@ impl Metrics {
         self.steps_total.fetch_add(1, Ordering::Relaxed);
     }
 
-    fn inc_llm_call(&self) {
+    fn inc_llm_call(&self, payload_mode: LlmPayloadMode) {
         self.llm_calls_total.fetch_add(1, Ordering::Relaxed);
+        match payload_mode {
+            LlmPayloadMode::TextOnly => {
+                self.llm_calls_text_total.fetch_add(1, Ordering::Relaxed);
+            }
+            LlmPayloadMode::Multimodal => {
+                self.llm_calls_multimodal_total
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+        }
     }
 
     fn inc_llm_failure(&self, code: &'static str) {
@@ -185,6 +198,8 @@ impl Metrics {
         MetricsSnapshot {
             steps_total: self.steps_total.load(Ordering::Relaxed),
             llm_calls_total: self.llm_calls_total.load(Ordering::Relaxed),
+            llm_calls_text_total: self.llm_calls_text_total.load(Ordering::Relaxed),
+            llm_calls_multimodal_total: self.llm_calls_multimodal_total.load(Ordering::Relaxed),
             llm_failures_total: self.llm_failures_total.load(Ordering::Relaxed),
             repair_attempts_total: self.repair_attempts_total.load(Ordering::Relaxed),
             repair_success_total: self.repair_success_total.load(Ordering::Relaxed),
@@ -232,8 +247,19 @@ pub fn inc_action(action: &Action) {
     metrics().inc_action(action);
 }
 
-pub fn inc_llm_call() {
-    metrics().inc_llm_call();
+pub fn inc_llm_call(payload_mode: LlmPayloadMode) {
+    metrics().inc_llm_call(payload_mode);
+    tracing::info!(
+        event = "metric",
+        metric_name = "llm_calls_total",
+        value = 1u64,
+        payload_mode = ?payload_mode
+    );
+    let mode_metric = match payload_mode {
+        LlmPayloadMode::TextOnly => "llm_calls_text_total",
+        LlmPayloadMode::Multimodal => "llm_calls_multimodal_total",
+    };
+    tracing::info!(event = "metric", metric_name = mode_metric, value = 1u64);
 }
 
 pub fn inc_llm_failure(code: &'static str) {
@@ -506,7 +532,7 @@ mod tests {
     fn metrics_increment_counters() {
         let metrics = Metrics::default();
         metrics.inc_step();
-        metrics.inc_llm_call();
+        metrics.inc_llm_call(LlmPayloadMode::TextOnly);
         metrics.inc_llm_failure("timeout");
         metrics.inc_repair_attempt();
         metrics.inc_repair_success();
@@ -526,6 +552,8 @@ mod tests {
         let snapshot = metrics.snapshot();
         assert_eq!(snapshot.steps_total, 1);
         assert_eq!(snapshot.llm_calls_total, 1);
+        assert_eq!(snapshot.llm_calls_text_total, 1);
+        assert_eq!(snapshot.llm_calls_multimodal_total, 0);
         assert_eq!(snapshot.llm_failures_total, 1);
         assert_eq!(snapshot.repair_attempts_total, 1);
         assert_eq!(snapshot.repair_success_total, 1);

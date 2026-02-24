@@ -6,7 +6,7 @@ use mbus::browser::{Browser, BrowserError};
 use mbus::config::LlmMode;
 use mbus::llm::client::{LlmClient, LlmContext, LlmError, LlmResponse};
 use mbus::llm::scripted::ScriptedLlm;
-use mbus::types::{Action, Observation, StepResult, TokenUsage};
+use mbus::types::{Action, LlmPayloadMode, Observation, StepResult, TokenUsage};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -61,6 +61,7 @@ impl LlmClient for UsageLlm {
                 summary: "ok".to_string(),
             },
             usage: Some(self.usage.clone()),
+            payload_mode: LlmPayloadMode::TextOnly,
         })
     }
 }

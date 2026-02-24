@@ -117,3 +117,4 @@
 - 2026-02-24 LLM-006 multimodal request golden order: `notes/2026-02-24-llm-006-multimodal-request-golden-order.md`
 - 2026-02-24 LLM-007 text-only payload fallback: `notes/2026-02-24-llm-007-text-only-fallback.md`
 - 2026-02-24 LLM-008 multimodal action parsing regression: `notes/2026-02-24-llm-008-multimodal-action-parse-regression.md`
+- 2026-02-24 LLM-009 multimodal usage + payload telemetry: `notes/2026-02-24-llm-009-multimodal-usage-telemetry.md`

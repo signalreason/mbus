@@ -1,6 +1,6 @@
 use crate::llm::client::{LlmClient, LlmContext, LlmError, LlmResponse, LlmResult};
 use crate::telemetry;
-use crate::types::Action;
+use crate::types::{Action, LlmPayloadMode};
 use async_trait::async_trait;
 use std::collections::VecDeque;
 use std::path::Path;
@@ -24,7 +24,7 @@ impl StubLlm {
 #[async_trait]
 impl LlmClient for StubLlm {
     async fn propose_action(&self, _context: &LlmContext<'_>) -> LlmResult<LlmResponse> {
-        telemetry::inc_llm_call();
+        telemetry::inc_llm_call(LlmPayloadMode::TextOnly);
         let start = Instant::now();
         let action = Action::Done {
             summary: self.summary.clone(),
@@ -33,6 +33,7 @@ impl LlmClient for StubLlm {
         Ok(LlmResponse {
             action,
             usage: None,
+            payload_mode: LlmPayloadMode::TextOnly,
         })
     }
 }
@@ -62,7 +63,7 @@ impl ScriptedLlm {
 #[async_trait]
 impl LlmClient for ScriptedLlm {
     async fn propose_action(&self, _context: &LlmContext<'_>) -> LlmResult<LlmResponse> {
-        telemetry::inc_llm_call();
+        telemetry::inc_llm_call(LlmPayloadMode::TextOnly);
         let start = Instant::now();
         let mut guard = self.actions.lock().await;
         let action = if let Some(action) = guard.pop_front() {
@@ -76,6 +77,7 @@ impl LlmClient for ScriptedLlm {
         Ok(LlmResponse {
             action,
             usage: None,
+            payload_mode: LlmPayloadMode::TextOnly,
         })
     }
 }

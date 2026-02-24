@@ -327,7 +327,7 @@ pub fn build_run_summary(
 mod tests {
     use super::*;
     use crate::agent::memory::{StepOutcomeLog, StepTimings, ValidationOutcome};
-    use crate::types::{Action, ExtractResult, StepResult};
+    use crate::types::{Action, ExtractResult, LlmPayloadMode, StepResult};
 
     fn timings() -> StepTimings {
         StepTimings {
@@ -378,6 +378,7 @@ mod tests {
             },
             outcome: StepOutcomeLog::Progress,
             timings: timings(),
+            llm_payload_mode: LlmPayloadMode::TextOnly,
             llm_usage: None,
         }];
 
@@ -407,6 +408,7 @@ mod tests {
             },
             outcome: StepOutcomeLog::Progress,
             timings: timings(),
+            llm_payload_mode: LlmPayloadMode::TextOnly,
             llm_usage: None,
         }];
 

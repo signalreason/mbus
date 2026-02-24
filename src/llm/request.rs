@@ -1,7 +1,7 @@
 use crate::agent::memory::StepRecord;
 use crate::llm::client::{LlmContext, LlmError, LlmResult};
 use crate::llm::prompts::SYSTEM_PROMPT;
-use crate::types::{Action, Observation, ScreenshotMetadata};
+use crate::types::{Action, LlmPayloadMode, Observation, ScreenshotMetadata};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde::Serialize;
@@ -13,13 +13,6 @@ pub struct LlmRequest {
     pub system: String,
     pub payload_mode: LlmPayloadMode,
     pub user: LlmUserMessage,
-}
-
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum LlmPayloadMode {
-    TextOnly,
-    Multimodal,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -191,7 +184,7 @@ fn outcome_label(outcome: &crate::agent::memory::StepOutcomeLog) -> &'static str
 mod tests {
     use super::*;
     use crate::llm::schema::ActionSchema;
-    use crate::types::{ElementFlags, ElementRef};
+    use crate::types::{ElementFlags, ElementRef, LlmPayloadMode};
     use serde_json::json;
 
     fn sample_observation(hash: &str) -> Observation {
@@ -300,6 +293,7 @@ mod tests {
                 apply_duration_ms: 0,
                 snapshot_duration_ms: 0,
             },
+            llm_payload_mode: LlmPayloadMode::TextOnly,
             llm_usage: None,
         };
 

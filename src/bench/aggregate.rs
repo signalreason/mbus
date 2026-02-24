@@ -190,7 +190,7 @@ pub fn estimate_cost(usage: &BenchTokenUsage, pricing: Option<BenchPricing>) -> 
 mod tests {
     use super::*;
     use crate::agent::memory::{StepOutcomeLog, StepTimings, ValidationOutcome};
-    use crate::types::{Action, StepResult, TokenUsage};
+    use crate::types::{Action, LlmPayloadMode, StepResult, TokenUsage};
 
     fn step_with_usage(usage: Option<TokenUsage>) -> StepRecord {
         StepRecord {
@@ -213,6 +213,7 @@ mod tests {
                 apply_duration_ms: 0,
                 snapshot_duration_ms: 0,
             },
+            llm_payload_mode: LlmPayloadMode::TextOnly,
             llm_usage: usage,
         }
     }

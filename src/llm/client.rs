@@ -1,5 +1,5 @@
 use crate::agent::memory::StepRecord;
-use crate::types::{Action, Observation, TokenUsage};
+use crate::types::{Action, LlmPayloadMode, Observation, TokenUsage};
 use async_trait::async_trait;
 use std::collections::VecDeque;
 use std::fmt;
@@ -44,6 +44,7 @@ impl std::error::Error for LlmError {}
 pub struct LlmResponse {
     pub action: Action,
     pub usage: Option<TokenUsage>,
+    pub payload_mode: LlmPayloadMode,
 }
 
 #[async_trait]

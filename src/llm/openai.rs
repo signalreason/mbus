@@ -186,11 +186,16 @@ impl OpenAiClient {
 #[async_trait]
 impl LlmClient for OpenAiClient {
     async fn propose_action(&self, context: &LlmContext<'_>) -> LlmResult<LlmResponse> {
-        telemetry::inc_llm_call();
         let start = Instant::now();
-        let span = tracing::info_span!("llm_call", model = %self.config.model);
+        let request = build_request(context, self.schema.json())?;
+        let payload_mode = request.payload_mode;
+        telemetry::inc_llm_call(payload_mode);
+        let span = tracing::info_span!(
+            "llm_call",
+            model = %self.config.model,
+            payload_mode = ?payload_mode
+        );
         let result = async {
-            let request = build_request(context, self.schema.json())?;
             let mut body = self.build_chat_body(&request);
             body["temperature"] = json!(self.config.temperature);
             if let Some(max_tokens) = self.config.max_tokens {
@@ -237,7 +242,11 @@ impl LlmClient for OpenAiClient {
                 completion_tokens: usage.completion_tokens,
                 total_tokens: usage.total_tokens,
             });
-            Ok(LlmResponse { action, usage })
+            Ok(LlmResponse {
+                action,
+                usage,
+                payload_mode,
+            })
         }
         .instrument(span)
         .await;
@@ -248,7 +257,8 @@ impl LlmClient for OpenAiClient {
             tracing::warn!(
                 event = "llm_failure",
                 error_code = err.code,
-                error_message_len = err.message.chars().count()
+                error_message_len = err.message.chars().count(),
+                payload_mode = ?payload_mode
             );
         }
         result

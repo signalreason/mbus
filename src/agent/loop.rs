@@ -265,6 +265,7 @@ impl<B: Browser> AgentLoop<B> {
                 let llm_duration = llm_start.elapsed();
                 let action = llm_response.action;
                 let llm_usage = llm_response.usage;
+                let llm_payload_mode = llm_response.payload_mode;
 
                 telemetry::inc_action(&action);
                 tracing::info!(
@@ -312,6 +313,7 @@ impl<B: Browser> AgentLoop<B> {
                             apply_duration_ms: 0,
                             snapshot_duration_ms: 0,
                         },
+                        llm_payload_mode,
                         llm_usage,
                     });
                     step_screenshots.push(observation_screenshot.clone());
@@ -365,6 +367,7 @@ impl<B: Browser> AgentLoop<B> {
                             apply_duration_ms: 0,
                             snapshot_duration_ms: 0,
                         },
+                        llm_payload_mode,
                         llm_usage,
                     });
                     step_screenshots.push(observation_screenshot.clone());
@@ -460,6 +463,7 @@ impl<B: Browser> AgentLoop<B> {
                         apply_duration_ms: duration_ms(apply_duration),
                         snapshot_duration_ms: duration_ms(snapshot_duration),
                     },
+                    llm_payload_mode,
                     llm_usage,
                 });
                 step_screenshots.push(observation_screenshot.clone());
@@ -794,6 +798,7 @@ mod tests {
             Ok(LlmResponse {
                 action,
                 usage: None,
+                payload_mode: crate::types::LlmPayloadMode::TextOnly,
             })
         }
     }
@@ -808,6 +813,7 @@ mod tests {
             response.map(|action| LlmResponse {
                 action,
                 usage: None,
+                payload_mode: crate::types::LlmPayloadMode::TextOnly,
             })
         }
     }
