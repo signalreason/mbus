@@ -2,7 +2,10 @@ use crate::agent::memory::{Memory, StepOutcomeLog, StepRecord, StepTimings, Vali
 use crate::agent::policy::AgentPolicy;
 use crate::browser::{Browser, BrowserError, ScreenshotCapture};
 use crate::llm::client::{LlmClient, LlmContext, LlmError};
-use crate::llm::router::{Router, StepOutcome, Tier, step_outcome};
+use crate::llm::router::{
+    LadderPolicyInput, Router, RouterTransition, StepOutcome, Tier, ladder_transition_policy,
+    step_outcome,
+};
 use crate::output::sha256_hex;
 use crate::telemetry;
 use crate::types::{
@@ -206,7 +209,7 @@ impl<B: Browser> AgentLoop<B> {
 
         let mut step_screenshots: Vec<Option<Vec<u8>>> = Vec::new();
         let snapshot_start = Instant::now();
-        let initial_tier = self.router.tier();
+        let initial_tier = self.router.active_tier();
         let snapshot_span = tracing::info_span!(
             "step.snapshot",
             step_index = 0,
@@ -234,7 +237,7 @@ impl<B: Browser> AgentLoop<B> {
         let mut loop_state = LoopState::new(observation.state_hash.clone());
 
         for step_index in 0..self.policy.max_steps {
-            let tier = self.router.tier();
+            let tier = self.router.active_tier();
             let step_number = step_index + 1;
             telemetry::inc_step();
 
@@ -328,6 +331,7 @@ impl<B: Browser> AgentLoop<B> {
                         .iter()
                         .any(|error| error.code == "repeat_no_progress_action");
                     let error_count = errors.len();
+                    let validation_code = errors.first().map(|error| error.code.clone());
                     let validation_streak = loop_state.record_validation_failure(
                         observation.state_hash.as_str(),
                         errors.first().map(|error| error.code.as_str()),
@@ -355,6 +359,13 @@ impl<B: Browser> AgentLoop<B> {
                     });
                     step_screenshots.push(observation_screenshot.clone());
                     let tier_after = self.router.record(StepOutcome::Failure);
+                    if let Some(transition) = self.apply_ladder_policy(
+                        loop_state.state_hash_streak,
+                        validation_streak,
+                        validation_code.as_deref(),
+                    ) {
+                        log_router_transition(&transition);
+                    }
                     telemetry::set_no_progress_streak(self.router.counters().no_progress);
                     telemetry::record_step_duration(duration);
                     tracing::warn!(
@@ -507,6 +518,9 @@ impl<B: Browser> AgentLoop<B> {
                 let tier_after = self
                     .router
                     .record_with_heuristics(outcome, Some(&heuristics));
+                if let Some(transition) = self.apply_ladder_policy(state_hash_streak, 0, None) {
+                    log_router_transition(&transition);
+                }
                 telemetry::set_no_progress_streak(self.router.counters().no_progress);
 
                 let error_code = result
@@ -580,6 +594,36 @@ impl<B: Browser> AgentLoop<B> {
             final_observation: observation,
             step_screenshots,
         })
+    }
+}
+
+fn log_router_transition(transition: &RouterTransition) {
+    tracing::info!(
+        event = "router_transition",
+        reason_code = transition.reason.code(),
+        model = %transition.step.model,
+        effort = ?transition.step.effort,
+        tier = ?transition.step.tier,
+        ladder_index = transition.index
+    );
+}
+
+impl<B: Browser> AgentLoop<B> {
+    fn apply_ladder_policy(
+        &mut self,
+        state_hash_streak: u32,
+        validation_code_streak: u32,
+        validation_code: Option<&str>,
+    ) -> Option<RouterTransition> {
+        let ladder_len = self.router.ladder().len();
+        let decision = ladder_transition_policy(LadderPolicyInput {
+            current_index: self.router.ladder_index(),
+            ladder_len,
+            state_hash_streak,
+            validation_code_streak,
+            validation_code,
+        })?;
+        self.router.apply_ladder_transition(decision)
     }
 }
 

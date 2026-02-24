@@ -121,3 +121,4 @@
 - 2026-02-24 LLM-009 multimodal usage + payload telemetry: `notes/2026-02-24-llm-009-multimodal-usage-telemetry.md`
 - 2026-02-24 LLM-010 reasoning effort request parameter: `notes/2026-02-24-llm-010-reasoning-effort.md`
 - 2026-02-24 ROUTER-004 escalation ladder config: `notes/2026-02-24-router-004-escalation-ladder-config.md`
+- 2026-02-24 ROUTER-005 escalation transitions with reason codes: `notes/2026-02-24-router-005-escalation-transitions.md`
