@@ -290,6 +290,7 @@ mod tests {
         StepResult {
             ok,
             error: None,
+            diagnostics: Vec::new(),
             new_state_hash: None,
             scroll: None,
             extract: None,

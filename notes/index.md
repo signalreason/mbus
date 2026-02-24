@@ -111,3 +111,4 @@
 - 2026-02-23 SHOT-003 step screenshot alignment fix: `notes/2026-02-23-shot-003-step-screenshot-alignment.md`
 - 2026-02-24 SHOT-003 implementation audit: `notes/2026-02-24-shot-003-implementation-audit.md`
 - 2026-02-24 SHOT-004 observation screenshot metadata: `notes/2026-02-24-shot-004-observation-screenshot-metadata.md`
+- 2026-02-24 SHOT-005 screenshot fallback diagnostics: `notes/2026-02-24-shot-005-screenshot-fallback.md`

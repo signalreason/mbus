@@ -257,19 +257,10 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    match write_screenshot_artifacts(&config, &run_id, &terminal_state, &step_screenshots) {
-        Ok(artifacts) => output_artifacts.extend(artifacts),
-        Err(err) => {
-            errors.push(run_error_summary(
-                "output_error",
-                err.to_string(),
-                Some("output"),
-            ));
-            if return_error.is_none() {
-                return_error = Some(err);
-            }
-        }
-    }
+    let screenshot_result =
+        write_screenshot_artifacts(&config, &run_id, &terminal_state, &step_screenshots);
+    output_artifacts.extend(screenshot_result.artifacts);
+    errors.extend(screenshot_result.errors);
 
     let repair_counts = repair_counts_delta(&repair_start, &telemetry::snapshot());
     let summary = mbus::output::build_run_summary(
@@ -695,6 +686,12 @@ struct RunExecution {
     step_screenshots: Vec<Option<Vec<u8>>>,
 }
 
+#[derive(Default)]
+struct ScreenshotPersistResult {
+    artifacts: Vec<mbus::output::OutputArtifact>,
+    errors: Vec<mbus::output::RunErrorSummary>,
+}
+
 fn run_error_summary(
     code: impl Into<String>,
     message: impl Into<String>,
@@ -838,23 +835,33 @@ fn write_screenshot_artifacts(
     run_id: &str,
     terminal_state: &mbus::output::TerminalState,
     step_screenshots: &[Option<Vec<u8>>],
-) -> Result<Vec<mbus::output::OutputArtifact>, Box<dyn Error>> {
+) -> ScreenshotPersistResult {
     if !config.screenshot.enabled {
-        return Ok(Vec::new());
+        return ScreenshotPersistResult::default();
     }
     if !should_persist_screenshots(&config.screenshot.persist, terminal_state) {
-        return Ok(Vec::new());
+        return ScreenshotPersistResult::default();
     }
 
     let mut artifacts = Vec::new();
+    let mut errors = Vec::new();
     for (index, screenshot) in step_screenshots.iter().enumerate() {
         let Some(bytes) = screenshot.as_ref() else {
             continue;
         };
-        let artifact = mbus::output::write_screenshot_artifact(run_id, index + 1, bytes)?;
-        artifacts.push(artifact);
+        match mbus::output::write_screenshot_artifact(run_id, index + 1, bytes) {
+            Ok(artifact) => artifacts.push(artifact),
+            Err(err) => errors.push(mbus::output::RunErrorSummary {
+                code: "screenshot_persist_failed".to_string(),
+                message: err.to_string(),
+                step_index: Some(index + 1),
+                field: None,
+                validation_code: None,
+                kind: Some("screenshot".to_string()),
+            }),
+        }
     }
-    Ok(artifacts)
+    ScreenshotPersistResult { artifacts, errors }
 }
 
 fn should_persist_screenshots(

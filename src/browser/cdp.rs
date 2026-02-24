@@ -1,6 +1,6 @@
 use crate::browser::act::{ActionApplier, ActionError, action_result_err, action_result_ok_with};
 use crate::browser::observe::{Observer, ObserverConfig};
-use crate::browser::{Browser, BrowserError, BrowserResult};
+use crate::browser::{Browser, BrowserError, BrowserResult, ScreenshotCapture};
 use crate::types::{Action, Observation, StepResult};
 use async_trait::async_trait;
 use chromiumoxide::browser::{Browser as ChromiumBrowser, BrowserConfig};
@@ -193,6 +193,7 @@ pub struct CdpBrowser {
     element_map: Mutex<HashMap<String, BackendNodeId>>,
     screenshot_enabled: bool,
     last_screenshot: Mutex<Option<Vec<u8>>>,
+    last_screenshot_error: Mutex<Option<BrowserError>>,
 }
 
 impl CdpBrowser {
@@ -232,6 +233,7 @@ impl CdpBrowser {
             element_map: Mutex::new(HashMap::new()),
             screenshot_enabled: config.screenshot_enabled,
             last_screenshot: Mutex::new(None),
+            last_screenshot_error: Mutex::new(None),
         }
     }
 }
@@ -253,13 +255,25 @@ impl Browser for CdpBrowser {
             }
         };
 
-        let screenshot = if self.screenshot_enabled {
-            Some(capture_viewport_screenshot(&page, self.timeouts.snapshot).await?)
+        let (screenshot, screenshot_error) = if self.screenshot_enabled {
+            match capture_viewport_screenshot(&page, self.timeouts.snapshot).await {
+                Ok(bytes) => (Some(bytes), None),
+                Err(err) => {
+                    tracing::warn!(
+                        event = "screenshot_capture_failed",
+                        error_code = err.code,
+                        error_message = %err.message
+                    );
+                    (None, Some(err))
+                }
+            }
         } else {
-            None
+            (None, None)
         };
         let mut last_screenshot = self.last_screenshot.lock().await;
         *last_screenshot = screenshot;
+        let mut last_screenshot_error = self.last_screenshot_error.lock().await;
+        *last_screenshot_error = screenshot_error;
 
         let mut map = self.element_map.lock().await;
         *map = snapshot.element_map;
@@ -300,8 +314,13 @@ impl Browser for CdpBrowser {
     async fn shutdown(&self) -> BrowserResult<()> {
         self.session.shutdown().await
     }
-    async fn take_last_screenshot(&self) -> BrowserResult<Option<Vec<u8>>> {
-        Ok(self.last_screenshot.lock().await.take())
+    async fn take_last_screenshot(&self) -> BrowserResult<ScreenshotCapture> {
+        let mut bytes = self.last_screenshot.lock().await;
+        let mut error = self.last_screenshot_error.lock().await;
+        Ok(ScreenshotCapture {
+            bytes: bytes.take(),
+            error: error.take(),
+        })
     }
 }
 
@@ -343,7 +362,7 @@ async fn capture_viewport_screenshot(
         }
         Err(err) => {
             return Err(BrowserError::new(
-                "timeout",
+                "screenshot_timeout",
                 format!("screenshot timed out: {err}"),
             ));
         }

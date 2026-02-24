@@ -178,6 +178,7 @@ pub fn action_result_ok(extract: Option<ExtractResult>) -> StepResult {
     StepResult {
         ok: true,
         error: None,
+        diagnostics: Vec::new(),
         new_state_hash: None,
         extract,
         scroll: None,
@@ -192,6 +193,7 @@ pub fn action_result_err(error: ActionError) -> StepResult {
             message: error.message,
             validation_code: None,
         }),
+        diagnostics: Vec::new(),
         new_state_hash: None,
         extract: None,
         scroll: None,
@@ -226,6 +228,7 @@ pub fn action_result_ok_with(outcome: ApplyOutcome) -> StepResult {
     StepResult {
         ok: true,
         error: None,
+        diagnostics: Vec::new(),
         new_state_hash: None,
         extract: outcome.extract,
         scroll: outcome.scroll,

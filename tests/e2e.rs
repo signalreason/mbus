@@ -343,6 +343,7 @@ async fn e2e_snapshot_screenshot_bytes() {
         .take_last_screenshot()
         .await
         .expect("screenshot capture")
+        .bytes
         .expect("screenshot bytes");
     assert!(
         !screenshot.is_empty(),

@@ -11,6 +11,12 @@ pub use observe::{Observer, ObserverConfig};
 
 pub type BrowserResult<T> = Result<T, BrowserError>;
 
+#[derive(Debug, Clone, Default)]
+pub struct ScreenshotCapture {
+    pub bytes: Option<Vec<u8>>,
+    pub error: Option<BrowserError>,
+}
+
 #[derive(Debug, Clone)]
 pub struct BrowserError {
     pub code: &'static str,
@@ -39,7 +45,7 @@ pub trait Browser: Send + Sync {
     async fn snapshot(&self) -> BrowserResult<Observation>;
     async fn apply(&self, action: &Action) -> BrowserResult<StepResult>;
     async fn shutdown(&self) -> BrowserResult<()>;
-    async fn take_last_screenshot(&self) -> BrowserResult<Option<Vec<u8>>> {
-        Ok(None)
+    async fn take_last_screenshot(&self) -> BrowserResult<ScreenshotCapture> {
+        Ok(ScreenshotCapture::default())
     }
 }

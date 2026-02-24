@@ -596,6 +596,7 @@ mod prompt_tests {
                     message: "blocked".to_string(),
                     validation_code: Some("repeat_no_progress_action".to_string()),
                 }),
+                diagnostics: Vec::new(),
                 new_state_hash: Some("hash-1".to_string()),
                 scroll: None,
                 extract: None,

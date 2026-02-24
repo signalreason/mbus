@@ -1,12 +1,13 @@
 use crate::agent::memory::{Memory, StepOutcomeLog, StepRecord, StepTimings, ValidationOutcome};
 use crate::agent::policy::AgentPolicy;
-use crate::browser::{Browser, BrowserError};
+use crate::browser::{Browser, BrowserError, ScreenshotCapture};
 use crate::llm::client::{LlmClient, LlmError};
 use crate::llm::router::{Router, StepOutcome, Tier, step_outcome};
 use crate::output::sha256_hex;
 use crate::telemetry;
 use crate::types::{
-    Action, Observation, SCREENSHOT_MIME_TYPE, ScreenshotMetadata, StepError, StepResult,
+    Action, Observation, SCREENSHOT_MIME_TYPE, ScreenshotMetadata, StepDiagnostic, StepError,
+    StepResult,
 };
 use crate::verify::rules::{ValidationError, Validator};
 use std::fmt;
@@ -194,7 +195,8 @@ impl<B: Browser> AgentLoop<B> {
                 return Err(AgentError::Browser(err));
             }
         };
-        let mut observation_screenshot = self.browser.take_last_screenshot().await?;
+        let (mut observation_screenshot, mut observation_diagnostics) =
+            take_screenshot_capture(&self.browser).await;
         observation.screenshot = screenshot_metadata_from_bytes(observation_screenshot.as_deref());
         self.memory.record_observation(observation.clone());
         let mut loop_state = LoopState::new(observation.state_hash.clone());
@@ -296,6 +298,7 @@ impl<B: Browser> AgentLoop<B> {
                     telemetry::inc_validation_failure();
                     let mut result = validation_result(errors.clone());
                     result.new_state_hash = Some(observation.state_hash.clone());
+                    result.diagnostics = observation_diagnostics.clone();
                     let duration = step_start.elapsed();
                     telemetry::record_apply_duration(Duration::from_millis(0));
                     telemetry::record_snapshot_duration(Duration::from_millis(0));
@@ -347,7 +350,8 @@ impl<B: Browser> AgentLoop<B> {
                 }
 
                 if matches!(action, Action::Done { .. }) {
-                    let result = done_result(&observation);
+                    let mut result = done_result(&observation);
+                    result.diagnostics = observation_diagnostics.clone();
                     let duration = step_start.elapsed();
                     telemetry::record_apply_duration(Duration::from_millis(0));
                     telemetry::record_snapshot_duration(Duration::from_millis(0));
@@ -396,6 +400,7 @@ impl<B: Browser> AgentLoop<B> {
                         return Err(AgentError::Browser(err));
                     }
                 };
+                result.diagnostics = observation_diagnostics.clone();
                 let apply_duration = apply_start.elapsed();
                 telemetry::record_apply_duration(apply_duration);
                 if !result.ok {
@@ -427,7 +432,8 @@ impl<B: Browser> AgentLoop<B> {
                     };
                 let snapshot_duration = snapshot_start.elapsed();
                 telemetry::record_snapshot_duration(snapshot_duration);
-                let next_screenshot = self.browser.take_last_screenshot().await?;
+                let (next_screenshot, next_diagnostics) =
+                    take_screenshot_capture(&self.browser).await;
                 next_observation.screenshot =
                     screenshot_metadata_from_bytes(next_screenshot.as_deref());
                 self.memory.record_observation(next_observation.clone());
@@ -493,6 +499,7 @@ impl<B: Browser> AgentLoop<B> {
 
                 observation = next_observation;
                 observation_screenshot = next_screenshot;
+                observation_diagnostics = next_diagnostics;
 
                 if self.policy.max_no_progress_steps > 0
                     && state_hash_streak as usize >= self.policy.max_no_progress_steps
@@ -548,6 +555,7 @@ fn validation_result(errors: Vec<ValidationError>) -> StepResult {
             message,
             validation_code,
         }),
+        diagnostics: Vec::new(),
         new_state_hash: None,
         scroll: None,
         extract: None,
@@ -570,6 +578,7 @@ fn done_result(observation: &Observation) -> StepResult {
     StepResult {
         ok: true,
         error: None,
+        diagnostics: Vec::new(),
         new_state_hash: Some(observation.state_hash.clone()),
         scroll: None,
         extract: None,
@@ -584,6 +593,30 @@ fn screenshot_metadata_from_bytes(bytes: Option<&[u8]>) -> Option<ScreenshotMeta
         sha256: sha256_hex(bytes),
         bytes: bytes.len(),
     })
+}
+
+async fn take_screenshot_capture<B: Browser>(
+    browser: &B,
+) -> (Option<Vec<u8>>, Vec<StepDiagnostic>) {
+    match browser.take_last_screenshot().await {
+        Ok(ScreenshotCapture { bytes, error }) => {
+            let mut diagnostics = Vec::new();
+            if let Some(err) = error {
+                diagnostics.push(StepDiagnostic {
+                    code: err.code.to_string(),
+                    message: err.message,
+                });
+            }
+            (bytes, diagnostics)
+        }
+        Err(err) => (
+            None,
+            vec![StepDiagnostic {
+                code: err.code.to_string(),
+                message: err.message,
+            }],
+        ),
+    }
 }
 
 fn repeated_no_progress_validation_error(
@@ -654,7 +687,7 @@ mod tests {
     #[derive(Debug)]
     struct FakeBrowser {
         snapshots: Mutex<VecDeque<Observation>>,
-        screenshots: Mutex<VecDeque<Option<Vec<u8>>>>,
+        screenshots: Mutex<VecDeque<ScreenshotCapture>>,
         apply_results: Mutex<VecDeque<StepResult>>,
         applied_actions: Mutex<Vec<Action>>,
     }
@@ -669,6 +702,18 @@ mod tests {
             snapshots: Vec<Observation>,
             apply_results: Vec<StepResult>,
             screenshots: Vec<Option<Vec<u8>>>,
+        ) -> Self {
+            let captures = screenshots
+                .into_iter()
+                .map(|bytes| ScreenshotCapture { bytes, error: None })
+                .collect();
+            Self::new_with_screenshot_captures(snapshots, apply_results, captures)
+        }
+
+        fn new_with_screenshot_captures(
+            snapshots: Vec<Observation>,
+            apply_results: Vec<StepResult>,
+            screenshots: Vec<ScreenshotCapture>,
         ) -> Self {
             Self {
                 snapshots: Mutex::new(VecDeque::from(snapshots)),
@@ -704,8 +749,13 @@ mod tests {
             Ok(())
         }
 
-        async fn take_last_screenshot(&self) -> BrowserResult<Option<Vec<u8>>> {
-            Ok(self.screenshots.lock().await.pop_front().flatten())
+        async fn take_last_screenshot(&self) -> BrowserResult<ScreenshotCapture> {
+            Ok(self
+                .screenshots
+                .lock()
+                .await
+                .pop_front()
+                .unwrap_or_default())
         }
     }
 
@@ -853,6 +903,7 @@ mod tests {
             vec![StepResult {
                 ok: true,
                 error: None,
+                diagnostics: Vec::new(),
                 new_state_hash: None,
                 scroll: None,
                 extract: None,
@@ -910,6 +961,32 @@ mod tests {
         let result = agent.run().await.expect("run");
         assert_eq!(result.status, RunStatus::Done);
         assert_eq!(result.step_screenshots, vec![Some(vec![9]), Some(vec![9])]);
+    }
+
+    #[tokio::test]
+    async fn records_screenshot_failure_diagnostics() {
+        let obs = sample_observation("obs1", "hash1", vec![element("el_1")]);
+        let capture = ScreenshotCapture {
+            bytes: None,
+            error: Some(BrowserError::new("screenshot_failed", "capture failed")),
+        };
+        let browser =
+            FakeBrowser::new_with_screenshot_captures(vec![obs.clone()], vec![], vec![capture]);
+        let llm = ScriptedLlm::new(vec![Action::Done {
+            summary: "done".to_string(),
+        }]);
+        let clients = LlmClients::new(
+            Box::new(llm),
+            Box::new(ScriptedLlm::new(vec![])),
+            Box::new(ScriptedLlm::new(vec![])),
+        );
+        let mut agent = AgentLoop::new(browser, clients, "task");
+
+        let result = agent.run().await.expect("run");
+        assert_eq!(result.status, RunStatus::Done);
+        let diagnostics = &agent.memory().steps()[0].result.diagnostics;
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "screenshot_failed");
     }
 
     #[tokio::test]
@@ -1036,6 +1113,7 @@ mod tests {
                 StepResult {
                     ok: true,
                     error: None,
+                    diagnostics: Vec::new(),
                     new_state_hash: None,
                     scroll: None,
                     extract: None,
@@ -1043,6 +1121,7 @@ mod tests {
                 StepResult {
                     ok: true,
                     error: None,
+                    diagnostics: Vec::new(),
                     new_state_hash: None,
                     scroll: None,
                     extract: None,
@@ -1091,6 +1170,7 @@ mod tests {
                 StepResult {
                     ok: true,
                     error: None,
+                    diagnostics: Vec::new(),
                     new_state_hash: None,
                     scroll: None,
                     extract: None,
@@ -1098,6 +1178,7 @@ mod tests {
                 StepResult {
                     ok: true,
                     error: None,
+                    diagnostics: Vec::new(),
                     new_state_hash: None,
                     scroll: None,
                     extract: None,
@@ -1154,6 +1235,7 @@ mod tests {
         let result = StepResult {
             ok: true,
             error: None,
+            diagnostics: Vec::new(),
             new_state_hash: None,
             scroll: None,
             extract: None,
@@ -1179,6 +1261,7 @@ mod tests {
         let result = StepResult {
             ok: true,
             error: None,
+            diagnostics: Vec::new(),
             new_state_hash: None,
             scroll: None,
             extract: None,
@@ -1198,6 +1281,7 @@ mod tests {
             vec![StepResult {
                 ok: true,
                 error: None,
+                diagnostics: Vec::new(),
                 new_state_hash: None,
                 scroll: None,
                 extract: None,
@@ -1262,6 +1346,7 @@ mod tests {
             vec![StepResult {
                 ok: true,
                 error: None,
+                diagnostics: Vec::new(),
                 new_state_hash: None,
                 scroll: None,
                 extract: None,

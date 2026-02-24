@@ -136,6 +136,12 @@ pub struct StepError {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct StepDiagnostic {
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ExtractResult {
     pub query: String,
     pub id: Option<String>,
@@ -154,6 +160,8 @@ pub struct StepResult {
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<StepError>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub diagnostics: Vec<StepDiagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_state_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -250,6 +258,7 @@ mod tests {
                 message: "missing id".to_string(),
                 validation_code: Some("missing_id".to_string()),
             }),
+            diagnostics: Vec::new(),
             new_state_hash: None,
             scroll: None,
             extract: None,
@@ -264,6 +273,7 @@ mod tests {
         let result = StepResult {
             ok: true,
             error: None,
+            diagnostics: Vec::new(),
             new_state_hash: None,
             scroll: None,
             extract: Some(ExtractResult {

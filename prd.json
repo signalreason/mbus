@@ -87,10 +87,16 @@
         "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260224T221331Z-26328 completed",
+        "last_run_id": "20260224T221331Z-26328",
+        "last_update_utc": "2026-02-24T22:20:44Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Treat screenshot failures as diagnostic sub-errors rather than hard action/snapshot failures."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M4-SHOT-005",
       "title": "Implement non-fatal fallback when screenshot capture fails"
     },
