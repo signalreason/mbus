@@ -16,6 +16,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
 const HARNESS_PAGE_PATH: &str = "harness/pages/actions.html";
+const HARNESS_LOOP_PAGE_PATH: &str = "harness/pages/loop.html";
 
 struct TestServer {
     addr: SocketAddr,
@@ -113,6 +114,10 @@ fn load_harness_page() -> String {
     std::fs::read_to_string(HARNESS_PAGE_PATH).expect("read harness page")
 }
 
+fn load_harness_loop_page() -> String {
+    std::fs::read_to_string(HARNESS_LOOP_PAGE_PATH).expect("read harness loop page")
+}
+
 fn route_request(method: &str, path: &str) -> (&'static str, String, &'static str) {
     if method != "GET" {
         return (
@@ -123,6 +128,11 @@ fn route_request(method: &str, path: &str) -> (&'static str, String, &'static st
     }
     match path {
         "/" | "/harness" => ("200 OK", load_harness_page(), "text/html; charset=utf-8"),
+        "/loop" => (
+            "200 OK",
+            load_harness_loop_page(),
+            "text/html; charset=utf-8",
+        ),
         "/favicon.ico" => ("404 Not Found", "not found".to_string(), "text/plain"),
         _ => ("404 Not Found", "not found".to_string(), "text/plain"),
     }
@@ -231,6 +241,40 @@ impl LlmClient for HarnessLlm {
     }
 }
 
+#[derive(Clone, Debug)]
+struct WaitLoopLlm {
+    step: Arc<Mutex<usize>>,
+}
+
+impl WaitLoopLlm {
+    fn new() -> Self {
+        Self {
+            step: Arc::new(Mutex::new(0)),
+        }
+    }
+}
+
+#[async_trait]
+impl LlmClient for WaitLoopLlm {
+    async fn propose_action(&self, _context: &LlmContext<'_>) -> Result<LlmResponse, LlmError> {
+        let mut guard = self.step.lock().await;
+        let waits = [15_u64, 25, 35];
+        let action = if let Some(wait_ms) = waits.get(*guard) {
+            Action::Wait { ms: *wait_ms }
+        } else {
+            Action::Done {
+                summary: "done".to_string(),
+            }
+        };
+        *guard += 1;
+        Ok(LlmResponse {
+            action,
+            usage: None,
+            payload_mode: LlmPayloadMode::TextOnly,
+        })
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn e2e_click_updates_status_via_agent_loop() {
     let server = TestServer::start().await;
@@ -289,6 +333,65 @@ async fn e2e_type_updates_status_via_agent_loop() {
             .contains("typed:Ada Lovelace"),
         "expected status to show typed value"
     );
+
+    agent.shutdown().await.expect("shutdown browser");
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_unchanged_state_hash_loop_records_streaks() {
+    let server = TestServer::start().await;
+    let url = server.url("/loop");
+    let config = CdpConfig {
+        initial_url: url,
+        ..CdpConfig::default()
+    };
+    let browser = CdpBrowser::launch(config).await.expect("launch browser");
+    let llm = WaitLoopLlm::new();
+    let clients = LlmClients::new(Box::new(llm.clone()), Box::new(llm.clone()), Box::new(llm));
+    let mut agent = AgentLoop::new(browser, clients, "no-progress test").with_policy(AgentPolicy {
+        max_steps: 5,
+        max_no_progress_steps: 3,
+        ..AgentPolicy::default()
+    });
+
+    let result = agent.run().await.expect("run");
+    assert_eq!(result.status, RunStatus::NoProgress);
+    assert_eq!(result.steps.len(), 3);
+
+    let hashes: Vec<&str> = result
+        .steps
+        .iter()
+        .map(|step| step.result.new_state_hash.as_deref().expect("state hash"))
+        .collect();
+    assert!(hashes.iter().all(|hash| *hash == hashes[0]));
+    assert_eq!(hashes[0], result.final_observation.state_hash);
+
+    let streaks: Vec<u32> = result
+        .steps
+        .iter()
+        .map(|step| {
+            step.router
+                .as_ref()
+                .expect("router info")
+                .triggers
+                .state_hash_streak
+        })
+        .collect();
+    assert_eq!(streaks, vec![1, 2, 3]);
+
+    let no_progress: Vec<u32> = result
+        .steps
+        .iter()
+        .map(|step| {
+            step.router
+                .as_ref()
+                .expect("router info")
+                .counters
+                .no_progress
+        })
+        .collect();
+    assert_eq!(no_progress, vec![1, 2, 3]);
 
     agent.shutdown().await.expect("shutdown browser");
     server.shutdown().await;

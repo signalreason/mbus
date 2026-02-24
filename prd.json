@@ -327,10 +327,16 @@
         "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260224T234041Z-26328 completed",
+        "last_run_id": "20260224T234041Z-26328",
+        "last_update_utc": "2026-02-24T23:44:16Z",
+        "run_attempts": 2
+      },
       "recommended": {
         "approach": "Use local harness pages and scripted responses so loop conditions are stable in CI."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M4-REG-001",
       "title": "Add deterministic unchanged-state loop regression fixture"
     },

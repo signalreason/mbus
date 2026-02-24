@@ -357,9 +357,11 @@ impl<B: Browser> AgentLoop<B> {
                         validation_streak,
                         validation_code.as_deref(),
                     );
-                    let transitions = collect_router_transitions(&self.router, &mut transition_cursor);
+                    let transitions =
+                        collect_router_transitions(&self.router, &mut transition_cursor);
                     log_router_transitions(&transitions);
-                    let router_info = build_router_step_info(&self.router, &loop_state, transitions);
+                    let router_info =
+                        build_router_step_info(&self.router, &loop_state, transitions);
                     self.memory.record_step(StepRecord {
                         action,
                         validation: ValidationOutcome::failure(errors),
@@ -411,9 +413,11 @@ impl<B: Browser> AgentLoop<B> {
                     let duration = step_start.elapsed();
                     telemetry::record_apply_duration(Duration::from_millis(0));
                     telemetry::record_snapshot_duration(Duration::from_millis(0));
-                    let transitions = collect_router_transitions(&self.router, &mut transition_cursor);
+                    let transitions =
+                        collect_router_transitions(&self.router, &mut transition_cursor);
                     log_router_transitions(&transitions);
-                    let router_info = build_router_step_info(&self.router, &loop_state, transitions);
+                    let router_info =
+                        build_router_step_info(&self.router, &loop_state, transitions);
                     self.memory.record_step(StepRecord {
                         action: action.clone(),
                         validation: ValidationOutcome::success(),
@@ -662,10 +666,7 @@ fn build_router_step_info(
             validation_code_streak: loop_state.validation_code_streak,
             last_validation_code: loop_state.last_validation_code.clone(),
         },
-        transitions: transitions
-            .iter()
-            .map(transition_log_from)
-            .collect(),
+        transitions: transitions.iter().map(transition_log_from).collect(),
     }
 }
 
