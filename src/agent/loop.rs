@@ -97,6 +97,9 @@ pub struct AgentLoop<B: Browser> {
 struct LoopState {
     last_state_hash: String,
     state_hash_streak: u32,
+    last_validation_code: Option<String>,
+    last_validation_state_hash: Option<String>,
+    validation_code_streak: u32,
 }
 
 const REPEAT_NO_PROGRESS_VALIDATION_LIMIT: u32 = 3;
@@ -106,6 +109,9 @@ impl LoopState {
         Self {
             last_state_hash: initial_hash,
             state_hash_streak: 0,
+            last_validation_code: None,
+            last_validation_state_hash: None,
+            validation_code_streak: 0,
         }
     }
 
@@ -117,6 +123,32 @@ impl LoopState {
         }
         self.last_state_hash = new_hash.to_string();
         self.state_hash_streak
+    }
+
+    fn record_validation_failure(&mut self, state_hash: &str, code: Option<&str>) -> u32 {
+        let code = match code {
+            Some(code) => code,
+            None => {
+                self.reset_validation_streak();
+                return 0;
+            }
+        };
+        if self.last_validation_state_hash.as_deref() == Some(state_hash)
+            && self.last_validation_code.as_deref() == Some(code)
+        {
+            self.validation_code_streak = self.validation_code_streak.saturating_add(1);
+        } else {
+            self.validation_code_streak = 1;
+        }
+        self.last_validation_state_hash = Some(state_hash.to_string());
+        self.last_validation_code = Some(code.to_string());
+        self.validation_code_streak
+    }
+
+    fn reset_validation_streak(&mut self) {
+        self.validation_code_streak = 0;
+        self.last_validation_code = None;
+        self.last_validation_state_hash = None;
     }
 }
 
@@ -296,6 +328,10 @@ impl<B: Browser> AgentLoop<B> {
                         .iter()
                         .any(|error| error.code == "repeat_no_progress_action");
                     let error_count = errors.len();
+                    let validation_streak = loop_state.record_validation_failure(
+                        observation.state_hash.as_str(),
+                        errors.first().map(|error| error.code.as_str()),
+                    );
                     telemetry::inc_validation_failure();
                     let mut result = validation_result(errors.clone());
                     result.new_state_hash = Some(observation.state_hash.clone());
@@ -327,31 +363,28 @@ impl<B: Browser> AgentLoop<B> {
                         tier = ?tier_after,
                         step_duration_ms = duration.as_millis() as u64
                     );
-                    if has_repeat_no_progress_error {
-                        let repeat_streak = repeat_no_progress_validation_streak(
-                            self.memory.steps(),
-                            observation.state_hash.as_str(),
+                    if has_repeat_no_progress_error
+                        && validation_streak >= REPEAT_NO_PROGRESS_VALIDATION_LIMIT
+                    {
+                        let final_action = Action::Done {
+                            summary: format!(
+                                "no progress after {} repeated blocked actions",
+                                validation_streak
+                            ),
+                        };
+                        tracing::warn!(
+                            event = "repeat_no_progress_termination",
+                            repeat_no_progress_validation_streak = validation_streak,
+                            state_hash = %observation.state_hash,
+                            limit = REPEAT_NO_PROGRESS_VALIDATION_LIMIT
                         );
-                        if repeat_streak >= REPEAT_NO_PROGRESS_VALIDATION_LIMIT {
-                            let final_action = Action::Done {
-                                summary: format!(
-                                    "no progress after {} repeated blocked actions",
-                                    repeat_streak
-                                ),
-                            };
-                            tracing::warn!(
-                                event = "repeat_no_progress_termination",
-                                repeat_no_progress_validation_streak = repeat_streak,
-                                state_hash = %observation.state_hash,
-                                limit = REPEAT_NO_PROGRESS_VALIDATION_LIMIT
-                            );
-                            return Ok(StepControl::Done(final_action, RunStatus::NoProgress));
-                        }
+                        return Ok(StepControl::Done(final_action, RunStatus::NoProgress));
                     }
                     return Ok(StepControl::Continue);
                 }
 
                 if matches!(action, Action::Done { .. }) {
+                    loop_state.reset_validation_streak();
                     let mut result = done_result(&observation);
                     result.diagnostics = observation_diagnostics.clone();
                     let duration = step_start.elapsed();
@@ -381,6 +414,7 @@ impl<B: Browser> AgentLoop<B> {
                 }
 
                 let apply_start = Instant::now();
+                loop_state.reset_validation_streak();
                 let apply_span = tracing::info_span!(
                     "step.apply",
                     step_index = step_number,
@@ -649,25 +683,6 @@ fn repeated_no_progress_validation_error(
         }
     }
     None
-}
-
-fn repeat_no_progress_validation_streak(steps: &[StepRecord], state_hash: &str) -> u32 {
-    let mut streak = 0_u32;
-    for step in steps.iter().rev() {
-        if step.result.new_state_hash.as_deref() != Some(state_hash) {
-            break;
-        }
-        if step
-            .result
-            .error
-            .as_ref()
-            .and_then(|error| error.validation_code.as_deref())
-            == Some("repeat_no_progress_action")
-        {
-            streak = streak.saturating_add(1);
-        }
-    }
-    streak
 }
 
 fn duration_ms(duration: Duration) -> u64 {
@@ -1280,6 +1295,50 @@ mod tests {
         assert_eq!(agent.memory().steps().len(), 2);
         let applied = agent.browser.applied().await;
         assert_eq!(applied.len(), 2);
+    }
+
+    #[test]
+    fn loop_state_validation_streak_tracks_same_code_and_hash() {
+        let mut state = LoopState::new("hash1".to_string());
+        assert_eq!(
+            state.record_validation_failure("hash1", Some("repeat_no_progress_action")),
+            1
+        );
+        assert_eq!(
+            state.record_validation_failure("hash1", Some("repeat_no_progress_action")),
+            2
+        );
+    }
+
+    #[test]
+    fn loop_state_validation_streak_resets_on_code_or_hash_change() {
+        let mut state = LoopState::new("hash1".to_string());
+        assert_eq!(
+            state.record_validation_failure("hash1", Some("unknown_id")),
+            1
+        );
+        assert_eq!(
+            state.record_validation_failure("hash1", Some("repeat_no_progress_action")),
+            1
+        );
+        assert_eq!(
+            state.record_validation_failure("hash2", Some("repeat_no_progress_action")),
+            1
+        );
+    }
+
+    #[test]
+    fn loop_state_validation_streak_resets_after_success() {
+        let mut state = LoopState::new("hash1".to_string());
+        assert_eq!(
+            state.record_validation_failure("hash1", Some("repeat_no_progress_action")),
+            1
+        );
+        state.reset_validation_streak();
+        assert_eq!(
+            state.record_validation_failure("hash1", Some("repeat_no_progress_action")),
+            1
+        );
     }
 
     #[test]

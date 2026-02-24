@@ -247,10 +247,16 @@
         "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260224T231343Z-26328 completed",
+        "last_run_id": "20260224T231343Z-26328",
+        "last_update_utc": "2026-02-24T23:17:15Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Store trigger counters in explicit loop state to keep transitions deterministic and testable."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M4-ESC-003",
       "title": "Track unchanged-state and repeated-validation trigger counters"
     },
