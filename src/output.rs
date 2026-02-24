@@ -1,5 +1,5 @@
 use crate::agent::memory::StepRecord;
-use crate::types::Action;
+use crate::types::{Action, SCREENSHOT_MIME_TYPE as OBS_SCREENSHOT_MIME_TYPE};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::hash_map::DefaultHasher;
@@ -56,7 +56,7 @@ pub struct OutputArtifact {
 
 pub const SCREENSHOT_ARTIFACT_KIND: &str = "screenshot";
 pub const SCREENSHOT_FILENAME: &str = "screenshot.png";
-pub const SCREENSHOT_MIME_TYPE: &str = "image/png";
+pub const SCREENSHOT_MIME_TYPE: &str = OBS_SCREENSHOT_MIME_TYPE;
 const SCREENSHOT_ARTIFACT_ROOT: &str = ".ralph/runs";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -141,7 +141,7 @@ pub fn write_screenshot_artifact(
     })
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut output = String::with_capacity(digest.len() * 2);
     for byte in digest {

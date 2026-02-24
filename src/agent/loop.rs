@@ -3,8 +3,11 @@ use crate::agent::policy::AgentPolicy;
 use crate::browser::{Browser, BrowserError};
 use crate::llm::client::{LlmClient, LlmError};
 use crate::llm::router::{Router, StepOutcome, Tier, step_outcome};
+use crate::output::sha256_hex;
 use crate::telemetry;
-use crate::types::{Action, Observation, StepError, StepResult};
+use crate::types::{
+    Action, Observation, SCREENSHOT_MIME_TYPE, ScreenshotMetadata, StepError, StepResult,
+};
 use crate::verify::rules::{ValidationError, Validator};
 use std::fmt;
 use std::time::{Duration, Instant};
@@ -191,8 +194,9 @@ impl<B: Browser> AgentLoop<B> {
                 return Err(AgentError::Browser(err));
             }
         };
-        self.memory.record_observation(observation.clone());
         let mut observation_screenshot = self.browser.take_last_screenshot().await?;
+        observation.screenshot = screenshot_metadata_from_bytes(observation_screenshot.as_deref());
+        self.memory.record_observation(observation.clone());
         let mut loop_state = LoopState::new(observation.state_hash.clone());
 
         for step_index in 0..self.policy.max_steps {
@@ -404,27 +408,29 @@ impl<B: Browser> AgentLoop<B> {
                     step_index = step_number,
                     tier = ?tier
                 );
-                let next_observation = match self.browser.snapshot().instrument(snapshot_span).await
-                {
-                    Ok(observation) => observation,
-                    Err(err) => {
-                        let snapshot_duration = snapshot_start.elapsed();
-                        telemetry::record_snapshot_duration(snapshot_duration);
-                        let duration = step_start.elapsed();
-                        telemetry::record_step_duration(duration);
-                        tracing::error!(
-                            event = "snapshot_error",
-                            error_code = err.code,
-                            error_message = %err.message,
-                            step_duration_ms = duration.as_millis() as u64
-                        );
-                        return Err(AgentError::Browser(err));
-                    }
-                };
+                let mut next_observation =
+                    match self.browser.snapshot().instrument(snapshot_span).await {
+                        Ok(observation) => observation,
+                        Err(err) => {
+                            let snapshot_duration = snapshot_start.elapsed();
+                            telemetry::record_snapshot_duration(snapshot_duration);
+                            let duration = step_start.elapsed();
+                            telemetry::record_step_duration(duration);
+                            tracing::error!(
+                                event = "snapshot_error",
+                                error_code = err.code,
+                                error_message = %err.message,
+                                step_duration_ms = duration.as_millis() as u64
+                            );
+                            return Err(AgentError::Browser(err));
+                        }
+                    };
                 let snapshot_duration = snapshot_start.elapsed();
                 telemetry::record_snapshot_duration(snapshot_duration);
-                self.memory.record_observation(next_observation.clone());
                 let next_screenshot = self.browser.take_last_screenshot().await?;
+                next_observation.screenshot =
+                    screenshot_metadata_from_bytes(next_screenshot.as_deref());
+                self.memory.record_observation(next_observation.clone());
                 let new_hash = next_observation.state_hash.clone();
                 result.new_state_hash = Some(new_hash.clone());
                 let state_hash_streak = loop_state.update_hash(&new_hash);
@@ -568,6 +574,16 @@ fn done_result(observation: &Observation) -> StepResult {
         scroll: None,
         extract: None,
     }
+}
+
+fn screenshot_metadata_from_bytes(bytes: Option<&[u8]>) -> Option<ScreenshotMetadata> {
+    let bytes = bytes?;
+    Some(ScreenshotMetadata {
+        mime_type: SCREENSHOT_MIME_TYPE.to_string(),
+        artifact_ref: None,
+        sha256: sha256_hex(bytes),
+        bytes: bytes.len(),
+    })
 }
 
 fn repeated_no_progress_validation_error(
@@ -770,6 +786,7 @@ mod tests {
             viewport: [1280, 800],
             focused: None,
             visible_text: "Hello".to_string(),
+            screenshot: None,
             state_hash: hash.to_string(),
             elements,
         }

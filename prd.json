@@ -67,10 +67,16 @@
         "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260224T220702Z-26328 completed",
+        "last_run_id": "20260224T220702Z-26328",
+        "last_update_utc": "2026-02-24T22:13:31Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Add an optional screenshot object to Observation and keep all action validation keyed only to Observation.elements."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M4-SHOT-004",
       "title": "Expose screenshot metadata on Observation"
     },

@@ -81,6 +81,7 @@ fn sample_observation() -> Observation {
         viewport: [1280, 800],
         focused: None,
         visible_text: "Hello".to_string(),
+        screenshot: None,
         state_hash: "hash1".to_string(),
         elements: Vec::new(),
     }

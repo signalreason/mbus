@@ -1,6 +1,21 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub const SCREENSHOT_MIME_TYPE: &str = "image/png";
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ScreenshotMetadata {
+    /// MIME type for screenshot bytes (e.g. image/png).
+    pub mime_type: String,
+    /// Optional artifact reference when persisted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_ref: Option<String>,
+    /// SHA-256 hex digest of screenshot bytes.
+    pub sha256: String,
+    /// Size of screenshot bytes.
+    pub bytes: usize,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Observation {
     /// Current page URL after any redirects.
@@ -13,6 +28,9 @@ pub struct Observation {
     pub focused: Option<String>,
     /// Compact, trimmed visible text for context (length capped by observer).
     pub visible_text: String,
+    /// Optional screenshot metadata for this observation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screenshot: Option<ScreenshotMetadata>,
     /// Deterministic hash of the compact snapshot for progress detection.
     pub state_hash: String,
     /// Actionable elements with stable ids in observation order.
@@ -182,6 +200,12 @@ mod tests {
             viewport: [1280, 800],
             focused: Some("el_7".to_string()),
             visible_text: "Hello".to_string(),
+            screenshot: Some(ScreenshotMetadata {
+                mime_type: SCREENSHOT_MIME_TYPE.to_string(),
+                artifact_ref: Some("step://task_1_now/step-1/screenshot.png".to_string()),
+                sha256: "deadbeef".to_string(),
+                bytes: 42,
+            }),
             state_hash: "ab12cd".to_string(),
             elements: vec![ElementRef {
                 id: "el_7".to_string(),
@@ -200,6 +224,21 @@ mod tests {
         assert_eq!(value.get("focused"), Some(&json!("el_7")));
         let parsed: Observation = serde_json::from_value(value).expect("deserialize observation");
         assert_eq!(parsed, observation);
+    }
+
+    #[test]
+    fn observation_deserializes_without_screenshot() {
+        let value = json!({
+            "url": "https://example.com",
+            "title": "Example",
+            "viewport": [1280, 800],
+            "focused": null,
+            "visible_text": "Hello",
+            "state_hash": "ab12cd",
+            "elements": []
+        });
+        let parsed: Observation = serde_json::from_value(value).expect("deserialize observation");
+        assert!(parsed.screenshot.is_none());
     }
 
     #[test]

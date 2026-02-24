@@ -75,6 +75,7 @@ impl Observer {
                 viewport,
                 focused: None,
                 visible_text,
+                screenshot: None,
                 state_hash,
                 elements: collected.elements,
             },
