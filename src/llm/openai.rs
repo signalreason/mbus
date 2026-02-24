@@ -545,6 +545,7 @@ fn collect_refusal_diagnostics(refusal: Option<&Value>) -> (&'static str, usize)
 #[cfg(test)]
 mod parse_tests {
     use super::*;
+    use serde_json::json;
     use std::time::Duration;
 
     fn test_client() -> OpenAiClient {
@@ -557,6 +558,31 @@ mod parse_tests {
             max_tokens: None,
         })
         .expect("client")
+    }
+
+    fn parse_action_from_content(client: &OpenAiClient, content: Value) -> LlmResult<Action> {
+        let payload = ChatResponse {
+            choices: vec![Choice {
+                message: Message {
+                    content: Some(content),
+                    refusal: None,
+                },
+                finish_reason: None,
+            }],
+            usage: None,
+        };
+        client.parse_action(&payload)
+    }
+
+    fn assert_parse_error_code_for_text_and_parts(text: &str, expected_code: &str) {
+        let client = test_client();
+        let err = parse_action_from_content(&client, Value::String(text.to_string()))
+            .expect_err("expected parse error");
+        assert_eq!(err.code, expected_code);
+
+        let err = parse_action_from_content(&client, json!([{ "type": "text", "text": text }]))
+            .expect_err("expected parse error");
+        assert_eq!(err.code, expected_code);
     }
 
     #[test]
@@ -591,6 +617,27 @@ mod parse_tests {
             .parse_content("not json")
             .expect_err("expected invalid json");
         assert_eq!(err.code, "invalid_json");
+    }
+
+    #[test]
+    fn multimodal_invalid_json_rejected_same_as_text() {
+        assert_parse_error_code_for_text_and_parts("not json", "invalid_json");
+    }
+
+    #[test]
+    fn multimodal_unknown_action_rejected_same_as_text() {
+        assert_parse_error_code_for_text_and_parts(
+            r#"{"type":"teleport","id":"el_1"}"#,
+            "schema_violation",
+        );
+    }
+
+    #[test]
+    fn multimodal_multi_action_rejected_same_as_text() {
+        assert_parse_error_code_for_text_and_parts(
+            r#"[{"type":"done","summary":"ok"},{"type":"done","summary":"two"}]"#,
+            "multi_action",
+        );
     }
 
     #[test]

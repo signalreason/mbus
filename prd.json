@@ -167,10 +167,16 @@
         "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260224T224353Z-26328 completed",
+        "last_run_id": "20260224T224353Z-26328",
+        "last_update_utc": "2026-02-24T22:46:14Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Limit multimodal changes to request context and keep response parsing path shared."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M4-MM-003",
       "title": "Preserve strict single-action response contract under multimodal mode"
     },
