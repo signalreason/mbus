@@ -205,6 +205,7 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
             let end_snapshot = telemetry::snapshot();
             let repair_counts = repair_counts_delta(&repair_start, &end_snapshot);
             let screenshot_counts = screenshot_counts_delta(&repair_start, &end_snapshot);
+            let router_state = router_final_state(&Router::new(config.router.clone()));
             let summary = mbus::output::build_run_summary(
                 mbus::output::TerminalState::Error,
                 &[],
@@ -216,6 +217,7 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
                 Vec::new(),
                 repair_counts,
                 screenshot_counts,
+                router_state,
             );
             emit_run_logs(&[], &summary, None, None)?;
             return Err(err);
@@ -227,6 +229,7 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
         steps,
         final_observation,
         step_screenshots,
+        router_final_state,
     } = execution;
 
     let mut errors = Vec::new();
@@ -282,6 +285,7 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
         output_artifacts,
         repair_counts,
         screenshot_counts,
+        router_final_state,
     );
     emit_run_logs(
         &steps,
@@ -719,6 +723,7 @@ struct RunExecution {
     steps: Vec<mbus::agent::memory::StepRecord>,
     final_observation: Option<mbus::types::Observation>,
     step_screenshots: Vec<Option<Vec<u8>>>,
+    router_final_state: mbus::output::RouterFinalState,
 }
 
 #[derive(Default)]
@@ -753,6 +758,32 @@ fn agent_error_summary(err: &mbus::agent::r#loop::AgentError) -> mbus::output::R
     }
 }
 
+fn router_final_state(router: &Router) -> mbus::output::RouterFinalState {
+    let ladder_index = router.ladder_index();
+    let step = router
+        .ladder()
+        .get(ladder_index)
+        .or_else(|| router.ladder().last());
+    let (model, effort, tier) = match step {
+        Some(step) => (step.model.clone(), step.effort, step.tier),
+        None => ("unknown".to_string(), router.effort(), router.active_tier()),
+    };
+    mbus::output::RouterFinalState {
+        model,
+        effort,
+        tier: tier_label(tier).to_string(),
+        ladder_index,
+    }
+}
+
+fn tier_label(tier: mbus::llm::router::Tier) -> &'static str {
+    match tier {
+        mbus::llm::router::Tier::Fast => "fast",
+        mbus::llm::router::Tier::Mid => "mid",
+        mbus::llm::router::Tier::Strong => "strong",
+    }
+}
+
 async fn execute_agent(
     task: &str,
     plan: Option<&str>,
@@ -780,6 +811,7 @@ async fn execute_agent(
     };
     let steps = agent.memory().steps().to_vec();
     let final_observation = agent.memory().observations().back().cloned();
+    let router_final_state = router_final_state(agent.router());
     let shutdown_result = agent.shutdown().await;
     if let Err(err) = shutdown_result {
         eprintln!("shutdown error: {err}");
@@ -790,6 +822,7 @@ async fn execute_agent(
         steps,
         final_observation,
         step_screenshots,
+        router_final_state,
     })
 }
 
@@ -811,6 +844,7 @@ fn emit_run_logs(
             llm_payload_mode: step.llm_payload_mode,
             image_context_sent: step.llm_payload_mode.image_context_sent(),
             llm_usage: step.llm_usage.clone(),
+            router: step.router.clone(),
         })?;
     }
 
@@ -833,6 +867,7 @@ fn emit_run_logs(
         repair_successes: summary.repair_successes,
         repair_failures: summary.repair_failures,
         screenshots: summary.screenshots.clone(),
+        router: summary.router.clone(),
         errors: summary.errors.clone(),
         output_artifacts: summary.output_artifacts.clone(),
         final_url: final_observation.map(|value| value.url.clone()),
@@ -939,6 +974,8 @@ struct StepLog {
     image_context_sent: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     llm_usage: Option<mbus::types::TokenUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    router: Option<mbus::agent::memory::RouterStepInfo>,
 }
 
 #[derive(Serialize)]
@@ -958,6 +995,7 @@ struct SummaryLog {
     repair_successes: usize,
     repair_failures: usize,
     screenshots: mbus::output::ScreenshotSummary,
+    router: mbus::output::RouterSummary,
     errors: Vec<mbus::output::RunErrorSummary>,
     output_artifacts: Vec<mbus::output::OutputArtifact>,
     #[serde(skip_serializing_if = "Option::is_none")]

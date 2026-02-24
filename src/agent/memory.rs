@@ -1,4 +1,5 @@
-use crate::types::{Action, LlmPayloadMode, Observation, StepResult, TokenUsage};
+use crate::llm::router::RouterCounters;
+use crate::types::{Action, LlmPayloadMode, Observation, ReasoningEffort, StepResult, TokenUsage};
 use crate::verify::rules::ValidationError;
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -46,6 +47,38 @@ pub struct StepTimings {
     pub snapshot_duration_ms: u64,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct TriggerCounters {
+    pub state_hash_streak: u32,
+    pub validation_code_streak: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_validation_code: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct RouterTransitionLog {
+    pub reason_code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub streak: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub counter_tier: Option<String>,
+    pub model: String,
+    pub effort: ReasoningEffort,
+    pub tier: String,
+    pub ladder_index: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct RouterStepInfo {
+    pub ladder_index: usize,
+    pub counters: RouterCounters,
+    pub triggers: TriggerCounters,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transitions: Vec<RouterTransitionLog>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StepOutcomeLog {
@@ -66,6 +99,8 @@ pub struct StepRecord {
     pub llm_payload_mode: LlmPayloadMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_usage: Option<TokenUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub router: Option<RouterStepInfo>,
 }
 
 #[derive(Clone, Debug)]

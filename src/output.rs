@@ -1,8 +1,9 @@
 use crate::agent::memory::StepRecord;
-use crate::types::{Action, SCREENSHOT_MIME_TYPE as OBS_SCREENSHOT_MIME_TYPE};
+use crate::types::{Action, ReasoningEffort, SCREENSHOT_MIME_TYPE as OBS_SCREENSHOT_MIME_TYPE};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -83,6 +84,26 @@ pub struct ScreenshotSummary {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RouterTransitionSummary {
+    pub reason_code: String,
+    pub count: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RouterFinalState {
+    pub model: String,
+    pub effort: ReasoningEffort,
+    pub tier: String,
+    pub ladder_index: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RouterSummary {
+    pub transitions: Vec<RouterTransitionSummary>,
+    pub final_state: RouterFinalState,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct RunSummary {
     pub terminal_state: TerminalState,
     pub steps: usize,
@@ -96,6 +117,7 @@ pub struct RunSummary {
     pub repair_successes: usize,
     pub repair_failures: usize,
     pub screenshots: ScreenshotSummary,
+    pub router: RouterSummary,
 }
 
 pub fn task_id_for(task: &str) -> String {
@@ -296,6 +318,25 @@ fn step_errors(steps: &[StepRecord]) -> Vec<RunErrorSummary> {
     errors
 }
 
+fn router_transition_counts(steps: &[StepRecord]) -> Vec<RouterTransitionSummary> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for step in steps {
+        let Some(router) = step.router.as_ref() else {
+            continue;
+        };
+        for transition in &router.transitions {
+            let entry = counts.entry(transition.reason_code.clone()).or_insert(0);
+            *entry = entry.saturating_add(1);
+        }
+    }
+    let mut summary: Vec<RouterTransitionSummary> = counts
+        .into_iter()
+        .map(|(reason_code, count)| RouterTransitionSummary { reason_code, count })
+        .collect();
+    summary.sort_by(|left, right| left.reason_code.cmp(&right.reason_code));
+    summary
+}
+
 pub fn build_run_summary(
     terminal_state: TerminalState,
     steps: &[StepRecord],
@@ -303,10 +344,15 @@ pub fn build_run_summary(
     output_artifacts: Vec<OutputArtifact>,
     repair_counts: RepairCounts,
     screenshots: ScreenshotSummary,
+    router_final_state: RouterFinalState,
 ) -> RunSummary {
     let counts = step_counts(steps);
     let mut errors = step_errors(steps);
     errors.append(&mut extra_errors);
+    let router_summary = RouterSummary {
+        transitions: router_transition_counts(steps),
+        final_state: router_final_state,
+    };
     RunSummary {
         terminal_state,
         steps: steps.len(),
@@ -320,6 +366,7 @@ pub fn build_run_summary(
         repair_successes: repair_counts.successes,
         repair_failures: repair_counts.failures,
         screenshots,
+        router: router_summary,
     }
 }
 
@@ -380,6 +427,7 @@ mod tests {
             timings: timings(),
             llm_payload_mode: LlmPayloadMode::TextOnly,
             llm_usage: None,
+            router: None,
         }];
 
         let output = build_extract_output("task", "task_1", "now", &steps);
@@ -410,6 +458,7 @@ mod tests {
             timings: timings(),
             llm_payload_mode: LlmPayloadMode::TextOnly,
             llm_usage: None,
+            router: None,
         }];
 
         let output = build_extract_output("task", "task_1", "now", &steps).expect("output");

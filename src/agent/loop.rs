@@ -1,4 +1,7 @@
-use crate::agent::memory::{Memory, StepOutcomeLog, StepRecord, StepTimings, ValidationOutcome};
+use crate::agent::memory::{
+    Memory, RouterStepInfo, RouterTransitionLog, StepOutcomeLog, StepRecord, StepTimings,
+    TriggerCounters, ValidationOutcome,
+};
 use crate::agent::policy::AgentPolicy;
 use crate::browser::{Browser, BrowserError, ScreenshotCapture};
 use crate::llm::client::{LlmClient, LlmContext, LlmError};
@@ -197,6 +200,10 @@ impl<B: Browser> AgentLoop<B> {
         &self.memory
     }
 
+    pub fn router(&self) -> &Router {
+        &self.router
+    }
+
     pub async fn shutdown(&self) -> Result<(), BrowserError> {
         self.browser.shutdown().await
     }
@@ -235,6 +242,7 @@ impl<B: Browser> AgentLoop<B> {
         observation.screenshot = screenshot_metadata_from_bytes(observation_screenshot.as_deref());
         self.memory.record_observation(observation.clone());
         let mut loop_state = LoopState::new(observation.state_hash.clone());
+        let mut transition_cursor = 0usize;
 
         for step_index in 0..self.policy.max_steps {
             let tier = self.router.active_tier();
@@ -343,6 +351,15 @@ impl<B: Browser> AgentLoop<B> {
                     let duration = step_start.elapsed();
                     telemetry::record_apply_duration(Duration::from_millis(0));
                     telemetry::record_snapshot_duration(Duration::from_millis(0));
+                    let tier_after = self.router.record(StepOutcome::Failure);
+                    let _ = self.apply_ladder_policy(
+                        loop_state.state_hash_streak,
+                        validation_streak,
+                        validation_code.as_deref(),
+                    );
+                    let transitions = collect_router_transitions(&self.router, &mut transition_cursor);
+                    log_router_transitions(&transitions);
+                    let router_info = build_router_step_info(&self.router, &loop_state, transitions);
                     self.memory.record_step(StepRecord {
                         action,
                         validation: ValidationOutcome::failure(errors),
@@ -356,16 +373,9 @@ impl<B: Browser> AgentLoop<B> {
                         },
                         llm_payload_mode,
                         llm_usage,
+                        router: Some(router_info),
                     });
                     step_screenshots.push(observation_screenshot.clone());
-                    let tier_after = self.router.record(StepOutcome::Failure);
-                    if let Some(transition) = self.apply_ladder_policy(
-                        loop_state.state_hash_streak,
-                        validation_streak,
-                        validation_code.as_deref(),
-                    ) {
-                        log_router_transition(&transition);
-                    }
                     telemetry::set_no_progress_streak(self.router.counters().no_progress);
                     telemetry::record_step_duration(duration);
                     tracing::warn!(
@@ -401,6 +411,9 @@ impl<B: Browser> AgentLoop<B> {
                     let duration = step_start.elapsed();
                     telemetry::record_apply_duration(Duration::from_millis(0));
                     telemetry::record_snapshot_duration(Duration::from_millis(0));
+                    let transitions = collect_router_transitions(&self.router, &mut transition_cursor);
+                    log_router_transitions(&transitions);
+                    let router_info = build_router_step_info(&self.router, &loop_state, transitions);
                     self.memory.record_step(StepRecord {
                         action: action.clone(),
                         validation: ValidationOutcome::success(),
@@ -414,6 +427,7 @@ impl<B: Browser> AgentLoop<B> {
                         },
                         llm_payload_mode,
                         llm_usage,
+                        router: Some(router_info),
                     });
                     step_screenshots.push(observation_screenshot.clone());
                     telemetry::record_step_duration(duration);
@@ -498,6 +512,13 @@ impl<B: Browser> AgentLoop<B> {
                 };
 
                 let duration = step_start.elapsed();
+                let tier_after = self
+                    .router
+                    .record_with_heuristics(outcome, Some(&heuristics));
+                let _ = self.apply_ladder_policy(state_hash_streak, 0, None);
+                let transitions = collect_router_transitions(&self.router, &mut transition_cursor);
+                log_router_transitions(&transitions);
+                let router_info = build_router_step_info(&self.router, &loop_state, transitions);
                 self.memory.record_step(StepRecord {
                     action: action.clone(),
                     validation: ValidationOutcome::success(),
@@ -511,16 +532,10 @@ impl<B: Browser> AgentLoop<B> {
                     },
                     llm_payload_mode,
                     llm_usage,
+                    router: Some(router_info),
                 });
                 step_screenshots.push(observation_screenshot.clone());
                 self.memory.update_last_step_state_hash(new_hash);
-
-                let tier_after = self
-                    .router
-                    .record_with_heuristics(outcome, Some(&heuristics));
-                if let Some(transition) = self.apply_ladder_policy(state_hash_streak, 0, None) {
-                    log_router_transition(&transition);
-                }
                 telemetry::set_no_progress_streak(self.router.counters().no_progress);
 
                 let error_code = result
@@ -597,15 +612,93 @@ impl<B: Browser> AgentLoop<B> {
     }
 }
 
-fn log_router_transition(transition: &RouterTransition) {
-    tracing::info!(
-        event = "router_transition",
-        reason_code = transition.reason.code(),
-        model = %transition.step.model,
-        effort = ?transition.step.effort,
-        tier = ?transition.step.tier,
-        ladder_index = transition.index
-    );
+fn log_router_transitions(transitions: &[RouterTransition]) {
+    for transition in transitions {
+        let (validation_code, streak, counter_tier) = match &transition.reason {
+            crate::llm::router::RouterTransitionReason::UnchangedState { streak } => {
+                (None, Some(*streak), None)
+            }
+            crate::llm::router::RouterTransitionReason::RepeatValidationCode { code, streak } => {
+                (Some(code.as_str()), Some(*streak), None)
+            }
+            crate::llm::router::RouterTransitionReason::CounterTier { tier } => {
+                (None, None, Some(tier_label(*tier)))
+            }
+        };
+        tracing::info!(
+            event = "router_transition",
+            reason_code = transition.reason.code(),
+            validation_code = validation_code,
+            streak = streak,
+            counter_tier = counter_tier,
+            model = %transition.step.model,
+            effort = ?transition.step.effort,
+            tier = tier_label(transition.step.tier),
+            ladder_index = transition.index
+        );
+    }
+}
+
+fn collect_router_transitions(router: &Router, cursor: &mut usize) -> Vec<RouterTransition> {
+    let transitions = router.transitions();
+    if *cursor >= transitions.len() {
+        return Vec::new();
+    }
+    let slice = transitions[*cursor..].to_vec();
+    *cursor = transitions.len();
+    slice
+}
+
+fn build_router_step_info(
+    router: &Router,
+    loop_state: &LoopState,
+    transitions: Vec<RouterTransition>,
+) -> RouterStepInfo {
+    RouterStepInfo {
+        ladder_index: router.ladder_index(),
+        counters: router.counters(),
+        triggers: TriggerCounters {
+            state_hash_streak: loop_state.state_hash_streak,
+            validation_code_streak: loop_state.validation_code_streak,
+            last_validation_code: loop_state.last_validation_code.clone(),
+        },
+        transitions: transitions
+            .iter()
+            .map(transition_log_from)
+            .collect(),
+    }
+}
+
+fn transition_log_from(transition: &RouterTransition) -> RouterTransitionLog {
+    let (validation_code, streak, counter_tier) = match &transition.reason {
+        crate::llm::router::RouterTransitionReason::UnchangedState { streak } => {
+            (None, Some(*streak), None)
+        }
+        crate::llm::router::RouterTransitionReason::RepeatValidationCode { code, streak } => {
+            (Some(code.clone()), Some(*streak), None)
+        }
+        crate::llm::router::RouterTransitionReason::CounterTier { tier } => {
+            (None, None, Some(tier_label(*tier).to_string()))
+        }
+    };
+    RouterTransitionLog {
+        reason_code: transition.reason.code().to_string(),
+        validation_code,
+        streak,
+        counter_tier,
+        model: transition.step.model.clone(),
+        effort: transition.step.effort,
+        tier: tier_label(transition.step.tier).to_string(),
+        ladder_index: transition.index,
+    }
+}
+
+fn tier_label(tier: Tier) -> &'static str {
+    match tier {
+        Tier::Fast => "fast",
+        Tier::Mid => "mid",
+        Tier::Strong => "strong",
+    }
 }
 
 impl<B: Browser> AgentLoop<B> {

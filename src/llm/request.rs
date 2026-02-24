@@ -299,6 +299,7 @@ mod tests {
             },
             llm_payload_mode: LlmPayloadMode::TextOnly,
             llm_usage: None,
+            router: None,
         };
 
         let prompt = build_prompt_text(

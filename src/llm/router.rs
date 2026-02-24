@@ -1,4 +1,5 @@
 use crate::types::{Observation, ReasoningEffort, StepResult};
+use serde::Serialize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tier {
@@ -21,7 +22,7 @@ pub struct RouterLadderStep {
     pub effort: ReasoningEffort,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct RouterCounters {
     pub failures: u32,
     pub no_progress: u32,

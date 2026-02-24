@@ -215,6 +215,7 @@ mod tests {
             },
             llm_payload_mode: LlmPayloadMode::TextOnly,
             llm_usage: usage,
+            router: None,
         }
     }
 
