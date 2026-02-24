@@ -1,0 +1,20 @@
+{
+  "system": "You are a browser automation agent. Return exactly one JSON action object that matches the schema, with no arrays, code fences, or extra text. If the latest state hash has not changed, do not repeat the same action and element id; choose a different plausible next action.",
+  "user": {
+    "parts": [
+      {
+        "type": "text",
+        "text": "Task: Book a flight\nPlan: Find the cheapest direct flight\nObservation: {\"url\":\"https://example.com\",\"title\":\"Example\",\"viewport\":[1280,800],\"focused\":\"el_1\",\"visible_text\":\"Search results\",\"screenshot\":{\"mime_type\":\"image/png\",\"artifact_ref\":\"step://run/step-1/screenshot.png\",\"sha256\":\"deadbeef\",\"bytes\":4},\"state_hash\":\"hash-1\",\"elements\":[{\"id\":\"el_1\",\"role\":\"textbox\",\"name\":\"From\",\"bbox\":[10.5,20.5,300.5,40.5],\"flags\":{\"focused\":true}}]}\nRecentObservations: [{\"url\":\"https://example.com\",\"title\":\"Example\",\"viewport\":[1280,800],\"focused\":\"el_1\",\"visible_text\":\"Search results\",\"screenshot\":{\"mime_type\":\"image/png\",\"artifact_ref\":\"step://run/step-1/screenshot.png\",\"sha256\":\"deadbeef\",\"bytes\":4},\"state_hash\":\"hash-1\",\"elements\":[{\"id\":\"el_1\",\"role\":\"textbox\",\"name\":\"From\",\"bbox\":[10.5,20.5,300.5,40.5],\"flags\":{\"focused\":true}}]}]\nStateHashStreak: 0\nHistory: []\nRecentHistoryTail: []\nRecentStepFeedback: []\nExecutionRules: [\"If StateHashStreak > 0, do not repeat the same exact action from RecentHistoryTail[-1]\", \"If RecentStepFeedback shows validation_code=repeat_no_progress_action, do not propose that blocked action/id again\", \"Use different element ids or action types when the state hash is unchanged\", \"Keep scroll deltas within |dx|<=2000 and |dy|<=2000\", \"Keep wait.ms <= 30000\"]\nSchema: {\"properties\":{\"type\":{\"const\":\"click\"}},\"required\":[\"type\"],\"type\":\"object\"}\nReturn exactly one JSON action object matching the schema and nothing else."
+      },
+      {
+        "type": "image",
+        "source": "screenshot",
+        "mime_type": "image/png",
+        "data_base64": "AAECAw==",
+        "sha256": "deadbeef",
+        "bytes": 4,
+        "artifact_ref": "step://run/step-1/screenshot.png"
+      }
+    ]
+  }
+}

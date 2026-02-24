@@ -4,6 +4,17 @@ use async_trait::async_trait;
 use std::collections::VecDeque;
 use std::fmt;
 
+#[derive(Debug)]
+pub struct LlmContext<'a> {
+    pub task: &'a str,
+    pub plan: Option<&'a str>,
+    pub observation: &'a Observation,
+    pub observations: &'a VecDeque<Observation>,
+    pub observation_screenshot: Option<&'a [u8]>,
+    pub history: &'a [Action],
+    pub steps: &'a [StepRecord],
+}
+
 pub type LlmResult<T> = Result<T, LlmError>;
 
 #[derive(Debug, Clone)]
@@ -37,13 +48,5 @@ pub struct LlmResponse {
 
 #[async_trait]
 pub trait LlmClient: Send + Sync {
-    async fn propose_action(
-        &self,
-        task: &str,
-        plan: Option<&str>,
-        observation: &Observation,
-        observations: &VecDeque<Observation>,
-        history: &[Action],
-        steps: &[StepRecord],
-    ) -> LlmResult<LlmResponse>;
+    async fn propose_action(&self, context: &LlmContext<'_>) -> LlmResult<LlmResponse>;
 }

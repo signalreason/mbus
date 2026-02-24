@@ -1,5 +1,4 @@
-use crate::agent::memory::StepRecord;
-use crate::llm::client::{LlmClient, LlmError, LlmResponse, LlmResult};
+use crate::llm::client::{LlmClient, LlmContext, LlmError, LlmResponse, LlmResult};
 use crate::telemetry;
 use crate::types::Action;
 use async_trait::async_trait;
@@ -24,15 +23,7 @@ impl StubLlm {
 
 #[async_trait]
 impl LlmClient for StubLlm {
-    async fn propose_action(
-        &self,
-        _task: &str,
-        _plan: Option<&str>,
-        _observation: &crate::types::Observation,
-        _observations: &VecDeque<crate::types::Observation>,
-        _history: &[Action],
-        _steps: &[StepRecord],
-    ) -> LlmResult<LlmResponse> {
+    async fn propose_action(&self, _context: &LlmContext<'_>) -> LlmResult<LlmResponse> {
         telemetry::inc_llm_call();
         let start = Instant::now();
         let action = Action::Done {
@@ -70,15 +61,7 @@ impl ScriptedLlm {
 
 #[async_trait]
 impl LlmClient for ScriptedLlm {
-    async fn propose_action(
-        &self,
-        _task: &str,
-        _plan: Option<&str>,
-        _observation: &crate::types::Observation,
-        _observations: &VecDeque<crate::types::Observation>,
-        _history: &[Action],
-        _steps: &[StepRecord],
-    ) -> LlmResult<LlmResponse> {
+    async fn propose_action(&self, _context: &LlmContext<'_>) -> LlmResult<LlmResponse> {
         telemetry::inc_llm_call();
         let start = Instant::now();
         let mut guard = self.actions.lock().await;

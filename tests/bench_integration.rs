@@ -1,14 +1,12 @@
 use async_trait::async_trait;
 use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
-use mbus::agent::memory::StepRecord;
 use mbus::agent::policy::AgentPolicy;
 use mbus::bench::aggregate::aggregate_usage_from_steps;
 use mbus::browser::{Browser, BrowserError};
 use mbus::config::LlmMode;
-use mbus::llm::client::{LlmClient, LlmError, LlmResponse};
+use mbus::llm::client::{LlmClient, LlmContext, LlmError, LlmResponse};
 use mbus::llm::scripted::ScriptedLlm;
 use mbus::types::{Action, Observation, StepResult, TokenUsage};
-use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -57,15 +55,7 @@ struct UsageLlm {
 
 #[async_trait]
 impl LlmClient for UsageLlm {
-    async fn propose_action(
-        &self,
-        _task: &str,
-        _plan: Option<&str>,
-        _observation: &Observation,
-        _observations: &VecDeque<Observation>,
-        _history: &[Action],
-        _steps: &[StepRecord],
-    ) -> Result<LlmResponse, LlmError> {
+    async fn propose_action(&self, _context: &LlmContext<'_>) -> Result<LlmResponse, LlmError> {
         Ok(LlmResponse {
             action: Action::Done {
                 summary: "ok".to_string(),

@@ -1,12 +1,10 @@
 use async_trait::async_trait;
 use mbus::agent::r#loop::{AgentLoop, LlmClients, RunStatus};
-use mbus::agent::memory::StepRecord;
 use mbus::agent::policy::AgentPolicy;
 use mbus::browser::{Browser, CdpBrowser, CdpConfig};
-use mbus::llm::client::{LlmClient, LlmError, LlmResponse};
+use mbus::llm::client::{LlmClient, LlmContext, LlmError, LlmResponse};
 use mbus::types::{Action, ElementRef, Observation};
 use mbus::verify::{Validator, ValidatorConfig};
-use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -200,16 +198,9 @@ impl HarnessLlm {
 
 #[async_trait]
 impl LlmClient for HarnessLlm {
-    async fn propose_action(
-        &self,
-        _task: &str,
-        _plan: Option<&str>,
-        observation: &Observation,
-        _observations: &VecDeque<Observation>,
-        _history: &[Action],
-        _steps: &[StepRecord],
-    ) -> Result<LlmResponse, LlmError> {
+    async fn propose_action(&self, context: &LlmContext<'_>) -> Result<LlmResponse, LlmError> {
         let mut guard = self.step.lock().await;
+        let observation = context.observation;
         let action = match (self.mode, *guard) {
             (HarnessMode::Click, 0) => {
                 let id = find_element(observation, "button", "Click Button")

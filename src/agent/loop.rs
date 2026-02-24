@@ -1,7 +1,7 @@
 use crate::agent::memory::{Memory, StepOutcomeLog, StepRecord, StepTimings, ValidationOutcome};
 use crate::agent::policy::AgentPolicy;
 use crate::browser::{Browser, BrowserError, ScreenshotCapture};
-use crate::llm::client::{LlmClient, LlmError};
+use crate::llm::client::{LlmClient, LlmContext, LlmError};
 use crate::llm::router::{Router, StepOutcome, Tier, step_outcome};
 use crate::output::sha256_hex;
 use crate::telemetry;
@@ -224,17 +224,16 @@ impl<B: Browser> AgentLoop<B> {
                     step_index = step_number,
                     tier = ?tier
                 );
-                let llm_response = match client
-                    .propose_action(
-                        &self.task,
-                        self.memory.plan(),
-                        &observation,
-                        self.memory.observations(),
-                        self.memory.history(),
-                        self.memory.steps(),
-                    )
-                    .instrument(llm_span)
-                    .await
+                let context = LlmContext {
+                    task: &self.task,
+                    plan: self.memory.plan(),
+                    observation: &observation,
+                    observations: self.memory.observations(),
+                    observation_screenshot: observation_screenshot.as_deref(),
+                    history: self.memory.history(),
+                    steps: self.memory.steps(),
+                };
+                let llm_response = match client.propose_action(&context).instrument(llm_span).await
                 {
                     Ok(response) => response,
                     Err(err) => {
@@ -787,15 +786,7 @@ mod tests {
 
     #[async_trait]
     impl LlmClient for ScriptedLlm {
-        async fn propose_action(
-            &self,
-            _task: &str,
-            _plan: Option<&str>,
-            _observation: &Observation,
-            _observations: &VecDeque<Observation>,
-            _history: &[Action],
-            _steps: &[StepRecord],
-        ) -> Result<LlmResponse, LlmError> {
+        async fn propose_action(&self, _context: &LlmContext<'_>) -> Result<LlmResponse, LlmError> {
             let mut guard = self.actions.lock().await;
             let action = guard
                 .pop_front()
@@ -809,15 +800,7 @@ mod tests {
 
     #[async_trait]
     impl LlmClient for ScriptedLlmResponses {
-        async fn propose_action(
-            &self,
-            _task: &str,
-            _plan: Option<&str>,
-            _observation: &Observation,
-            _observations: &VecDeque<Observation>,
-            _history: &[Action],
-            _steps: &[StepRecord],
-        ) -> Result<LlmResponse, LlmError> {
+        async fn propose_action(&self, _context: &LlmContext<'_>) -> Result<LlmResponse, LlmError> {
             let mut guard = self.responses.lock().await;
             let response = guard
                 .pop_front()
