@@ -122,3 +122,4 @@
 - 2026-02-24 LLM-010 reasoning effort request parameter: `notes/2026-02-24-llm-010-reasoning-effort.md`
 - 2026-02-24 ROUTER-004 escalation ladder config: `notes/2026-02-24-router-004-escalation-ladder-config.md`
 - 2026-02-24 ROUTER-005 escalation transitions with reason codes: `notes/2026-02-24-router-005-escalation-transitions.md`
+- 2026-02-24 ROUTER-006 reset escalation state on progress: `notes/2026-02-24-router-006-reset-escalation-on-progress.md`

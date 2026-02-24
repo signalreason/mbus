@@ -181,15 +181,7 @@ pub fn ladder_transition_policy(input: LadderPolicyInput<'_>) -> Option<LadderTr
 
 impl Router {
     pub fn new(config: RouterConfig) -> Self {
-        let reasoning_effort = if config.ladder.is_empty() {
-            config.reasoning_effort
-        } else {
-            config
-                .ladder
-                .first()
-                .map(|step| step.effort)
-                .unwrap_or(config.reasoning_effort)
-        };
+        let reasoning_effort = baseline_effort(&config);
         Self {
             reasoning_effort,
             config,
@@ -212,8 +204,8 @@ impl Router {
     ) -> Tier {
         match outcome {
             StepOutcome::Progress => {
-                self.failures = 0;
-                self.no_progress = 0;
+                self.reset_state(false);
+                return self.active_tier();
             }
             StepOutcome::Failure => {
                 self.failures = self.failures.saturating_add(1);
@@ -288,20 +280,7 @@ impl Router {
     }
 
     pub fn reset(&mut self) {
-        self.failures = 0;
-        self.no_progress = 0;
-        self.low_actionability = 0;
-        self.ladder_index = 0;
-        self.transitions.clear();
-        self.reasoning_effort = if self.config.ladder.is_empty() {
-            self.config.reasoning_effort
-        } else {
-            self.config
-                .ladder
-                .first()
-                .map(|step| step.effort)
-                .unwrap_or(self.config.reasoning_effort)
-        };
+        self.reset_state(true);
     }
 
     pub fn config(&self) -> &RouterConfig {
@@ -357,6 +336,17 @@ impl Router {
         self.transitions.push(transition.clone());
         Some(transition)
     }
+
+    fn reset_state(&mut self, clear_transitions: bool) {
+        self.failures = 0;
+        self.no_progress = 0;
+        self.low_actionability = 0;
+        self.ladder_index = 0;
+        if clear_transitions {
+            self.transitions.clear();
+        }
+        self.reasoning_effort = baseline_effort(&self.config);
+    }
 }
 
 fn tier_for_count(count: u32, mid: u32, strong: u32) -> Tier {
@@ -391,6 +381,18 @@ fn tier_rank(tier: Tier) -> u8 {
         Tier::Fast => 0,
         Tier::Mid => 1,
         Tier::Strong => 2,
+    }
+}
+
+fn baseline_effort(config: &RouterConfig) -> ReasoningEffort {
+    if config.ladder.is_empty() {
+        config.reasoning_effort
+    } else {
+        config
+            .ladder
+            .first()
+            .map(|step| step.effort)
+            .unwrap_or(config.reasoning_effort)
     }
 }
 
@@ -642,8 +644,8 @@ mod tests {
         });
 
         let prev = observation_with_elements("hash1", vec![element("el_1", "button")]);
-        let next = observation_with_elements("hash2", vec![element("el_2", "link")]);
-        let (outcome, heuristics) = step_outcome(&sample_result(true), &prev, &next, 0);
+        let next = observation_with_elements("hash1", vec![element("el_2", "link")]);
+        let (outcome, heuristics) = step_outcome(&sample_result(true), &prev, &next, 1);
 
         assert!(heuristics.low_actionability);
         assert_eq!(
@@ -651,7 +653,7 @@ mod tests {
             Tier::Mid
         );
 
-        let (outcome, heuristics) = step_outcome(&sample_result(true), &prev, &next, 0);
+        let (outcome, heuristics) = step_outcome(&sample_result(true), &prev, &next, 1);
         assert_eq!(
             router.record_with_heuristics(outcome, Some(&heuristics)),
             Tier::Strong
@@ -725,5 +727,101 @@ mod tests {
             transition.reason,
             RouterTransitionReason::UnchangedState { .. }
         ));
+    }
+
+    #[test]
+    fn resets_ladder_on_progress_after_tier_escalation() {
+        let ladder = vec![
+            RouterLadderStep {
+                model: "fast".to_string(),
+                tier: Tier::Fast,
+                effort: ReasoningEffort::Low,
+            },
+            RouterLadderStep {
+                model: "mid".to_string(),
+                tier: Tier::Mid,
+                effort: ReasoningEffort::Low,
+            },
+            RouterLadderStep {
+                model: "strong".to_string(),
+                tier: Tier::Strong,
+                effort: ReasoningEffort::Low,
+            },
+        ];
+        let mut router = Router::new(RouterConfig {
+            failures_to_mid: 1,
+            failures_to_strong: 3,
+            no_progress_to_mid: 10,
+            no_progress_to_strong: 20,
+            low_actionability_to_mid: 10,
+            low_actionability_to_strong: 20,
+            reasoning_effort: ReasoningEffort::Low,
+            ladder,
+            ..RouterConfig::default()
+        });
+
+        router.record(StepOutcome::Failure);
+        assert_eq!(router.ladder_index(), 1);
+        assert_eq!(router.active_tier(), Tier::Mid);
+
+        assert_eq!(router.record(StepOutcome::Progress), Tier::Fast);
+        assert_eq!(router.ladder_index(), 0);
+        assert_eq!(router.effort(), ReasoningEffort::Low);
+        assert_eq!(
+            router.counters(),
+            RouterCounters {
+                failures: 0,
+                no_progress: 0,
+                low_actionability: 0
+            }
+        );
+    }
+
+    #[test]
+    fn resets_ladder_on_progress_after_effort_escalation() {
+        let ladder = vec![
+            RouterLadderStep {
+                model: "fast".to_string(),
+                tier: Tier::Fast,
+                effort: ReasoningEffort::Low,
+            },
+            RouterLadderStep {
+                model: "fast".to_string(),
+                tier: Tier::Fast,
+                effort: ReasoningEffort::Medium,
+            },
+            RouterLadderStep {
+                model: "fast".to_string(),
+                tier: Tier::Fast,
+                effort: ReasoningEffort::High,
+            },
+        ];
+        let mut router = Router::new(RouterConfig {
+            ladder,
+            reasoning_effort: ReasoningEffort::Low,
+            ..RouterConfig::default()
+        });
+        let decision = LadderTransitionDecision {
+            next_index: 1,
+            reason: RouterTransitionReason::UnchangedState { streak: 1 },
+        };
+        router
+            .apply_ladder_transition(decision)
+            .expect("transition recorded");
+        assert_eq!(router.ladder_index(), 1);
+        assert_eq!(router.effort(), ReasoningEffort::Medium);
+        assert_eq!(router.active_tier(), Tier::Fast);
+
+        assert_eq!(router.record(StepOutcome::Progress), Tier::Fast);
+        assert_eq!(router.ladder_index(), 0);
+        assert_eq!(router.effort(), ReasoningEffort::Low);
+        assert_eq!(
+            router.counters(),
+            RouterCounters {
+                failures: 0,
+                no_progress: 0,
+                low_actionability: 0
+            }
+        );
     }
 }
