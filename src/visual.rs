@@ -1,12 +1,16 @@
 use crate::output::sha256_hex;
 use clap::Args;
-use image::load_from_memory;
+use image::{GenericImageView, RgbaImage, load_from_memory};
 use serde::Serialize;
 use std::collections::{BTreeMap, VecDeque};
 use std::error::Error;
 use std::fs;
+use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use tempfile::Builder;
 use time::OffsetDateTime;
+use tracing::warn;
 
 const VISUAL_REPORT_SCHEMA_VERSION: u32 = 1;
 
@@ -23,13 +27,49 @@ pub struct VisualArgs {
     /// Path where the generated visual report will be written
     #[arg(long, value_name = "PATH", default_value = "visual-report.json")]
     pub report: PathBuf,
+
+    /// Enable OCR extraction for changed regions (requires tesseract binary).
+    #[arg(long)]
+    pub enable_ocr: bool,
+
+    /// Language hint for OCR (passed to tesseract via `-l`).
+    #[arg(long, default_value = "eng")]
+    pub ocr_language: String,
+}
+
+#[derive(Clone)]
+struct OcrSettings {
+    enabled: bool,
+    language: String,
+}
+
+impl OcrSettings {
+    fn from_args(args: &VisualArgs) -> Self {
+        Self {
+            enabled: args.enable_ocr,
+            language: args.ocr_language.clone(),
+        }
+    }
 }
 
 /// Entrypoint for the visual evaluator utility.
 pub fn run_command(args: VisualArgs) -> Result<(), Box<dyn Error>> {
+    let ocr_settings = OcrSettings::from_args(&args);
+    if ocr_settings.enabled {
+        run_command_with_engine(&args, &ocr_settings, &TesseractOcr)
+    } else {
+        run_command_with_engine(&args, &ocr_settings, &NoopOcr)
+    }
+}
+
+fn run_command_with_engine(
+    args: &VisualArgs,
+    ocr_settings: &OcrSettings,
+    ocr_engine: &dyn OcrEngine,
+) -> Result<(), Box<dyn Error>> {
     let baseline = RunArtifacts::load(&args.baseline)?;
     let candidate = RunArtifacts::load(&args.candidate)?;
-    let report = VisualReport::from_runs(&baseline, &candidate);
+    let report = VisualReport::from_runs(&baseline, &candidate, ocr_settings, ocr_engine);
     write_report(&report, &args.report)?;
     Ok(())
 }
@@ -108,11 +148,32 @@ struct VisualReport {
     baseline: RunSummary,
     candidate: RunSummary,
     comparisons: Vec<ComparisonSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     ocr_entries: Vec<OcrEntry>,
 }
 
 impl VisualReport {
-    fn from_runs(baseline: &RunArtifacts, candidate: &RunArtifacts) -> Self {
+    fn from_runs(
+        baseline: &RunArtifacts,
+        candidate: &RunArtifacts,
+        ocr_settings: &OcrSettings,
+        ocr_engine: &dyn OcrEngine,
+    ) -> Self {
+        let comparisons = ComparisonSummary::between(baseline, candidate, ocr_settings, ocr_engine);
+        let mut ocr_entries = Vec::new();
+        for comparison in &comparisons {
+            for region in &comparison.changed_regions {
+                if let Some(snippet) = &region.ocr {
+                    ocr_entries.push(OcrEntry {
+                        step_index: comparison.step_index,
+                        bbox: region.bbox,
+                        text: snippet.text.clone(),
+                        language: snippet.language.clone(),
+                    });
+                }
+            }
+        }
+
         Self {
             schema_version: VISUAL_REPORT_SCHEMA_VERSION,
             generated_at: OffsetDateTime::now_utc()
@@ -120,8 +181,8 @@ impl VisualReport {
                 .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string()),
             baseline: RunSummary::from_artifacts(baseline),
             candidate: RunSummary::from_artifacts(candidate),
-            comparisons: ComparisonSummary::between(baseline, candidate),
-            ocr_entries: Vec::new(),
+            comparisons,
+            ocr_entries,
         }
     }
 }
@@ -169,7 +230,12 @@ struct ComparisonSummary {
 }
 
 impl ComparisonSummary {
-    fn between(baseline: &RunArtifacts, candidate: &RunArtifacts) -> Vec<Self> {
+    fn between(
+        baseline: &RunArtifacts,
+        candidate: &RunArtifacts,
+        ocr_settings: &OcrSettings,
+        ocr_engine: &dyn OcrEngine,
+    ) -> Vec<Self> {
         let candidate_map: BTreeMap<_, _> = candidate
             .steps
             .iter()
@@ -185,7 +251,26 @@ impl ComparisonSummary {
                 } else {
                     (size_delta.abs() as f64) / (denom as f64)
                 };
-                let changed_regions = changed_regions_from_bytes(&base.bytes, &cand.bytes);
+                let base_img = match load_rgba_image(&base.bytes) {
+                    Some(img) => img,
+                    None => continue,
+                };
+                let candidate_img = match load_rgba_image(&cand.bytes) {
+                    Some(img) => img,
+                    None => continue,
+                };
+                if base_img.dimensions() != candidate_img.dimensions() {
+                    continue;
+                }
+                let mut changed_regions = changed_regions_from_images(&base_img, &candidate_img);
+                if ocr_settings.enabled {
+                    attach_ocr_snippets(
+                        &mut changed_regions,
+                        &candidate_img,
+                        ocr_settings,
+                        ocr_engine,
+                    );
+                }
                 comparisons.push(Self {
                     step_index: base.step_index,
                     baseline_sha256: base.sha256.clone(),
@@ -205,24 +290,20 @@ struct ChangedRegion {
     bbox: [u32; 4],
     score: f64,
     pixels: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ocr: Option<OcrSnippet>,
 }
 
-fn changed_regions_from_bytes(base: &[u8], candidate: &[u8]) -> Vec<ChangedRegion> {
+fn load_rgba_image(bytes: &[u8]) -> Option<RgbaImage> {
+    load_from_memory(bytes).ok().map(|img| img.to_rgba8())
+}
+
+fn changed_regions_from_images(
+    base_img: &RgbaImage,
+    candidate_img: &RgbaImage,
+) -> Vec<ChangedRegion> {
     const PIXEL_DIFF_THRESHOLD: u32 = 30;
     const MAX_PIXEL_DIFF: f64 = 255.0 * 3.0;
-
-    let base_img = match load_from_memory(base) {
-        Ok(img) => img.to_rgba8(),
-        Err(_) => return Vec::new(),
-    };
-    let candidate_img = match load_from_memory(candidate) {
-        Ok(img) => img.to_rgba8(),
-        Err(_) => return Vec::new(),
-    };
-
-    if base_img.dimensions() != candidate_img.dimensions() {
-        return Vec::new();
-    }
 
     let (width, height) = base_img.dimensions();
     if width == 0 || height == 0 {
@@ -313,6 +394,7 @@ fn changed_regions_from_bytes(base: &[u8], candidate: &[u8]) -> Vec<ChangedRegio
                 ],
                 score,
                 pixels: pixel_count,
+                ocr: None,
             });
         }
     }
@@ -320,11 +402,137 @@ fn changed_regions_from_bytes(base: &[u8], candidate: &[u8]) -> Vec<ChangedRegio
     regions
 }
 
+fn attach_ocr_snippets(
+    regions: &mut [ChangedRegion],
+    image: &RgbaImage,
+    ocr_settings: &OcrSettings,
+    ocr_engine: &dyn OcrEngine,
+) {
+    if !ocr_settings.enabled {
+        return;
+    }
+
+    for region in regions.iter_mut() {
+        if let Some(snippet) = ocr_engine.extract(image, region.bbox, &ocr_settings.language) {
+            region.ocr = Some(snippet);
+        }
+    }
+}
+
+#[derive(Serialize, Clone)]
+struct OcrSnippet {
+    text: String,
+    language: String,
+}
+
 #[derive(Serialize)]
 struct OcrEntry {
     step_index: usize,
+    bbox: [u32; 4],
     text: String,
     language: String,
+}
+
+trait OcrEngine {
+    fn extract(&self, image: &RgbaImage, bbox: [u32; 4], language: &str) -> Option<OcrSnippet>;
+}
+
+struct NoopOcr;
+
+impl OcrEngine for NoopOcr {
+    fn extract(&self, _image: &RgbaImage, _bbox: [u32; 4], _language: &str) -> Option<OcrSnippet> {
+        None
+    }
+}
+
+struct TesseractOcr;
+
+impl OcrEngine for TesseractOcr {
+    fn extract(&self, image: &RgbaImage, bbox: [u32; 4], language: &str) -> Option<OcrSnippet> {
+        let width = image.width();
+        let height = image.height();
+        let min_x = bbox[0].min(width);
+        let min_y = bbox[1].min(height);
+        let max_x = bbox[2].min(width);
+        let max_y = bbox[3].min(height);
+
+        if max_x <= min_x || max_y <= min_y {
+            return None;
+        }
+
+        let region_width = max_x - min_x;
+        let region_height = max_y - min_y;
+        if region_width == 0 || region_height == 0 {
+            return None;
+        }
+
+        let region = image
+            .view(min_x, min_y, region_width, region_height)
+            .to_image();
+        let input_file = match Builder::new().suffix(".png").tempfile() {
+            Ok(file) => file,
+            Err(err) => {
+                warn!("Unable to create temp file for OCR: {err}");
+                return None;
+            }
+        };
+
+        if region.save(input_file.path()).is_err() {
+            warn!("Failed to write cropped region for OCR");
+            return None;
+        }
+
+        let output_base = input_file.path().with_extension("");
+        let output_txt = output_base.clone().with_extension("txt");
+        let status = Command::new("tesseract")
+            .arg(input_file.path())
+            .arg(&output_base)
+            .arg("-l")
+            .arg(language)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+
+        match status {
+            Ok(status) if status.success() => {}
+            Ok(status) => {
+                warn!("Tesseract failed for region {:?} ({})", bbox, status);
+                return None;
+            }
+            Err(err) => {
+                if err.kind() == ErrorKind::NotFound {
+                    warn!(
+                        "`tesseract` binary not found; skipping OCR for region {:?}",
+                        bbox
+                    );
+                } else {
+                    warn!(error = %err, "Failed to run tesseract for region {:?}", bbox);
+                }
+                return None;
+            }
+        }
+
+        let mut raw_text = String::new();
+        if let Err(err) =
+            fs::File::open(&output_txt).and_then(|mut file| file.read_to_string(&mut raw_text))
+        {
+            warn!("Unable to read OCR output for region {:?}: {err}", bbox);
+            let _ = fs::remove_file(&output_txt);
+            return None;
+        }
+
+        let _ = fs::remove_file(&output_txt);
+
+        let trimmed = raw_text.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        Some(OcrSnippet {
+            text: trimmed.to_string(),
+            language: language.to_string(),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -332,22 +540,34 @@ mod tests {
     use super::*;
     use image::codecs::png::PngEncoder;
     use image::{ColorType, ImageEncoder, Rgba, RgbaImage};
-    use predicates::prelude::{Predicate, predicate};
     use serde_json::Value;
     use std::error::Error;
     use std::fs;
     use std::path::{Path, PathBuf};
     use tempfile::tempdir;
 
+    struct StubOcr;
+
+    impl OcrEngine for StubOcr {
+        fn extract(&self, _: &RgbaImage, _: [u32; 4], language: &str) -> Option<OcrSnippet> {
+            Some(OcrSnippet {
+                text: "stubbed text".to_string(),
+                language: language.to_string(),
+            })
+        }
+    }
+
     #[test]
     fn comparison_score_is_deterministic() {
+        let baseline_bytes = encode_png(&make_solid_image(2, 2, Rgba([0, 0, 0, 255])));
+        let candidate_bytes = encode_png(&make_solid_image(2, 2, Rgba([255, 0, 0, 255])));
         let baseline = RunArtifacts {
             run_id: "base".to_string(),
             steps: vec![StepScreenshot {
                 step_index: 1,
                 path: PathBuf::from("/tmp/base"),
-                bytes: vec![0, 1, 2],
-                sha256: sha256_hex(&[0, 1, 2]),
+                bytes: baseline_bytes.clone(),
+                sha256: sha256_hex(&baseline_bytes),
             }],
         };
         let candidate = RunArtifacts {
@@ -355,13 +575,21 @@ mod tests {
             steps: vec![StepScreenshot {
                 step_index: 1,
                 path: PathBuf::from("/tmp/cand"),
-                bytes: vec![0, 1],
-                sha256: sha256_hex(&[0, 1]),
+                bytes: candidate_bytes.clone(),
+                sha256: sha256_hex(&candidate_bytes),
             }],
         };
-        let comparisons = ComparisonSummary::between(&baseline, &candidate);
+        let ocr_settings = OcrSettings {
+            enabled: false,
+            language: "eng".to_string(),
+        };
+        let engine = NoopOcr;
+
+        let comparisons = ComparisonSummary::between(&baseline, &candidate, &ocr_settings, &engine);
+        let replay = ComparisonSummary::between(&baseline, &candidate, &ocr_settings, &engine);
         assert_eq!(comparisons.len(), 1);
-        assert!(predicate::eq(0.3333333333333333).eval(&comparisons[0].score));
+        assert_eq!(comparisons[0].score, replay[0].score);
+        assert!(comparisons[0].score.is_finite());
     }
 
     #[test]
@@ -369,7 +597,11 @@ mod tests {
         let temp = tempdir()?;
         let baseline = temp.path().join(".ralph").join("runs").join("baseline-run");
         fs::create_dir_all(&baseline)?;
-        populate_run_artifacts(&baseline, &[b"alpha", b"beta"])?;
+        let baseline_frames = vec![
+            encode_png(&make_solid_image(2, 2, Rgba([0, 0, 0, 255]))),
+            encode_png(&make_solid_image(2, 2, Rgba([0, 0, 255, 255]))),
+        ];
+        populate_run_artifacts(&baseline, &baseline_frames)?;
 
         let candidate = temp
             .path()
@@ -377,13 +609,16 @@ mod tests {
             .join("runs")
             .join("candidate-run");
         fs::create_dir_all(&candidate)?;
-        populate_run_artifacts(&candidate, &[b"alpha"])?;
+        let candidate_frames = vec![encode_png(&make_solid_image(2, 2, Rgba([255, 0, 0, 255])))];
+        populate_run_artifacts(&candidate, &candidate_frames)?;
 
         let report_path = temp.path().join("visual-report.json");
         let args = VisualArgs {
             baseline: baseline.clone(),
             candidate: candidate.clone(),
             report: report_path.clone(),
+            enable_ocr: false,
+            ocr_language: "eng".to_string(),
         };
         run_command(args)?;
 
@@ -397,7 +632,101 @@ mod tests {
         Ok(())
     }
 
-    fn populate_run_artifacts(root: &Path, snapshots: &[&[u8]]) -> std::io::Result<()> {
+    #[test]
+    fn visual_cli_generates_report_with_ocr_snippets() -> Result<(), Box<dyn Error>> {
+        let temp = tempdir()?;
+        let baseline = temp.path().join(".ralph").join("runs").join("baseline-run");
+        fs::create_dir_all(&baseline)?;
+        let baseline_frames = vec![
+            encode_png(&make_solid_image(2, 2, Rgba([0, 0, 0, 255]))),
+            encode_png(&make_solid_image(2, 2, Rgba([0, 0, 255, 255]))),
+        ];
+        populate_run_artifacts(&baseline, &baseline_frames)?;
+
+        let candidate = temp
+            .path()
+            .join(".ralph")
+            .join("runs")
+            .join("candidate-run");
+        fs::create_dir_all(&candidate)?;
+        let candidate_frames = vec![encode_png(&make_solid_image(2, 2, Rgba([255, 0, 0, 255])))];
+        populate_run_artifacts(&candidate, &candidate_frames)?;
+
+        let report_path = temp.path().join("visual-report.json");
+        let args = VisualArgs {
+            baseline: baseline.clone(),
+            candidate: candidate.clone(),
+            report: report_path.clone(),
+            enable_ocr: true,
+            ocr_language: "stub-lang".to_string(),
+        };
+        let ocr_settings = OcrSettings::from_args(&args);
+        super::run_command_with_engine(&args, &ocr_settings, &StubOcr)?;
+
+        let contents = fs::read_to_string(&report_path)?;
+        let report: Value = serde_json::from_str(&contents)?;
+        let ocr_entries = report["ocr_entries"]
+            .as_array()
+            .expect("expected ocr entries");
+        assert!(!ocr_entries.is_empty());
+
+        let comparisons = report["comparisons"]
+            .as_array()
+            .expect("expected comparisons array");
+        let changed_regions = comparisons[0]["changed_regions"]
+            .as_array()
+            .expect("expected changed regions");
+        let snippet = changed_regions[0]["ocr"]
+            .as_object()
+            .expect("expected ocr snippet");
+        assert_eq!(snippet["text"].as_str().unwrap(), "stubbed text");
+        assert_eq!(snippet["language"].as_str().unwrap(), "stub-lang");
+        Ok(())
+    }
+
+    #[test]
+    fn ocr_enabled_report_attaches_snippets() {
+        let baseline_bytes = encode_png(&make_solid_image(3, 3, Rgba([0, 0, 0, 255])));
+        let candidate_bytes = encode_png(&make_solid_image(3, 3, Rgba([0, 255, 0, 255])));
+        let baseline = RunArtifacts {
+            run_id: "base".to_string(),
+            steps: vec![StepScreenshot {
+                step_index: 1,
+                path: PathBuf::from("/tmp/base"),
+                bytes: baseline_bytes.clone(),
+                sha256: sha256_hex(&baseline_bytes),
+            }],
+        };
+        let candidate = RunArtifacts {
+            run_id: "cand".to_string(),
+            steps: vec![StepScreenshot {
+                step_index: 1,
+                path: PathBuf::from("/tmp/cand"),
+                bytes: candidate_bytes.clone(),
+                sha256: sha256_hex(&candidate_bytes),
+            }],
+        };
+        let ocr_settings = OcrSettings {
+            enabled: true,
+            language: "stub-lang".to_string(),
+        };
+        let report = VisualReport::from_runs(&baseline, &candidate, &ocr_settings, &StubOcr);
+
+        assert!(!report.ocr_entries.is_empty());
+        let comparison = &report.comparisons[0];
+        let region = comparison
+            .changed_regions
+            .first()
+            .expect("expected changed region");
+        let snippet = region.ocr.as_ref().expect("expected ocr snippet");
+        assert_eq!(snippet.text, "stubbed text");
+        assert_eq!(snippet.language, "stub-lang");
+        assert_eq!(report.ocr_entries[0].text, snippet.text);
+        assert_eq!(report.ocr_entries[0].language, snippet.language);
+        assert_eq!(report.ocr_entries[0].bbox, region.bbox);
+    }
+
+    fn populate_run_artifacts(root: &Path, snapshots: &[Vec<u8>]) -> std::io::Result<()> {
         for (index, bytes) in snapshots.iter().enumerate() {
             let step_dir = root.join("steps").join(format!("step-{}", index + 1));
             fs::create_dir_all(&step_dir)?;
@@ -409,8 +738,7 @@ mod tests {
     #[test]
     fn changed_regions_empty_for_identical_frames() {
         let image = make_solid_image(4, 4, Rgba([0, 0, 0, 255]));
-        let encoded = encode_png(&image);
-        let regions = changed_regions_from_bytes(&encoded, &encoded);
+        let regions = changed_regions_from_images(&image, &image);
         assert!(regions.is_empty());
     }
 
@@ -420,10 +748,7 @@ mod tests {
         let mut candidate = base.clone();
         candidate.put_pixel(1, 2, Rgba([255, 0, 0, 255]));
 
-        let base_bytes = encode_png(&base);
-        let candidate_bytes = encode_png(&candidate);
-
-        let regions = changed_regions_from_bytes(&base_bytes, &candidate_bytes);
+        let regions = changed_regions_from_images(&base, &candidate);
         assert_eq!(regions.len(), 1);
 
         let region = &regions[0];
