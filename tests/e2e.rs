@@ -18,6 +18,8 @@ use tokio::time::{Duration, sleep};
 
 const HARNESS_PAGE_PATH: &str = "harness/pages/actions.html";
 const HARNESS_LOOP_PAGE_PATH: &str = "harness/pages/loop.html";
+type TransitionTuple = (String, Option<u32>, Option<String>, usize);
+type TransitionsByStep = Vec<Vec<TransitionTuple>>;
 
 struct TestServer {
     addr: SocketAddr,
@@ -298,6 +300,73 @@ impl LlmClient for RepeatWaitLlm {
     }
 }
 
+#[derive(Clone, Debug)]
+struct BreakLoopLlm {
+    step: Arc<Mutex<usize>>,
+    navigate_url: String,
+}
+
+impl BreakLoopLlm {
+    fn new(navigate_url: String) -> Self {
+        Self {
+            step: Arc::new(Mutex::new(0)),
+            navigate_url,
+        }
+    }
+}
+
+#[async_trait]
+impl LlmClient for BreakLoopLlm {
+    async fn propose_action(&self, _context: &LlmContext<'_>) -> Result<LlmResponse, LlmError> {
+        let mut guard = self.step.lock().await;
+        let action = match *guard {
+            0 => Action::Wait { ms: 15 },
+            1 => Action::Wait { ms: 25 },
+            2 => Action::Navigate {
+                url: self.navigate_url.clone(),
+            },
+            _ => Action::Done {
+                summary: "done".to_string(),
+            },
+        };
+        *guard += 1;
+        Ok(LlmResponse {
+            action,
+            usage: None,
+            payload_mode: LlmPayloadMode::TextOnly,
+        })
+    }
+}
+
+fn test_router_with_ladder() -> Router {
+    let mut router_config = RouterConfig::default();
+    router_config.failures_to_mid = 10;
+    router_config.failures_to_strong = 20;
+    router_config.no_progress_to_mid = 10;
+    router_config.no_progress_to_strong = 20;
+    router_config.low_actionability_to_mid = 10;
+    router_config.low_actionability_to_strong = 20;
+    router_config.reasoning_effort = ReasoningEffort::Low;
+    router_config.ladder = vec![
+        RouterLadderStep {
+            model: "fast".to_string(),
+            tier: Tier::Fast,
+            effort: ReasoningEffort::Low,
+        },
+        RouterLadderStep {
+            model: "mid".to_string(),
+            tier: Tier::Mid,
+            effort: ReasoningEffort::Medium,
+        },
+        RouterLadderStep {
+            model: "strong".to_string(),
+            tier: Tier::Strong,
+            effort: ReasoningEffort::High,
+        },
+    ];
+    Router::new(router_config)
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn e2e_click_updates_status_via_agent_loop() {
     let server = TestServer::start().await;
@@ -372,11 +441,14 @@ async fn e2e_unchanged_state_hash_loop_records_streaks() {
     let browser = CdpBrowser::launch(config).await.expect("launch browser");
     let llm = WaitLoopLlm::new();
     let clients = LlmClients::new(Box::new(llm.clone()), Box::new(llm.clone()), Box::new(llm));
-    let mut agent = AgentLoop::new(browser, clients, "no-progress test").with_policy(AgentPolicy {
-        max_steps: 5,
-        max_no_progress_steps: 3,
-        ..AgentPolicy::default()
-    });
+    let router = test_router_with_ladder();
+    let mut agent = AgentLoop::new(browser, clients, "no-progress test")
+        .with_router(router)
+        .with_policy(AgentPolicy {
+            max_steps: 5,
+            max_no_progress_steps: 3,
+            ..AgentPolicy::default()
+        });
 
     let result = agent.run().await.expect("run");
     assert_eq!(result.status, RunStatus::NoProgress);
@@ -416,6 +488,40 @@ async fn e2e_unchanged_state_hash_loop_records_streaks() {
         .collect();
     assert_eq!(no_progress, vec![1, 2, 3]);
 
+    let transitions_by_step: TransitionsByStep = result
+        .steps
+        .iter()
+        .map(|step| {
+            step.router
+                .as_ref()
+                .expect("router info")
+                .transitions
+                .iter()
+                .map(|transition| {
+                    (
+                        transition.reason_code.clone(),
+                        transition.streak,
+                        transition.validation_code.clone(),
+                        transition.ladder_index,
+                    )
+                })
+                .collect()
+        })
+        .collect();
+    let expected_transitions = vec![
+        vec![("unchanged_state".to_string(), Some(1), None, 1)],
+        vec![("unchanged_state".to_string(), Some(2), None, 2)],
+        Vec::new(),
+    ];
+    assert_eq!(transitions_by_step, expected_transitions);
+
+    let ladder_indexes: Vec<usize> = result
+        .steps
+        .iter()
+        .map(|step| step.router.as_ref().expect("router info").ladder_index)
+        .collect();
+    assert_eq!(ladder_indexes, vec![1, 2, 2]);
+
     agent.shutdown().await.expect("shutdown browser");
     server.shutdown().await;
 }
@@ -431,32 +537,7 @@ async fn e2e_repeat_validation_code_escalates_ladder() {
     let browser = CdpBrowser::launch(config).await.expect("launch browser");
     let llm = RepeatWaitLlm::new(25);
     let clients = LlmClients::new(Box::new(llm.clone()), Box::new(llm.clone()), Box::new(llm));
-    let mut router_config = RouterConfig::default();
-    router_config.failures_to_mid = 10;
-    router_config.failures_to_strong = 20;
-    router_config.no_progress_to_mid = 10;
-    router_config.no_progress_to_strong = 20;
-    router_config.low_actionability_to_mid = 10;
-    router_config.low_actionability_to_strong = 20;
-    router_config.reasoning_effort = ReasoningEffort::Low;
-    router_config.ladder = vec![
-        RouterLadderStep {
-            model: "fast".to_string(),
-            tier: Tier::Fast,
-            effort: ReasoningEffort::Low,
-        },
-        RouterLadderStep {
-            model: "mid".to_string(),
-            tier: Tier::Mid,
-            effort: ReasoningEffort::Medium,
-        },
-        RouterLadderStep {
-            model: "strong".to_string(),
-            tier: Tier::Strong,
-            effort: ReasoningEffort::High,
-        },
-    ];
-    let router = Router::new(router_config);
+    let router = test_router_with_ladder();
     let mut agent = AgentLoop::new(browser, clients, "repeat-validation test")
         .with_router(router)
         .with_policy(AgentPolicy {
@@ -493,6 +574,39 @@ async fn e2e_repeat_validation_code_escalates_ladder() {
         );
     }
 
+    let transitions_by_step: TransitionsByStep = result
+        .steps
+        .iter()
+        .map(|step| {
+            step.router
+                .as_ref()
+                .expect("router info")
+                .transitions
+                .iter()
+                .map(|transition| {
+                    (
+                        transition.reason_code.clone(),
+                        transition.streak,
+                        transition.validation_code.clone(),
+                        transition.ladder_index,
+                    )
+                })
+                .collect()
+        })
+        .collect();
+    let expected_transitions = vec![
+        vec![("unchanged_state".to_string(), Some(1), None, 1)],
+        Vec::new(),
+        vec![(
+            "repeat_validation_code".to_string(),
+            Some(2),
+            Some("repeat_no_progress_action".to_string()),
+            2,
+        )],
+        Vec::new(),
+    ];
+    assert_eq!(transitions_by_step, expected_transitions);
+
     let transition_step = result
         .steps
         .iter()
@@ -520,6 +634,72 @@ async fn e2e_repeat_validation_code_escalates_ladder() {
         Some("repeat_no_progress_action")
     );
     assert_eq!(transition.streak, Some(2));
+
+    agent.shutdown().await.expect("shutdown browser");
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn e2e_loop_break_resets_escalation_state() {
+    let server = TestServer::start().await;
+    let url = server.url("/loop");
+    let config = CdpConfig {
+        initial_url: url,
+        ..CdpConfig::default()
+    };
+    let browser = CdpBrowser::launch(config).await.expect("launch browser");
+    let llm = BreakLoopLlm::new(server.url("/harness"));
+    let clients = LlmClients::new(Box::new(llm.clone()), Box::new(llm.clone()), Box::new(llm));
+    let router = test_router_with_ladder();
+    let mut agent = AgentLoop::new(browser, clients, "break-loop test")
+        .with_router(router)
+        .with_policy(AgentPolicy {
+            max_steps: 4,
+            max_no_progress_steps: 5,
+            ..AgentPolicy::default()
+        });
+
+    let result = agent.run().await.expect("run");
+    assert_eq!(result.status, RunStatus::Done);
+    assert_eq!(result.steps.len(), 4);
+
+    let transitions_by_step: TransitionsByStep = result
+        .steps
+        .iter()
+        .map(|step| {
+            step.router
+                .as_ref()
+                .expect("router info")
+                .transitions
+                .iter()
+                .map(|transition| {
+                    (
+                        transition.reason_code.clone(),
+                        transition.streak,
+                        transition.validation_code.clone(),
+                        transition.ladder_index,
+                    )
+                })
+                .collect()
+        })
+        .collect();
+    let expected_transitions = vec![
+        vec![("unchanged_state".to_string(), Some(1), None, 1)],
+        vec![("unchanged_state".to_string(), Some(2), None, 2)],
+        Vec::new(),
+        Vec::new(),
+    ];
+    assert_eq!(transitions_by_step, expected_transitions);
+
+    assert!(matches!(result.steps[2].action, Action::Navigate { .. }));
+    assert!(matches!(
+        result.steps[2].outcome,
+        mbus::agent::memory::StepOutcomeLog::Progress
+    ));
+    let step_router = result.steps[2].router.as_ref().expect("router info");
+    assert_eq!(step_router.ladder_index, 0);
+    assert_eq!(step_router.counters.no_progress, 0);
+    assert_eq!(step_router.triggers.state_hash_streak, 0);
 
     agent.shutdown().await.expect("shutdown browser");
     server.shutdown().await;
