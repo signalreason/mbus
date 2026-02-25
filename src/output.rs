@@ -9,6 +9,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 pub const EXTRACT_OUTPUT_SCHEMA_VERSION: u32 = 1;
+pub const TRANSITION_TRACE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ExtractOutput {
@@ -26,6 +27,32 @@ pub struct ExtractRecord {
     pub query: String,
     pub id: Option<String>,
     pub value: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct TransitionTraceSnippet {
+    pub schema_version: u32,
+    pub run_id: String,
+    pub task_id: String,
+    pub task: String,
+    pub timestamp: String,
+    pub entries: Vec<TransitionTraceEntry>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct TransitionTraceEntry {
+    pub step_index: usize,
+    pub reason_code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub streak: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub counter_tier: Option<String>,
+    pub model: String,
+    pub effort: ReasoningEffort,
+    pub tier: String,
+    pub ladder_index: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -58,6 +85,9 @@ pub struct OutputArtifact {
 pub const SCREENSHOT_ARTIFACT_KIND: &str = "screenshot";
 pub const SCREENSHOT_FILENAME: &str = "screenshot.png";
 pub const SCREENSHOT_MIME_TYPE: &str = OBS_SCREENSHOT_MIME_TYPE;
+pub const TRANSITION_TRACE_ARTIFACT_KIND: &str = "transition_trace";
+pub const TRANSITION_TRACE_FILENAME: &str = "transition-trace.json";
+pub const TRANSITION_TRACE_MIME_TYPE: &str = "application/json";
 const SCREENSHOT_ARTIFACT_ROOT: &str = ".ralph/runs";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -147,6 +177,12 @@ pub fn screenshot_artifact_path(run_id: &str, step_index: usize) -> PathBuf {
         .join(SCREENSHOT_FILENAME)
 }
 
+pub fn transition_trace_artifact_path(run_id: &str) -> PathBuf {
+    PathBuf::from(SCREENSHOT_ARTIFACT_ROOT)
+        .join(run_id)
+        .join(TRANSITION_TRACE_FILENAME)
+}
+
 pub fn write_screenshot_artifact(
     run_id: &str,
     step_index: usize,
@@ -225,6 +261,52 @@ pub fn build_extract_output(
     }
 }
 
+pub fn build_transition_trace(
+    task: impl Into<String>,
+    task_id: impl Into<String>,
+    timestamp: impl Into<String>,
+    steps: &[StepRecord],
+) -> Option<TransitionTraceSnippet> {
+    let task = task.into();
+    let task_id = task_id.into();
+    let timestamp = timestamp.into();
+    let mut entries = Vec::new();
+    for (index, step) in steps.iter().enumerate() {
+        let Some(router) = step.router.as_ref() else {
+            continue;
+        };
+        if router.transitions.is_empty() {
+            continue;
+        }
+        for transition in &router.transitions {
+            entries.push(TransitionTraceEntry {
+                step_index: index + 1,
+                reason_code: transition.reason_code.clone(),
+                validation_code: transition.validation_code.clone(),
+                streak: transition.streak,
+                counter_tier: transition.counter_tier.clone(),
+                model: transition.model.clone(),
+                effort: transition.effort,
+                tier: transition.tier.clone(),
+                ladder_index: transition.ladder_index,
+            });
+        }
+    }
+
+    if entries.is_empty() {
+        None
+    } else {
+        Some(TransitionTraceSnippet {
+            schema_version: TRANSITION_TRACE_SCHEMA_VERSION,
+            run_id: run_id_for(&task_id, &timestamp),
+            task_id,
+            task,
+            timestamp,
+            entries,
+        })
+    }
+}
+
 pub fn write_extract_output(path: &Path, output: &ExtractOutput) -> io::Result<()> {
     if let Some(parent) = path
         .parent()
@@ -250,6 +332,44 @@ pub fn write_extract_output(path: &Path, output: &ExtractOutput) -> io::Result<(
     file.write_all(&data)?;
     file.write_all(b"\n")?;
     Ok(())
+}
+
+pub fn write_transition_trace(path: &Path, trace: &TransitionTraceSnippet) -> io::Result<()> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)?;
+    }
+    let data = serde_json::to_vec(trace).map_err(io::Error::other)?;
+    std::fs::write(path, data)?;
+    Ok(())
+}
+
+pub fn write_transition_trace_artifact(
+    run_id: &str,
+    trace: &TransitionTraceSnippet,
+) -> io::Result<OutputArtifact> {
+    let path = transition_trace_artifact_path(run_id);
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)?;
+    }
+    let data = serde_json::to_vec(trace).map_err(io::Error::other)?;
+    std::fs::write(&path, &data)?;
+    let digest = sha256_hex(&data);
+    Ok(OutputArtifact {
+        kind: TRANSITION_TRACE_ARTIFACT_KIND.to_string(),
+        path: path.display().to_string(),
+        record_count: Some(trace.entries.len()),
+        step_index: None,
+        artifact_ref: None,
+        mime_type: Some(TRANSITION_TRACE_MIME_TYPE.to_string()),
+        sha256: Some(digest),
+        bytes: Some(data.len()),
+    })
 }
 
 #[derive(Default)]

@@ -4,11 +4,13 @@ use mbus::agent::policy::AgentPolicy;
 use mbus::browser::{Browser, CdpBrowser, CdpConfig};
 use mbus::llm::client::{LlmClient, LlmContext, LlmError, LlmResponse};
 use mbus::llm::router::{Router, RouterConfig, RouterLadderStep, Tier};
+use mbus::output::{TransitionTraceSnippet, build_transition_trace, write_transition_trace};
 use mbus::types::{Action, ElementRef, LlmPayloadMode, Observation, ReasoningEffort};
 use mbus::verify::{Validator, ValidatorConfig};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
@@ -20,6 +22,7 @@ const HARNESS_PAGE_PATH: &str = "harness/pages/actions.html";
 const HARNESS_LOOP_PAGE_PATH: &str = "harness/pages/loop.html";
 type TransitionTuple = (String, Option<u32>, Option<String>, usize);
 type TransitionsByStep = Vec<Vec<TransitionTuple>>;
+type TraceTuple = (usize, String, Option<u32>, Option<String>, usize);
 
 struct TestServer {
     addr: SocketAddr,
@@ -119,6 +122,48 @@ fn load_harness_page() -> String {
 
 fn load_harness_loop_page() -> String {
     std::fs::read_to_string(HARNESS_LOOP_PAGE_PATH).expect("read harness loop page")
+}
+
+fn unique_trace_path(label: &str) -> std::path::PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    let pid = std::process::id();
+    std::env::temp_dir().join(format!("mbus-trace-{label}-{pid}-{nanos}.json"))
+}
+
+fn persist_transition_trace(
+    task: &str,
+    steps: &[mbus::agent::memory::StepRecord],
+    label: &str,
+) -> TransitionTraceSnippet {
+    let task_id = mbus::output::task_id_for(task);
+    let timestamp = "2026-02-25T00:00:00Z";
+    let trace = build_transition_trace(task, &task_id, timestamp, steps).expect("transition trace");
+    let path = unique_trace_path(label);
+    write_transition_trace(&path, &trace).expect("write transition trace");
+    let data = std::fs::read(&path).expect("read transition trace");
+    let parsed: TransitionTraceSnippet =
+        serde_json::from_slice(&data).expect("parse transition trace");
+    assert_eq!(parsed.entries, trace.entries);
+    parsed
+}
+
+fn trace_tuples(trace: &TransitionTraceSnippet) -> Vec<TraceTuple> {
+    trace
+        .entries
+        .iter()
+        .map(|entry| {
+            (
+                entry.step_index,
+                entry.reason_code.clone(),
+                entry.streak,
+                entry.validation_code.clone(),
+                entry.ladder_index,
+            )
+        })
+        .collect()
 }
 
 fn route_request(method: &str, path: &str) -> (&'static str, String, &'static str) {
@@ -522,6 +567,14 @@ async fn e2e_unchanged_state_hash_loop_records_streaks() {
         .collect();
     assert_eq!(ladder_indexes, vec![1, 2, 2]);
 
+    let trace = persist_transition_trace("no-progress test", &result.steps, "unchanged-state");
+    let trace_entries = trace_tuples(&trace);
+    let expected_trace = vec![
+        (1, "unchanged_state".to_string(), Some(1), None, 1),
+        (2, "unchanged_state".to_string(), Some(2), None, 2),
+    ];
+    assert_eq!(trace_entries, expected_trace);
+
     agent.shutdown().await.expect("shutdown browser");
     server.shutdown().await;
 }
@@ -634,6 +687,21 @@ async fn e2e_repeat_validation_code_escalates_ladder() {
         Some("repeat_no_progress_action")
     );
     assert_eq!(transition.streak, Some(2));
+
+    let trace =
+        persist_transition_trace("repeat-validation test", &result.steps, "repeat-validation");
+    let trace_entries = trace_tuples(&trace);
+    let expected_trace = vec![
+        (1, "unchanged_state".to_string(), Some(1), None, 1),
+        (
+            3,
+            "repeat_validation_code".to_string(),
+            Some(2),
+            Some("repeat_no_progress_action".to_string()),
+            2,
+        ),
+    ];
+    assert_eq!(trace_entries, expected_trace);
 
     agent.shutdown().await.expect("shutdown browser");
     server.shutdown().await;

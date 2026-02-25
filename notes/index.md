@@ -127,3 +127,4 @@
 - 2026-02-24 REG-001 unchanged-state loop fixture: `notes/2026-02-24-reg-001-unchanged-loop-fixture.md`
 - 2026-02-24 REG-002 repeated validation escalation fixture: `notes/2026-02-24-reg-002-repeat-validation-fixture.md`
 - 2026-02-25 REG-003 escalation-before-failure regression assertions: `notes/2026-02-25-reg-003-escalation-before-failure.md`
+- 2026-02-25 REG-004 transition trace snippets: `notes/2026-02-25-reg-004-transition-trace-snippets.md`

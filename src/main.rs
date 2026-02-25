@@ -270,6 +270,21 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
         }
     }
 
+    match write_transition_trace(&run_id, &task, &steps, &task_id, &run_timestamp) {
+        Ok(Some(artifact)) => output_artifacts.push(artifact),
+        Ok(None) => {}
+        Err(err) => {
+            errors.push(run_error_summary(
+                "output_error",
+                err.to_string(),
+                Some("output"),
+            ));
+            if return_error.is_none() {
+                return_error = Some(err);
+            }
+        }
+    }
+
     let screenshot_result =
         write_screenshot_artifacts(&config, &run_id, &terminal_state, &step_screenshots);
     output_artifacts.extend(screenshot_result.artifacts);
@@ -902,6 +917,21 @@ fn write_extract_output(
         }));
     }
     Ok(None)
+}
+
+fn write_transition_trace(
+    run_id: &str,
+    task: &str,
+    steps: &[mbus::agent::memory::StepRecord],
+    task_id: &str,
+    run_timestamp: &str,
+) -> Result<Option<mbus::output::OutputArtifact>, Box<dyn Error>> {
+    let Some(trace) = mbus::output::build_transition_trace(task, task_id, run_timestamp, steps)
+    else {
+        return Ok(None);
+    };
+    let artifact = mbus::output::write_transition_trace_artifact(run_id, &trace)?;
+    Ok(Some(artifact))
 }
 
 fn write_screenshot_artifacts(
