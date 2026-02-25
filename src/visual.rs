@@ -1,7 +1,8 @@
 use crate::output::sha256_hex;
 use clap::Args;
+use image::load_from_memory;
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -164,6 +165,7 @@ struct ComparisonSummary {
     candidate_sha256: String,
     size_delta: i64,
     score: f64,
+    changed_regions: Vec<ChangedRegion>,
 }
 
 impl ComparisonSummary {
@@ -183,17 +185,139 @@ impl ComparisonSummary {
                 } else {
                     (size_delta.abs() as f64) / (denom as f64)
                 };
+                let changed_regions = changed_regions_from_bytes(&base.bytes, &cand.bytes);
                 comparisons.push(Self {
                     step_index: base.step_index,
                     baseline_sha256: base.sha256.clone(),
                     candidate_sha256: cand.sha256.clone(),
                     size_delta,
                     score,
+                    changed_regions,
                 });
             }
         }
         comparisons
     }
+}
+
+#[derive(Serialize)]
+struct ChangedRegion {
+    bbox: [u32; 4],
+    score: f64,
+    pixels: usize,
+}
+
+fn changed_regions_from_bytes(base: &[u8], candidate: &[u8]) -> Vec<ChangedRegion> {
+    const PIXEL_DIFF_THRESHOLD: u32 = 30;
+    const MAX_PIXEL_DIFF: f64 = 255.0 * 3.0;
+
+    let base_img = match load_from_memory(base) {
+        Ok(img) => img.to_rgba8(),
+        Err(_) => return Vec::new(),
+    };
+    let candidate_img = match load_from_memory(candidate) {
+        Ok(img) => img.to_rgba8(),
+        Err(_) => return Vec::new(),
+    };
+
+    if base_img.dimensions() != candidate_img.dimensions() {
+        return Vec::new();
+    }
+
+    let (width, height) = base_img.dimensions();
+    if width == 0 || height == 0 {
+        return Vec::new();
+    }
+
+    let width_usize = width as usize;
+    let height_usize = height as usize;
+    let mut diff_map = Vec::with_capacity(width_usize * height_usize);
+
+    for y in 0..height {
+        for x in 0..width {
+            let before = base_img.get_pixel(x, y).0;
+            let after = candidate_img.get_pixel(x, y).0;
+            let pixel_diff: u32 = before[..3]
+                .iter()
+                .zip(after[..3].iter())
+                .map(|(b, a)| (*b as i16 - *a as i16).unsigned_abs() as u32)
+                .sum();
+            diff_map.push(pixel_diff);
+        }
+    }
+
+    let mut visited = vec![false; diff_map.len()];
+    let mut regions = Vec::new();
+
+    for y in 0..height_usize {
+        for x in 0..width_usize {
+            let idx = y * width_usize + x;
+            if visited[idx] || diff_map[idx] < PIXEL_DIFF_THRESHOLD {
+                continue;
+            }
+
+            let mut queue = VecDeque::new();
+            visited[idx] = true;
+            queue.push_back(idx);
+
+            let mut min_x = x;
+            let mut min_y = y;
+            let mut max_x = x;
+            let mut max_y = y;
+            let mut sum_diff = 0u64;
+            let mut pixel_count = 0usize;
+
+            while let Some(current) = queue.pop_front() {
+                let cy = current / width_usize;
+                let cx = current % width_usize;
+                min_x = min_x.min(cx);
+                min_y = min_y.min(cy);
+                max_x = max_x.max(cx);
+                max_y = max_y.max(cy);
+                sum_diff += diff_map[current] as u64;
+                pixel_count += 1;
+
+                for (dx, dy) in &[(0isize, 1), (1, 0), (0, -1), (-1, 0)] {
+                    let nx = cx as isize + dx;
+                    let ny = cy as isize + dy;
+                    if nx < 0 || ny < 0 {
+                        continue;
+                    }
+                    let nx = nx as usize;
+                    let ny = ny as usize;
+                    if nx >= width_usize || ny >= height_usize {
+                        continue;
+                    }
+                    let neighbor = ny * width_usize + nx;
+                    if visited[neighbor] || diff_map[neighbor] < PIXEL_DIFF_THRESHOLD {
+                        continue;
+                    }
+                    visited[neighbor] = true;
+                    queue.push_back(neighbor);
+                }
+            }
+
+            let score = if pixel_count == 0 {
+                0.0
+            } else {
+                let max_total = (pixel_count as f64) * MAX_PIXEL_DIFF;
+                (sum_diff as f64 / max_total).clamp(0.0, 1.0)
+            };
+
+            regions.push(ChangedRegion {
+                bbox: [
+                    min_x as u32,
+                    min_y as u32,
+                    (max_x + 1) as u32,
+                    (max_y + 1) as u32,
+                ],
+                score,
+                pixels: pixel_count,
+            });
+        }
+    }
+
+    regions
 }
 
 #[derive(Serialize)]
@@ -206,10 +330,10 @@ struct OcrEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_cmd::Command;
-    use predicates::prelude::{predicate, Predicate};
+    use image::codecs::png::PngEncoder;
+    use image::{ColorType, ImageEncoder, Rgba, RgbaImage};
+    use predicates::prelude::{Predicate, predicate};
     use serde_json::Value;
-    use std::env;
     use std::error::Error;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -256,17 +380,12 @@ mod tests {
         populate_run_artifacts(&candidate, &[b"alpha"])?;
 
         let report_path = temp.path().join("visual-report.json");
-        let exe = env::var("CARGO_BIN_EXE_mbus").unwrap_or_else(|_| "mbus".to_string());
-        Command::new(exe)
-            .arg("visual")
-            .arg("--baseline")
-            .arg(&baseline)
-            .arg("--candidate")
-            .arg(&candidate)
-            .arg("--report")
-            .arg(&report_path)
-            .assert()
-            .success();
+        let args = VisualArgs {
+            baseline: baseline.clone(),
+            candidate: candidate.clone(),
+            report: report_path.clone(),
+        };
+        run_command(args)?;
 
         let contents = fs::read_to_string(&report_path)?;
         let report: Value = serde_json::from_str(&contents)?;
@@ -285,5 +404,49 @@ mod tests {
             fs::write(step_dir.join("screenshot.png"), bytes)?;
         }
         Ok(())
+    }
+
+    #[test]
+    fn changed_regions_empty_for_identical_frames() {
+        let image = make_solid_image(4, 4, Rgba([0, 0, 0, 255]));
+        let encoded = encode_png(&image);
+        let regions = changed_regions_from_bytes(&encoded, &encoded);
+        assert!(regions.is_empty());
+    }
+
+    #[test]
+    fn changed_regions_reports_pixel_bbox() {
+        let base = make_solid_image(4, 4, Rgba([0, 0, 0, 255]));
+        let mut candidate = base.clone();
+        candidate.put_pixel(1, 2, Rgba([255, 0, 0, 255]));
+
+        let base_bytes = encode_png(&base);
+        let candidate_bytes = encode_png(&candidate);
+
+        let regions = changed_regions_from_bytes(&base_bytes, &candidate_bytes);
+        assert_eq!(regions.len(), 1);
+
+        let region = &regions[0];
+        assert_eq!(region.bbox, [1, 2, 2, 3]);
+        assert_eq!(region.pixels, 1);
+        assert!(region.score > 0.0);
+    }
+
+    fn make_solid_image(width: u32, height: u32, color: Rgba<u8>) -> RgbaImage {
+        RgbaImage::from_pixel(width, height, color)
+    }
+
+    fn encode_png(image: &RgbaImage) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let encoder = PngEncoder::new(&mut bytes);
+        encoder
+            .write_image(
+                image.as_raw(),
+                image.width(),
+                image.height(),
+                ColorType::Rgba8.into(),
+            )
+            .expect("failed to encode png");
+        bytes
     }
 }
