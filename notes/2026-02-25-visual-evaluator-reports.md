@@ -1,0 +1,5 @@
+# 2026-02-25 Visual evaluator reports
+
+- **Harness artifacts.** Compared `.ralph/runs/task_72311d0e050c4a42_2026-02-23T22:16:46.26155Z` (baseline) against `.ralph/runs/task_72311d0e050c4a42_2026-02-24T22:04:30.396938Z` (candidate) via `cargo run --bin mbus -- visual ... --report target/visual-harness-report.json`. Both runs share the same screenshot (2727 bytes), so the comparison score is 0.0 and there were no changed regions; the report captures the `generated_at` timestamp plus the run IDs that encode each run’s timestamp.
+- **Dynamic recording.** Compared `.ralph/runs/task_72311d0e050c4a42_2026-02-24T22:04:30.396938Z` (baseline) with `.ralph/runs/task_72311d0e050c4a42_2026-02-24T22:04:45.268392Z` (candidate) and wrote `target/visual-dynamic-report.json`. Again the single-step screenshot bytes are 2727 for each run and the comparison score is zero.
+- **Quality gate.** Verified `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test` all complete successfully.

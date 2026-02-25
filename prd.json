@@ -467,10 +467,16 @@
         "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
       ],
       "model": "gpt-5.1-codex-mini",
+      "observability": {
+        "last_note": "Run 20260225T005424Z-26328 completed",
+        "last_run_id": "20260225T005424Z-26328",
+        "last_update_utc": "2026-02-25T00:59:37Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Use one controlled harness sample plus one previously captured dynamic run to keep the spike reproducible."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "M4-SPIKE-004",
       "title": "Optional spike: run evaluator on harness and one dynamic recording"
     }
