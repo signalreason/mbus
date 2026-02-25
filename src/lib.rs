@@ -8,6 +8,7 @@ pub mod output;
 pub mod telemetry;
 pub mod types;
 pub mod verify;
+pub mod visual;
 
 #[cfg(test)]
 mod tests {

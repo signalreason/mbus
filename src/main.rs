@@ -18,6 +18,7 @@ use mbus::llm::scripted::{ScriptedLlm, StubLlm};
 use mbus::telemetry;
 use mbus::types::ReasoningEffort;
 use mbus::verify::rules::Validator;
+use mbus::visual::{self, VisualArgs};
 use serde::Serialize;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -37,6 +38,7 @@ struct Cli {
 enum Commands {
     Run(RunArgs),
     Bench(BenchArgs),
+    Visual(VisualArgs),
 }
 
 #[derive(Args, Debug)]
@@ -183,6 +185,7 @@ async fn run_cli() -> Result<(), Box<dyn Error>> {
     match cli.command {
         Commands::Run(args) => run_command(args).await,
         Commands::Bench(args) => bench_command(args).await,
+        Commands::Visual(args) => visual::run_command(args),
     }
 }
 
