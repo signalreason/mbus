@@ -1,5 +1,6 @@
 # Notes Index
 
+- 2026-03-17 PKG-001 challenge package bundles: `notes/2026-03-17-pkg-001-challenge-package-bundles.md`
 - 2026-03-16 CHALLENGE-001 obstacle suite: `notes/2026-03-16-challenge-001-obstacle-suite.md`
 - 2026-02-25 Visual evaluator reports: `notes/2026-02-25-visual-evaluator-reports.md`
 - 2026-02-05 PRD decisions: `notes/2026-02-05-prd.md`

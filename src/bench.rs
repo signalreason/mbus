@@ -51,7 +51,7 @@ fn default_done_status() -> BenchExpectedStatus {
     BenchExpectedStatus::Done
 }
 
-#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum BenchObservedStatus {
     Done,
@@ -60,7 +60,7 @@ pub enum BenchObservedStatus {
     Error,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BenchTaskResult {
     pub task_id: String,
     pub passed: bool,
@@ -78,7 +78,7 @@ pub struct BenchTaskResult {
     pub final_visible_text: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BenchTokenUsage {
     pub prompt_tokens: Option<u64>,
     pub completion_tokens: Option<u64>,
@@ -87,7 +87,7 @@ pub struct BenchTokenUsage {
     pub error: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct BenchPricing {
     pub input_cost_per_million: f64,
     pub output_cost_per_million: f64,
@@ -108,7 +108,7 @@ impl BenchPricing {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BenchCostSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pricing: Option<BenchPricing>,
@@ -119,7 +119,7 @@ pub struct BenchCostSummary {
     pub error: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BenchSummary {
     pub total_tasks: usize,
     pub passed_tasks: usize,
@@ -132,7 +132,7 @@ pub struct BenchSummary {
     pub gate_passed: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BenchGate {
     pub total_tasks: usize,
     pub passed_tasks: usize,
@@ -142,7 +142,7 @@ pub struct BenchGate {
     pub reason: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BenchLlmInfo {
     pub mode: String,
     pub model_fast: String,
@@ -150,7 +150,7 @@ pub struct BenchLlmInfo {
     pub model_strong: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BenchReport {
     pub schema_version: u32,
     pub timestamp: String,

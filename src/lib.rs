@@ -6,6 +6,7 @@ pub mod config;
 pub mod limits;
 pub mod llm;
 pub mod output;
+pub mod package;
 pub mod telemetry;
 pub mod types;
 pub mod verify;

@@ -21,6 +21,11 @@ use mbus::config::{CliOverrides, ConfigError, LlmConfig, LlmMode, ScreenshotPers
 use mbus::llm::openai::{OpenAiClient, OpenAiConfig};
 use mbus::llm::router::Router;
 use mbus::llm::scripted::{ScriptedLlm, StubLlm};
+use mbus::package::{
+    PACKAGED_MANIFEST_FILENAME, PACKAGED_README_FILENAME, PACKAGED_REPORT_FILENAME, PackageOptions,
+    default_output_dir as package_output_dir_default, default_zip_path as package_zip_path_default,
+    package_challenge_report,
+};
 use mbus::telemetry;
 use mbus::types::ReasoningEffort;
 use mbus::verify::rules::Validator;
@@ -45,6 +50,7 @@ enum Commands {
     Run(RunArgs),
     Bench(BenchArgs),
     Challenge(ChallengeArgs),
+    Package(PackageArgs),
     Visual(VisualArgs),
 }
 
@@ -216,6 +222,18 @@ struct ChallengeArgs {
     llm_output_cost_per_million: Option<f64>,
 }
 
+#[derive(Args, Debug)]
+struct PackageArgs {
+    #[arg(long)]
+    report_path: PathBuf,
+    #[arg(long)]
+    output_dir: Option<PathBuf>,
+    #[arg(long)]
+    zip_path: Option<PathBuf>,
+    #[arg(long, default_value_t = false)]
+    overwrite: bool,
+}
+
 #[tokio::main]
 async fn main() {
     telemetry::init_tracing();
@@ -231,6 +249,7 @@ async fn run_cli() -> Result<(), Box<dyn Error>> {
         Commands::Run(args) => run_command(args).await,
         Commands::Bench(args) => bench_command(args).await,
         Commands::Challenge(args) => challenge_command(args).await,
+        Commands::Package(args) => package_command(args),
         Commands::Visual(args) => visual::run_command(args),
     }
 }
@@ -744,6 +763,42 @@ async fn challenge_command(args: ChallengeArgs) -> Result<(), Box<dyn Error>> {
             .unwrap_or_else(|| "challenge gate failed".to_string());
         return Err(reason.into());
     }
+
+    Ok(())
+}
+
+fn package_command(args: PackageArgs) -> Result<(), Box<dyn Error>> {
+    let output_dir = args
+        .output_dir
+        .clone()
+        .map(Ok)
+        .unwrap_or_else(|| package_output_dir_default(&args.report_path))?;
+    let zip_path = args
+        .zip_path
+        .clone()
+        .map(Ok)
+        .unwrap_or_else(|| package_zip_path_default(&args.report_path))?;
+
+    let output = package_challenge_report(&PackageOptions {
+        report_path: args.report_path.clone(),
+        output_dir: output_dir.clone(),
+        zip_path: zip_path.clone(),
+        overwrite: args.overwrite,
+    })
+    .map_err(|err| format!("package report: {err}"))?;
+
+    emit_json(&PackageSummaryLog {
+        r#type: "package_summary",
+        report_path: args.report_path.display().to_string(),
+        output_dir: output.bundle_dir.display().to_string(),
+        zip_path: output.zip_path.display().to_string(),
+        files: output.manifest.files.len(),
+        included_files: vec![
+            PACKAGED_REPORT_FILENAME.to_string(),
+            PACKAGED_MANIFEST_FILENAME.to_string(),
+            PACKAGED_README_FILENAME.to_string(),
+        ],
+    })?;
 
     Ok(())
 }
@@ -1658,4 +1713,15 @@ struct ChallengeSummaryLog {
     gate_passed: bool,
     failure_buckets: std::collections::BTreeMap<String, usize>,
     report_path: String,
+}
+
+#[derive(Serialize)]
+struct PackageSummaryLog {
+    #[serde(rename = "type")]
+    r#type: &'static str,
+    report_path: String,
+    output_dir: String,
+    zip_path: String,
+    files: usize,
+    included_files: Vec<String>,
 }

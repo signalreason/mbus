@@ -1,5 +1,6 @@
 use mbus::types::{Action, ElementRef, Observation};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
@@ -362,11 +363,23 @@ fn element_name(element: &ElementRef) -> &str {
 }
 
 fn temp_report_path(label: &str) -> std::path::PathBuf {
+    temp_path(label, "json")
+}
+
+fn temp_path(label: &str, extension: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("time")
         .as_nanos();
-    std::env::temp_dir().join(format!("mbus-{label}-{nanos}.json"))
+    std::env::temp_dir().join(format!("mbus-{label}-{nanos}.{extension}"))
+}
+
+fn temp_dir_path(label: &str) -> std::path::PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    std::env::temp_dir().join(format!("mbus-{label}-{nanos}"))
 }
 
 fn run_binary(args: &[&str]) -> std::process::Output {
@@ -380,6 +393,15 @@ fn run_binary(args: &[&str]) -> std::process::Output {
 fn read_json(path: &Path) -> Value {
     let bytes = std::fs::read(path).expect("read report");
     serde_json::from_slice(&bytes).expect("parse report")
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        output.push_str(&format!("{byte:02x}"));
+    }
+    output
 }
 
 #[test]
@@ -482,4 +504,176 @@ fn bench_scripted_command_still_passes() {
     assert_eq!(report["summary"]["passed_tasks"], json!(10));
     assert_eq!(report["gate"]["passed"], json!(true));
     assert_eq!(report["failure_buckets"], json!({}));
+}
+
+#[test]
+fn package_command_bundles_challenge_report_and_artifacts() {
+    let server = MockOpenAiServer::start();
+    let report_path = temp_report_path("challenge-package-report");
+    let package_dir = temp_dir_path("challenge-package-dir");
+    let zip_path = temp_path("challenge-package-zip", "zip");
+    let report_arg = report_path.to_string_lossy().into_owned();
+    let package_dir_arg = package_dir.to_string_lossy().into_owned();
+    let zip_arg = zip_path.to_string_lossy().into_owned();
+    let base_url = server.base_url();
+
+    let challenge_output = run_binary(&[
+        "challenge",
+        "--report-path",
+        &report_arg,
+        "--llm-base-url",
+        &base_url,
+        "--llm-api-key",
+        "test-key",
+        "--llm-input-cost-per-million",
+        "1.0",
+        "--llm-output-cost-per-million",
+        "2.0",
+        "--headless",
+        "true",
+    ]);
+
+    server.shutdown();
+
+    assert!(
+        challenge_output.status.success(),
+        "stdout:\n{}\n\nstderr:\n{}",
+        String::from_utf8_lossy(&challenge_output.stdout),
+        String::from_utf8_lossy(&challenge_output.stderr)
+    );
+
+    let package_output = run_binary(&[
+        "package",
+        "--report-path",
+        &report_arg,
+        "--output-dir",
+        &package_dir_arg,
+        "--zip-path",
+        &zip_arg,
+    ]);
+
+    assert!(
+        package_output.status.success(),
+        "stdout:\n{}\n\nstderr:\n{}",
+        String::from_utf8_lossy(&package_output.stdout),
+        String::from_utf8_lossy(&package_output.stderr)
+    );
+
+    assert!(package_dir.join("report.json").exists());
+    assert!(package_dir.join("manifest.json").exists());
+    assert!(package_dir.join("README.md").exists());
+    assert!(zip_path.exists());
+
+    let source_report = read_json(&report_path);
+    let packaged_report = read_json(&package_dir.join("report.json"));
+    assert_eq!(source_report, packaged_report);
+
+    let manifest = read_json(&package_dir.join("manifest.json"));
+    let files = manifest["files"].as_array().expect("manifest files");
+    assert!(!files.is_empty());
+    for entry in files {
+        let relative = entry["path"].as_str().expect("relative path");
+        let bytes = std::fs::read(package_dir.join(relative)).expect("packaged file");
+        let digest = sha256_hex(&bytes);
+        assert_eq!(entry["bytes"].as_u64(), Some(bytes.len() as u64));
+        assert_eq!(entry["sha256"].as_str(), Some(digest.as_str()));
+    }
+
+    let artifact_entry = files
+        .iter()
+        .find(|entry| {
+            entry["path"]
+                .as_str()
+                .map(|value| value.starts_with("artifacts/"))
+                .unwrap_or(false)
+        })
+        .expect("artifact entry");
+    assert!(
+        package_dir
+            .join(artifact_entry["path"].as_str().unwrap())
+            .exists()
+    );
+
+    let archive_file = std::fs::File::open(&zip_path).expect("zip file");
+    let mut archive = zip::ZipArchive::new(archive_file).expect("zip archive");
+    let mut names = Vec::new();
+    for index in 0..archive.len() {
+        let file = archive.by_index(index).expect("zip entry");
+        names.push(file.name().to_string());
+    }
+    assert!(names.iter().any(|name| name == "report.json"));
+    assert!(names.iter().any(|name| name == "manifest.json"));
+    assert!(names.iter().any(|name| name == "README.md"));
+    assert!(names.iter().any(|name| name.starts_with("artifacts/")));
+}
+
+#[test]
+fn package_command_fails_when_artifact_is_missing() {
+    let server = MockOpenAiServer::start();
+    let report_path = temp_report_path("challenge-package-missing");
+    let package_dir = temp_dir_path("challenge-package-missing-dir");
+    let zip_path = temp_path("challenge-package-missing-zip", "zip");
+    let report_arg = report_path.to_string_lossy().into_owned();
+    let package_dir_arg = package_dir.to_string_lossy().into_owned();
+    let zip_arg = zip_path.to_string_lossy().into_owned();
+    let base_url = server.base_url();
+
+    let challenge_output = run_binary(&[
+        "challenge",
+        "--report-path",
+        &report_arg,
+        "--llm-base-url",
+        &base_url,
+        "--llm-api-key",
+        "test-key",
+        "--headless",
+        "true",
+    ]);
+
+    server.shutdown();
+
+    assert!(
+        challenge_output.status.success(),
+        "stdout:\n{}\n\nstderr:\n{}",
+        String::from_utf8_lossy(&challenge_output.stdout),
+        String::from_utf8_lossy(&challenge_output.stderr)
+    );
+
+    let report = read_json(&report_path);
+    let artifact_path = report["results"]
+        .as_array()
+        .expect("results")
+        .iter()
+        .flat_map(|result| {
+            result["output_artifacts"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|artifact| artifact["path"].as_str())
+        })
+        .next()
+        .expect("artifact path");
+    std::fs::remove_file(artifact_path).expect("remove artifact");
+
+    let package_output = run_binary(&[
+        "package",
+        "--report-path",
+        &report_arg,
+        "--output-dir",
+        &package_dir_arg,
+        "--zip-path",
+        &zip_arg,
+    ]);
+
+    assert!(
+        !package_output.status.success(),
+        "stdout:\n{}\n\nstderr:\n{}",
+        String::from_utf8_lossy(&package_output.stdout),
+        String::from_utf8_lossy(&package_output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&package_output.stderr).contains("failed to read artifact"),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&package_output.stderr)
+    );
 }

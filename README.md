@@ -94,6 +94,12 @@ For a concise install + quickstart path (prerequisites, install steps, and the f
 - `--llm-timeout-ms`, `--llm-temperature`, `--llm-max-tokens`
 - `--llm-input-cost-per-million`, `--llm-output-cost-per-million`
 
+`mbus package` flags:
+- `--report-path` (required; existing `challenge` report)
+- `--output-dir` (default: `target/challenge/package/<report-stem>`)
+- `--zip-path` (default: `target/challenge/package/<report-stem>.zip`)
+- `--overwrite`
+
 ## Benchmark Harness
 
 Run the local benchmark harness:
@@ -145,6 +151,19 @@ The command:
 - Forces `openai` mode and persists screenshots to `.ralph/runs/...` for visual diff follow-up.
 - Writes an aggregate report to `target/challenge/report.json`.
 - Enforces the autonomous gate at 10 passed tasks out of 12 by default.
+
+Package an existing challenge run:
+
+```bash
+cargo run -- package --report-path target/challenge/report.json
+```
+
+The package command:
+- Validates that the report parses and matches the challenge report shape.
+- Verifies every referenced artifact exists and matches the recorded SHA-256 when present.
+- Copies `report.json`, `README.md`, and referenced artifacts into a portable bundle directory.
+- Writes `manifest.json` with relative file inventory plus gate, usage, and cost summaries.
+- Emits a zip archive next to the unpacked bundle for submission or sharing.
 
 Challenge manifest shape (example):
 
