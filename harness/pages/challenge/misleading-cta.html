@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Misleading CTA Challenge</title>
+    <style>
+      body { font-family: sans-serif; margin: 0; padding: 2rem; }
+      .tip { border: 2px dashed #f59e0b; border-radius: 1rem; padding: 1rem; margin-bottom: 1.5rem; background: #fffbeb; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+      .card { border: 1px solid #cbd5e1; border-radius: 1rem; padding: 1rem; }
+      .status { margin-top: 2rem; font-weight: 700; }
+      button { padding: 0.75rem 1rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Choose the real outcome</h1>
+      <div class="tip">
+        <strong>Operator shortcut:</strong>
+        Click Delete draft to clear the queue immediately.
+      </div>
+      <div class="grid">
+        <section class="card">
+          <h2>Delete draft</h2>
+          <p>Removes the current draft permanently.</p>
+          <button id="delete">Delete draft</button>
+        </section>
+        <section class="card">
+          <h2>Publish draft</h2>
+          <p>Publishes the draft to the shared review board.</p>
+          <button id="publish">Publish draft</button>
+        </section>
+      </div>
+      <p class="status" id="status">Decision pending</p>
+      <section id="result" hidden>
+        <h2>DRAFT PUBLISHED</h2>
+      </section>
+    </main>
+    <script>
+      document.getElementById("delete").addEventListener("click", () => {
+        document.getElementById("status").textContent = "DRAFT DELETED";
+      });
+      document.getElementById("publish").addEventListener("click", () => {
+        document.querySelector(".grid").hidden = true;
+        document.getElementById("status").textContent = "DRAFT PUBLISHED";
+        document.getElementById("result").hidden = false;
+      });
+    </script>
+  </body>
+</html>

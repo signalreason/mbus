@@ -1,5 +1,7 @@
 # 2026-02-14 Site-006 repeat-validation thrash in unchanged state
 
+Historical note. Superseded by `docs/live-eval-policy.md` and the local challenge-first proof path.
+
 - Run signature on `step1?version=3`:
   - First no-op appears as `outcome="no_progress"` with unchanged `new_state_hash`.
   - Then same click id is repeatedly proposed and rejected with `validation_code="repeat_no_progress_action"`.

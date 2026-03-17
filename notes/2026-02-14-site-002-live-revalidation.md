@@ -1,5 +1,7 @@
 # 2026-02-14 - Live site revalidation: serene-frangipane challenge
 
+Historical note. Superseded by `docs/live-eval-policy.md`. Live-site observations remain useful context, but they are not the repo's authoritative success path.
+
 - Revalidated live target at `https://serene-frangipane-7fd25b.netlify.app` on 2026-02-14.
 - Landing page still loads bundle `/assets/index-BKEDqiCY.js`.
 - Bundle still contains `wo_session` session storage flow and `codes` generation for 30 entries.

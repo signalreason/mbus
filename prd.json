@@ -1,484 +1,116 @@
 {
   "tasks": [
     {
-      "definition_of_done": [
-        "Config supports enabling/disabling per-step screenshots and selecting artifact persistence mode without breaking existing defaults.",
-        "Unit tests cover config parse/merge behavior for screenshot-related fields across file, env, and CLI inputs.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
+      "task_id": "ALIGN-001",
+      "status": "completed",
       "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260214T090922Z-20536 completed",
-        "last_run_id": "20260214T090922Z-20536",
-        "last_update_utc": "2026-02-14T09:18:29Z",
-        "run_attempts": 2
-      },
+      "title": "Align product docs around challenge-first success criteria",
+      "definition_of_done": [
+        "`prd.md`, `README.md`, and `docs/status.md` all identify the 12-task local obstacle suite as the primary success bar.",
+        "Docs explicitly frame the 10-task bench as regression coverage rather than the product-level outcome metric.",
+        "Observable-only evaluation rules are stated in the product contract, not only in `AGENTS.md`."
+      ],
       "recommended": {
-        "approach": "Extend existing config structs and precedence logic first so all later screenshot tasks can read one canonical policy."
-      },
-      "status": "completed",
-      "task_id": "M4-SHOT-001",
-      "title": "Add screenshot capture policy to runtime config"
+        "approach": "Treat doc alignment as a product-contract change first, then update supporting docs to match."
+      }
     },
     {
-      "definition_of_done": [
-        "Snapshot flow can request a viewport screenshot for each step when screenshot policy is enabled.",
-        "Integration test on a harness page confirms non-empty screenshot bytes are captured for at least one step.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
+      "task_id": "ALIGN-002",
+      "status": "completed",
       "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260214T091829Z-20536 completed",
-        "last_run_id": "20260214T091829Z-20536",
-        "last_update_utc": "2026-02-14T09:23:36Z",
-        "run_attempts": 1
-      },
+      "title": "Publish a reproducible challenge proof workflow",
+      "definition_of_done": [
+        "The repo includes a documented and scripted path for `mbus challenge` followed by `mbus package`.",
+        "The workflow validates required environment variables and prints exact output artifact paths.",
+        "Generated reports and `.ralph` artifacts remain untracked."
+      ],
       "recommended": {
-        "approach": "Add capture at the snapshot boundary so timing and failures are attributable to one stage."
-      },
-      "status": "completed",
-      "task_id": "M4-SHOT-002",
-      "title": "Capture viewport screenshot bytes in snapshot pipeline"
+        "approach": "Keep the workflow thin and deterministic: validate env, run the challenge, then package the result."
+      }
     },
     {
-      "definition_of_done": [
-        "Captured screenshots can be stored with stable step-scoped artifact references and metadata including MIME type and SHA-256.",
-        "Unit tests verify artifact reference formatting and digest determinism.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
+      "task_id": "ALIGN-003",
+      "status": "completed",
       "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260223T203355Z-48403 completed",
-        "last_run_id": "20260223T203355Z-48403",
-        "last_update_utc": "2026-02-23T20:43:14Z",
-        "run_attempts": 2
-      },
+      "title": "Document live-eval policy and reframe exploratory config",
+      "definition_of_done": [
+        "A policy doc states that live-site evaluation must use observable interaction only and that hidden deterministic shortcuts do not count.",
+        "`challenge.toml` is clearly framed as an exploratory live-eval example rather than the canonical release path.",
+        "Top-level docs link the policy so readers do not confuse exploratory work with the primary gate."
+      ],
       "recommended": {
-        "approach": "Reuse existing artifact conventions from benchmark/run outputs to avoid introducing a parallel storage shape."
-      },
-      "status": "completed",
-      "task_id": "M4-SHOT-003",
-      "title": "Persist screenshot artifacts with deterministic metadata"
+        "approach": "Keep the live-site path documented but explicitly secondary to the reproducible local suite."
+      }
     },
     {
-      "definition_of_done": [
-        "Observation includes optional screenshot metadata needed by planner and logs without changing `elements` authority for execution.",
-        "Serialization tests verify backward compatibility when screenshot metadata is absent and correctness when present.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
+      "task_id": "ALIGN-004",
+      "status": "completed",
       "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T220702Z-26328 completed",
-        "last_run_id": "20260224T220702Z-26328",
-        "last_update_utc": "2026-02-24T22:13:31Z",
-        "run_attempts": 1
-      },
+      "title": "Preserve historical notes while marking superseded guidance",
+      "definition_of_done": [
+        "Outdated status and live-site notes include short supersession headers pointing to current docs.",
+        "`notes/index.md` labels superseded entries as historical and points readers to the new status docs.",
+        "The note corpus preserves chronology instead of rewriting earlier conclusions."
+      ],
       "recommended": {
-        "approach": "Add an optional screenshot object to Observation and keep all action validation keyed only to Observation.elements."
-      },
-      "status": "completed",
-      "task_id": "M4-SHOT-004",
-      "title": "Expose screenshot metadata on Observation"
+        "approach": "Annotate only the notes that would materially mislead someone about current direction."
+      }
     },
     {
-      "definition_of_done": [
-        "Runs continue with text/element observation when screenshot capture or persistence fails.",
-        "StepResult/log output includes structured error codes for screenshot failures.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
+      "task_id": "ADV-001",
+      "status": "completed",
       "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T221331Z-26328 completed",
-        "last_run_id": "20260224T221331Z-26328",
-        "last_update_utc": "2026-02-24T22:20:44Z",
-        "run_attempts": 1
-      },
+      "title": "Add a supplemental adversarial obstacle slice",
+      "definition_of_done": [
+        "Supplemental challenge pages cover prompt-injection-style copy and misleading CTA copy without requiring new manifest semantics.",
+        "Supplemental manifests use the existing observable-only challenge expectation model.",
+        "The primary 12-task default suite remains stable and separate from the adversarial slice."
+      ],
       "recommended": {
-        "approach": "Treat screenshot failures as diagnostic sub-errors rather than hard action/snapshot failures."
-      },
-      "status": "completed",
-      "task_id": "M4-SHOT-005",
-      "title": "Implement non-fatal fallback when screenshot capture fails"
+        "approach": "Keep adversarial fixtures in a separate tasks directory so the canonical challenge gate does not move accidentally."
+      }
     },
     {
-      "definition_of_done": [
-        "Telemetry records screenshot duration, byte size, and failure counts per run.",
-        "Run summary includes aggregate screenshot capture statistics.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
+      "task_id": "ADV-002",
+      "status": "completed",
       "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T222044Z-26328 completed",
-        "last_run_id": "20260224T222044Z-26328",
-        "last_update_utc": "2026-02-24T22:25:11Z",
-        "run_attempts": 1
-      },
+      "title": "Add automated coverage for the supplemental adversarial slice",
+      "definition_of_done": [
+        "Automated challenge coverage exercises the supplemental tasks directory.",
+        "The mock-model path can solve the new fixtures and still demonstrates observable-only evaluation.",
+        "Quality gates continue to pass after the supplemental suite is added."
+      ],
       "recommended": {
-        "approach": "Instrument at capture/persist boundaries and aggregate counters in the same summary path used for existing step metrics."
-      },
-      "status": "completed",
-      "task_id": "M4-SHOT-006",
-      "title": "Emit screenshot metrics and summary counters"
+        "approach": "Reuse the existing challenge integration harness so the adversarial slice stays close to the real CLI path."
+      }
     },
     {
-      "definition_of_done": [
-        "LLM request builder sends screenshot context alongside compact visible text, state hash, and element metadata when screenshot metadata exists.",
-        "Golden tests assert payload shape for multimodal requests.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
+      "task_id": "PROOF-001",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T223430Z-26328 completed",
-        "last_run_id": "20260224T223430Z-26328",
-        "last_update_utc": "2026-02-24T22:40:07Z",
-        "run_attempts": 2
-      },
+      "title": "Generate a real-model challenge proof package",
+      "definition_of_done": [
+        "Run the canonical challenge proof workflow with a real model against the default 12-task obstacle suite.",
+        "Produce a packaged report with screenshots, token totals, cost totals, and gate result.",
+        "Record the outcome in current status docs or notes without committing generated artifacts."
+      ],
       "recommended": {
-        "approach": "Centralize payload assembly so provider adapters consume one canonical multimodal request model."
-      },
-      "status": "completed",
-      "task_id": "M4-MM-001",
-      "title": "Build multimodal LLM request payload with screenshot and structured text"
+        "approach": "Use the scripted proof workflow rather than ad hoc commands so the evidence is reproducible."
+      }
     },
     {
-      "definition_of_done": [
-        "Request builder falls back to text-only payload when screenshot policy is disabled or capture failed.",
-        "Tests cover fallback branch and ensure planner still receives required non-image observation fields.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
+      "task_id": "PROOF-002",
+      "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T224007Z-26328 completed",
-        "last_run_id": "20260224T224007Z-26328",
-        "last_update_utc": "2026-02-24T22:43:53Z",
-        "run_attempts": 1
-      },
-      "recommended": {
-        "approach": "Make fallback explicit in payload mode flags to keep behavior observable and reproducible."
-      },
-      "status": "completed",
-      "task_id": "M4-MM-002",
-      "title": "Add deterministic text-only fallback for multimodal prompting"
-    },
-    {
+      "title": "Review proof results and decide gate hardening",
       "definition_of_done": [
-        "Action parsing and validation rules remain unchanged after multimodal prompt support is added.",
-        "Regression tests prove malformed/unknown actions are rejected the same way in text-only and multimodal modes.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
+        "Analyze the first real-model proof package for dominant failure buckets and step patterns.",
+        "Decide whether the primary gate should remain 10/12, tighten, or require the supplemental adversarial slice.",
+        "Capture the decision in `docs/status.md` and, if needed, update `prd.md` and `prd.json`."
       ],
-      "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T224353Z-26328 completed",
-        "last_run_id": "20260224T224353Z-26328",
-        "last_update_utc": "2026-02-24T22:46:14Z",
-        "run_attempts": 1
-      },
       "recommended": {
-        "approach": "Limit multimodal changes to request context and keep response parsing path shared."
-      },
-      "status": "completed",
-      "task_id": "M4-MM-003",
-      "title": "Preserve strict single-action response contract under multimodal mode"
-    },
-    {
-      "definition_of_done": [
-        "Step logs expose whether image context was sent and include provider usage fields when returned.",
-        "Telemetry distinguishes multimodal and text-only LLM calls for analysis.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T224614Z-26328 completed",
-        "last_run_id": "20260224T224614Z-26328",
-        "last_update_utc": "2026-02-24T22:53:23Z",
-        "run_attempts": 1
-      },
-      "recommended": {
-        "approach": "Attach payload-mode metadata at request dispatch so logs and metrics stay consistent even on failures."
-      },
-      "status": "completed",
-      "task_id": "M4-MM-004",
-      "title": "Track multimodal payload and usage diagnostics"
-    },
-    {
-      "definition_of_done": [
-        "LLM request path can specify reasoning effort (for example low, medium, high) independent of model tier.",
-        "Unit tests verify effort value propagation from router decision to provider payload.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T225323Z-26328 completed",
-        "last_run_id": "20260224T225323Z-26328",
-        "last_update_utc": "2026-02-24T23:02:27Z",
-        "run_attempts": 1
-      },
-      "recommended": {
-        "approach": "Represent effort as a typed enum shared by config, router, and provider adapters."
-      },
-      "status": "completed",
-      "task_id": "M4-ESC-001",
-      "title": "Introduce reasoning effort levels in LLM request model"
-    },
-    {
-      "definition_of_done": [
-        "Router policy accepts an ordered ladder of (model, effort) pairs from config/CLI.",
-        "Validation rejects empty ladders and invalid transitions at startup.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T230227Z-26328 completed",
-        "last_run_id": "20260224T230227Z-26328",
-        "last_update_utc": "2026-02-24T23:13:43Z",
-        "run_attempts": 1
-      },
-      "recommended": {
-        "approach": "Normalize the ladder during config load so runtime routing executes against a prevalidated sequence."
-      },
-      "status": "completed",
-      "task_id": "M4-ESC-002",
-      "title": "Add configurable escalation ladder over (model, effort) pairs"
-    },
-    {
-      "definition_of_done": [
-        "Loop state tracks unchanged `state_hash` streak and repeated validation code streaks needed for escalation decisions.",
-        "Unit tests cover counter increments and resets across success/failure outcomes.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T231343Z-26328 completed",
-        "last_run_id": "20260224T231343Z-26328",
-        "last_update_utc": "2026-02-24T23:17:15Z",
-        "run_attempts": 1
-      },
-      "recommended": {
-        "approach": "Store trigger counters in explicit loop state to keep transitions deterministic and testable."
-      },
-      "status": "completed",
-      "task_id": "M4-ESC-003",
-      "title": "Track unchanged-state and repeated-validation trigger counters"
-    },
-    {
-      "definition_of_done": [
-        "Router advances through the configured ladder based on unchanged-state and repeated-validation triggers.",
-        "Each transition records a structured reason code and resulting (model, effort) pair.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T231716Z-26328 completed",
-        "last_run_id": "20260224T231716Z-26328",
-        "last_update_utc": "2026-02-24T23:25:41Z",
-        "run_attempts": 1
-      },
-      "recommended": {
-        "approach": "Encapsulate transition logic in a pure policy function and call it from the loop after each evaluated step."
-      },
-      "status": "completed",
-      "task_id": "M4-ESC-004",
-      "title": "Implement escalation transitions with reason codes"
-    },
-    {
-      "definition_of_done": [
-        "Confirmed progress resets trigger counters and returns router state to configured baseline behavior.",
-        "Tests verify reset semantics after both model-only and effort-only escalations.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T232541Z-26328 completed",
-        "last_run_id": "20260224T232541Z-26328",
-        "last_update_utc": "2026-02-24T23:29:22Z",
-        "run_attempts": 1
-      },
-      "recommended": {
-        "approach": "Define one explicit progress signal contract and route all reset behavior through it."
-      },
-      "status": "completed",
-      "task_id": "M4-ESC-005",
-      "title": "Reset escalation state on confirmed progress"
-    },
-    {
-      "definition_of_done": [
-        "Step logs include current ladder index, trigger counters, and transition events.",
-        "Run summary reports total transitions by reason and final (model, effort) state.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T232922Z-26328 completed",
-        "last_run_id": "20260224T232922Z-26328",
-        "last_update_utc": "2026-02-24T23:37:26Z",
-        "run_attempts": 1
-      },
-      "recommended": {
-        "approach": "Emit transition telemetry from one router-facing interface to keep logging and metrics synchronized."
-      },
-      "status": "completed",
-      "task_id": "M4-ESC-006",
-      "title": "Expose escalation transitions in step logs and run summary"
-    },
-    {
-      "definition_of_done": [
-        "Test fixture reliably produces unchanged `state_hash` across repeated steps without relying on non-deterministic external pages.",
-        "Integration test reproduces loop behavior and captures trigger counter progression.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T234041Z-26328 completed",
-        "last_run_id": "20260224T234041Z-26328",
-        "last_update_utc": "2026-02-24T23:44:16Z",
-        "run_attempts": 2
-      },
-      "recommended": {
-        "approach": "Use local harness pages and scripted responses so loop conditions are stable in CI."
-      },
-      "status": "completed",
-      "task_id": "M4-REG-001",
-      "title": "Add deterministic unchanged-state loop regression fixture"
-    },
-    {
-      "definition_of_done": [
-        "Fixture reliably produces repeated validation failures (including `repeat_no_progress_action`) in an unchanged state.",
-        "Integration test confirms repeated validation signals feed escalation logic instead of silent retries.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260224T234737Z-26328 completed",
-        "last_run_id": "20260224T234737Z-26328",
-        "last_update_utc": "2026-02-24T23:57:36Z",
-        "run_attempts": 2
-      },
-      "recommended": {
-        "approach": "Drive the fixture through the public agent loop and validator path so behavior mirrors production routing."
-      },
-      "status": "completed",
-      "task_id": "M4-REG-002",
-      "title": "Add repeated-validation-code regression fixture"
-    },
-    {
-      "definition_of_done": [
-        "Regression tests fail if configured escalation transitions do not occur before no-progress termination in known loop cases.",
-        "Tests also verify reset-on-progress behavior when a loop is broken.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260225T000227Z-26328 completed",
-        "last_run_id": "20260225T000227Z-26328",
-        "last_update_utc": "2026-02-25T00:09:52Z",
-        "run_attempts": 2
-      },
-      "recommended": {
-        "approach": "Make transition sequences explicit in expected test artifacts to prevent accidental policy drift."
-      },
-      "status": "completed",
-      "task_id": "M4-REG-003",
-      "title": "Assert escalation-before-failure behavior in loop regressions"
-    },
-    {
-      "definition_of_done": [
-        "Regression runs persist compact trace snippets showing trigger reasons and transition outcomes.",
-        "Tests verify snippets are emitted for both unchanged-state and repeated-validation scenarios.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.2-codex",
-      "observability": {
-        "last_note": "Run 20260225T001446Z-26328 completed",
-        "last_run_id": "20260225T001446Z-26328",
-        "last_update_utc": "2026-02-25T00:16:52Z",
-        "run_attempts": 2
-      },
-      "recommended": {
-        "approach": "Persist only the minimum structured fields needed to audit escalation reasoning over time."
-      },
-      "status": "completed",
-      "task_id": "M4-REG-004",
-      "title": "Capture transition trace snippets for regression audits"
-    },
-    {
-      "definition_of_done": [
-        "A utility command accepts run artifact inputs and emits a deterministic report skeleton for visual analysis.",
-        "Smoke test verifies command argument parsing and report file generation.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.1-codex-mini",
-      "observability": {
-        "last_note": "Run 20260225T001652Z-26328 completed",
-        "last_run_id": "20260225T001652Z-26328",
-        "last_update_utc": "2026-02-25T00:27:05Z",
-        "run_attempts": 1
-      },
-      "recommended": {
-        "approach": "Keep the utility outside the hot agent path and isolate it behind a dedicated command or crate module."
-      },
-      "status": "completed",
-      "task_id": "M4-SPIKE-001",
-      "title": "Optional spike: scaffold visual diff and OCR evaluator CLI"
-    },
-    {
-      "definition_of_done": [
-        "Utility computes simple deterministic changed-region summaries between screenshot pairs.",
-        "Unit tests cover no-change and known-change image pair cases.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.1-codex-mini",
-      "observability": {
-        "last_note": "Run 20260225T002705Z-26328 completed",
-        "last_run_id": "20260225T002705Z-26328",
-        "last_update_utc": "2026-02-25T00:35:05Z",
-        "run_attempts": 1
-      },
-      "recommended": {
-        "approach": "Use a lightweight diff heuristic sufficient for ranking change intensity, not pixel-perfect rendering fidelity."
-      },
-      "status": "completed",
-      "task_id": "M4-SPIKE-002",
-      "title": "Optional spike: compute changed regions from before/after screenshots"
-    },
-    {
-      "definition_of_done": [
-        "Utility can attach OCR text snippets to changed-region records for manual comparison.",
-        "Smoke test verifies OCR output is present in report schema when OCR is enabled.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.1-codex-mini",
-      "observability": {
-        "last_note": "Run 20260225T005003Z-26328 completed",
-        "last_run_id": "20260225T005003Z-26328",
-        "last_update_utc": "2026-02-25T00:54:23Z",
-        "run_attempts": 2
-      },
-      "recommended": {
-        "approach": "Make OCR optional and failure-tolerant so evaluator output still works when OCR dependencies are unavailable."
-      },
-      "status": "completed",
-      "task_id": "M4-SPIKE-003",
-      "title": "Optional spike: add OCR extraction to visual evaluator report"
-    },
-    {
-      "definition_of_done": [
-        "Evaluator produces compact comparison reports for one harness artifact set and one dynamic-site recording.",
-        "Report output captures runtime and artifact-size diagnostics for both runs.",
-        "Quality gate passes: `cargo test`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo fmt --all -- --check`."
-      ],
-      "model": "gpt-5.1-codex-mini",
-      "observability": {
-        "last_note": "Run 20260225T005424Z-26328 completed",
-        "last_run_id": "20260225T005424Z-26328",
-        "last_update_utc": "2026-02-25T00:59:37Z",
-        "run_attempts": 1
-      },
-      "recommended": {
-        "approach": "Use one controlled harness sample plus one previously captured dynamic run to keep the spike reproducible."
-      },
-      "status": "completed",
-      "task_id": "M4-SPIKE-004",
-      "title": "Optional spike: run evaluator on harness and one dynamic recording"
+        "approach": "Do not tighten the product gate until there is at least one packaged real-model proof run to evaluate."
+      }
     }
   ]
 }

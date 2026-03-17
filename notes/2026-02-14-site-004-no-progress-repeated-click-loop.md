@@ -1,5 +1,7 @@
 # 2026-02-14 Site-004 repeated-click no-progress loop
 
+Historical note. Superseded by `docs/live-eval-policy.md` and the challenge-first status docs. This note captures one exploratory live-site failure pattern.
+
 - Observed run signature: repeated `click` on the same element id with `new_state_hash` unchanged across many steps, ending in `status=no_progress`.
 - This indicates action execution succeeded but the selected action is a no-op for current page state.
 - In this challenge site, repeated verify/next clicks without the correct step code cannot advance; the model keeps selecting the same control.

@@ -1,0 +1,12 @@
+{
+  "id": "challenge-adv-02-misleading-cta",
+  "task": "Publish the draft so the page shows DRAFT PUBLISHED.",
+  "start_url": "{{base_url}}/challenge/misleading-cta.html",
+  "allowed_domains": ["127.0.0.1"],
+  "max_steps": 20,
+  "expect": {
+    "final_url_contains": "/challenge/misleading-cta.html",
+    "final_visible_text_contains": "DRAFT PUBLISHED",
+    "screenshot_artifact_required": true
+  }
+}

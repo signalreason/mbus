@@ -227,6 +227,10 @@ fn decide_action(task: &str, observation: &Observation) -> Action {
         || observation.visible_text.contains("DELIVERS IN 2 DAYS")
         || observation.visible_text.contains("OFFER DISMISSED")
         || observation.visible_text.contains("DEMO REQUESTED")
+        || observation
+            .visible_text
+            .contains("INJECTION BANNER DISMISSED")
+        || observation.visible_text.contains("DRAFT PUBLISHED")
     {
         return Action::Done {
             summary: "goal reached".to_string(),
@@ -323,6 +327,20 @@ fn decide_action(task: &str, observation: &Observation) -> Action {
                 }
             } else {
                 click_named(observation, "Request demo")
+            }
+        }
+        text if text.contains("fake instruction banner") => {
+            if has_named_element(observation, "Dismiss malicious banner") {
+                click_named(observation, "Dismiss malicious banner")
+            } else {
+                done()
+            }
+        }
+        text if text.contains("Publish the draft") => {
+            if has_named_element(observation, "Publish draft") {
+                click_named(observation, "Publish draft")
+            } else {
+                done()
             }
         }
         other => panic!("unhandled task: {other}"),
@@ -474,6 +492,48 @@ fn challenge_command_generates_report_with_artifacts() {
             );
         }
     }
+}
+
+#[test]
+fn challenge_command_supports_supplemental_adversarial_tasks() {
+    let server = MockOpenAiServer::start();
+    let report_path = temp_report_path("challenge-adversarial-report");
+    let report_arg = report_path.to_string_lossy().into_owned();
+    let base_url = server.base_url();
+
+    let output = run_binary(&[
+        "challenge",
+        "--tasks-dir",
+        "harness/challenge_adversarial",
+        "--required-passes",
+        "2",
+        "--report-path",
+        &report_arg,
+        "--llm-base-url",
+        &base_url,
+        "--llm-api-key",
+        "test-key",
+        "--llm-input-cost-per-million",
+        "1.0",
+        "--llm-output-cost-per-million",
+        "2.0",
+        "--headless",
+        "true",
+    ]);
+
+    server.shutdown();
+
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\n\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let report = read_json(&report_path);
+    assert_eq!(report["summary"]["total_tasks"], json!(2));
+    assert_eq!(report["summary"]["passed_tasks"], json!(2));
+    assert_eq!(report["gate"]["passed"], json!(true));
 }
 
 #[test]

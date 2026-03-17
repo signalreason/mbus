@@ -1,10 +1,12 @@
 # Notes Index
 
+- 2026-03-17 ALIGN-001 challenge-first source-of-truth: `notes/2026-03-17-challenge-first-alignment.md`
+- 2026-03-17 TEST-001 browser launch failure in Codex environment: `notes/2026-03-17-test-001-browser-launch-failure.md`
 - 2026-03-17 PKG-001 challenge package bundles: `notes/2026-03-17-pkg-001-challenge-package-bundles.md`
 - 2026-03-16 CHALLENGE-001 obstacle suite: `notes/2026-03-16-challenge-001-obstacle-suite.md`
 - 2026-02-25 Visual evaluator reports: `notes/2026-02-25-visual-evaluator-reports.md`
 - 2026-02-05 PRD decisions: `notes/2026-02-05-prd.md`
-- 2026-02-05 PRD status: `notes/2026-02-05-prd-status.md`
+- 2026-02-05 PRD status (historical, superseded by `docs/status.md`): `notes/2026-02-05-prd-status.md`
 - 2026-02-05 SPIKE-001 CDP snapshot: `notes/2026-02-05-spike-001-cdp-snapshot.md`
 - 2026-02-05 SPIKE-002 LLM schema: `notes/2026-02-05-spike-002-llm-schema.md`
 - 2026-02-05 CORE-001 scaffold: `notes/2026-02-05-core-001-scaffold.md`
@@ -23,12 +25,12 @@
 - 2026-02-05 PROGRESS-001 no-progress heuristics: `notes/2026-02-05-progress-001-no-progress-heuristics.md`
 - 2026-02-05 EXTRACT-001 extraction output: `notes/2026-02-05-extract-001-output.md`
 - 2026-02-05 DOCS-001 usage + ops guide: `notes/2026-02-05-docs-001-usage-guide.md`
-- 2026-02-05 PRD task sweep: `notes/2026-02-05-prd-task-sweep.md`
+- 2026-02-05 PRD task sweep (historical, superseded by `docs/status.md`): `notes/2026-02-05-prd-task-sweep.md`
 - 2026-02-06 OpenAI config notes: `notes/2026-02-06-openai-config.md`
 - 2026-02-09 test runtime notes: `notes/2026-02-09-test-runtime.md`
 - 2026-02-09 BENCH-001 benchmark harness: `notes/2026-02-09-bench-001-harness.md`
-- 2026-02-10 challenge gap assessment: `notes/2026-02-10-challenge-gap-assessment.md`
-- 2026-02-11 next-step assessment: `notes/2026-02-11-next-step-assessment.md`
+- 2026-02-10 challenge gap assessment (historical, superseded by `docs/status.md`): `notes/2026-02-10-challenge-gap-assessment.md`
+- 2026-02-11 next-step assessment (historical, superseded by `docs/status.md`): `notes/2026-02-11-next-step-assessment.md`
 - 2026-02-11 Bench LLM mode selection: `notes/2026-02-11-bench-llm-mode.md`
 - 2026-02-11 Bench gate checks: `notes/2026-02-11-bench-002-gate-checks.md`
 - 2026-02-11 PRD M3 autonomous bench spec: `notes/2026-02-11-prd-m3-autonomous-bench-spec.md`
@@ -92,12 +94,12 @@
 - 2026-02-12 M3-BENCH-007 run commands: `notes/2026-02-12-m3-bench-007-run-commands.md`
 
 - 2026-02-12 BROW-010 e2e launch/profile isolation + status visibility: `notes/2026-02-12-brow-010-e2e-launch-visible-status.md`
-- 2026-02-14 Site analysis: `notes/2026-02-14-site-001-browser-navigation-challenge.md`
-- 2026-02-14 Site live revalidation: `notes/2026-02-14-site-002-live-revalidation.md`
-- 2026-02-14 Site entrypoint + empty-content failure: `notes/2026-02-14-site-003-netlify-entrypoint-and-empty-content.md`
-- 2026-02-14 Site repeated-click no-progress loop: `notes/2026-02-14-site-004-no-progress-repeated-click-loop.md`
-- 2026-02-14 Site no-progress threshold signature: `notes/2026-02-14-site-005-no-progress-threshold-signature.md`
-- 2026-02-14 Site repeat-validation thrash in unchanged state: `notes/2026-02-14-site-006-repeat-validation-thrash.md`
+- 2026-02-14 Site analysis (historical, superseded by `docs/live-eval-policy.md`): `notes/2026-02-14-site-001-browser-navigation-challenge.md`
+- 2026-02-14 Site live revalidation (historical, superseded by `docs/live-eval-policy.md`): `notes/2026-02-14-site-002-live-revalidation.md`
+- 2026-02-14 Site entrypoint + empty-content failure (historical, superseded by `docs/live-eval-policy.md`): `notes/2026-02-14-site-003-netlify-entrypoint-and-empty-content.md`
+- 2026-02-14 Site repeated-click no-progress loop (historical, superseded by `docs/live-eval-policy.md`): `notes/2026-02-14-site-004-no-progress-repeated-click-loop.md`
+- 2026-02-14 Site no-progress threshold signature (historical, superseded by `docs/live-eval-policy.md`): `notes/2026-02-14-site-005-no-progress-threshold-signature.md`
+- 2026-02-14 Site repeat-validation thrash in unchanged state (historical, superseded by `docs/live-eval-policy.md`): `notes/2026-02-14-site-006-repeat-validation-thrash.md`
 - 2026-02-14 AGENT-005 repeat no-progress action guard: `notes/2026-02-14-agent-005-repeat-no-progress-guard.md`
 - 2026-02-14 AGENT-006 repeat-validation recovery hardening: `notes/2026-02-14-agent-006-repeat-validation-recovery.md`
 - 2026-02-14 AGENT-007 visual-state and effort-escalation recommendation: `notes/2026-02-14-agent-007-visual-state-and-effort-escalation.md`

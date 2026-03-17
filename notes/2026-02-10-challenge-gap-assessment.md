@@ -1,5 +1,7 @@
 # 2026-02-10 challenge gap assessment
 
+Historical note. Superseded by `docs/status.md` for the current gap list and by `docs/live-eval-policy.md` for the live-site evaluation stance.
+
 ## Context
 - User asked whether the repo can already test and satisfy the external 30-step browser challenge (solve all 30 in under 5 minutes, browser-based, with reproducible run stats including time, token usage, token cost).
 

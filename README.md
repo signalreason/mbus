@@ -14,6 +14,13 @@ Key traits:
 - Model router with fast -> mid -> strong escalation
 - Structured JSON logs plus tracing + metrics
 
+## Current Status
+
+- Primary success bar: the 12-task local obstacle suite run through `mbus challenge`.
+- Secondary regression bar: the 10-task local `mbus bench` harness.
+- Checked-in tests validate challenge/bench/package plumbing with a mock OpenAI-compatible server; real-model evidence is generated locally and packaged, not committed.
+- Current status, open gaps, and proof expectations live in `docs/status.md`. Live-site policy lives in `docs/live-eval-policy.md`.
+
 ## Install
 
 Prerequisites:
@@ -100,12 +107,39 @@ For a concise install + quickstart path (prerequisites, install steps, and the f
 - `--zip-path` (default: `target/challenge/package/<report-stem>.zip`)
 - `--overwrite`
 
-## Benchmark Harness
+## Challenge Proof Workflow
+
+The canonical release-proof path is:
+
+```bash
+MBUS_LLM_API_KEY=... \
+MBUS_LLM_INPUT_COST_PER_MILLION=... \
+MBUS_LLM_OUTPUT_COST_PER_MILLION=... \
+./scripts/run_challenge_proof.sh
+```
+
+The script:
+- Validates required environment variables.
+- Runs `mbus challenge` against the default 12-task local obstacle suite.
+- Packages the resulting report with `mbus package`.
+- Prints the exact report, bundle, and zip paths to inspect or share.
+
+For a supplemental adversarial run, point `challenge` at the separate tasks dir:
+
+```bash
+MBUS_LLM_API_KEY=... cargo run --bin mbus -- challenge \
+  --tasks-dir harness/challenge_adversarial \
+  --required-passes 2
+```
+
+See `docs/status.md` for the current success bar and `docs/live-eval-policy.md` for what does and does not count as valid evidence.
+
+## Regression Harness
 
 Run the local benchmark harness:
 
 ```bash
-cargo run -- bench --llm-mode scripted
+cargo run --bin mbus -- bench --llm-mode scripted
 ```
 
 The command:
@@ -116,6 +150,8 @@ The command:
 - Executes each task autonomously in `openai` mode (requires `MBUS_LLM_API_KEY` or `--llm-api-key`).
 - Writes the report to `target/bench/report.json`.
 - Enforces a gate (`required_passes`, default 8 of 10 tasks).
+
+Use `bench` to catch regressions in the agent loop and report plumbing. It is not the primary release proof anymore.
 
 Task fixture shape (example):
 
@@ -139,10 +175,10 @@ Task fixture shape (example):
 
 ## Challenge Suite
 
-Run the obstacle suite with the OpenAI-compatible path:
+Run the primary obstacle suite with the OpenAI-compatible path:
 
 ```bash
-MBUS_LLM_API_KEY=... cargo run -- challenge
+MBUS_LLM_API_KEY=... cargo run --bin mbus -- challenge
 ```
 
 The command:
@@ -151,11 +187,14 @@ The command:
 - Forces `openai` mode and persists screenshots to `.ralph/runs/...` for visual diff follow-up.
 - Writes an aggregate report to `target/challenge/report.json`.
 - Enforces the autonomous gate at 10 passed tasks out of 12 by default.
+- Uses observable-only success checks (`final_url_contains`, `final_visible_text_contains`, screenshots) rather than hidden app knowledge.
+
+Checked-in integration tests exercise this path with a mock OpenAI-compatible server so the CLI/report/package flow stays stable. Real-model challenge quality still needs local proof runs and packaged artifacts.
 
 Package an existing challenge run:
 
 ```bash
-cargo run -- package --report-path target/challenge/report.json
+cargo run --bin mbus -- package --report-path target/challenge/report.json
 ```
 
 The package command:
@@ -241,6 +280,7 @@ pass `--headless false` on the CLI.
 Environment variable overrides (full list):
 - `MBUS_CONFIG`
 - `MBUS_MAX_STEPS`
+- `MBUS_MAX_NO_PROGRESS_STEPS`
 - `MBUS_MEMORY_MAX_OBSERVATIONS`
 - `MBUS_MEMORY_MAX_HISTORY`
 - `MBUS_HEADLESS`
@@ -269,8 +309,12 @@ Environment variable overrides (full list):
 - `MBUS_LLM_TIMEOUT_MS`
 - `MBUS_LLM_TEMPERATURE`
 - `MBUS_LLM_MAX_TOKENS`
+- `MBUS_LLM_INPUT_COST_PER_MILLION`
+- `MBUS_LLM_OUTPUT_COST_PER_MILLION`
 - `MBUS_LLM_ACTIONS_FILE`
 - `MBUS_EXTRACT_OUTPUT`
+- `MBUS_SCREENSHOT_ENABLED`
+- `MBUS_SCREENSHOT_PERSIST`
 
 ## Scripted Actions Format
 
@@ -306,7 +350,8 @@ Example (`actions.jsonl`):
   needed and understand the security implications.
 
 For a structured operations runbook, recovery steps, and the log/metric fields
-you should monitor, see `docs/operations-runbook.md`.
+you should monitor, see `docs/operations-runbook.md`. For the product-level
+current state and remaining proof work, see `docs/status.md`.
 
 ## Runbook
 

@@ -1,3 +1,8 @@
+# Exploratory live-eval config example.
+# This file is not the repo's primary release path.
+# The authoritative success bar is the local obstacle suite driven by
+# `mbus challenge`; see `docs/status.md` and `docs/live-eval-policy.md`.
+
 [agent]
 max_steps = 220
 max_no_progress_steps = 5

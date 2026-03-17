@@ -1,5 +1,7 @@
 # 2026-02-14 Site-003 netlify entrypoint and empty-content failure
 
+Historical note. Superseded by `docs/live-eval-policy.md`. This is exploratory live-site guidance, not the canonical product workflow.
+
 - Direct load of `https://serene-frangipane-7fd25b.netlify.app/step1` returns Netlify `404 Page not found`.
 - The SPA defines `/step1` client routes, but direct navigation requires host rewrite rules that are not configured.
 - For `mbus run`, set `initial_url` to `https://serene-frangipane-7fd25b.netlify.app/` and let the app route internally.

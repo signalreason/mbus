@@ -2,11 +2,11 @@
 
 ## Executive Summary
 - Build a Rust-based browser automation agent that uses LLMs to choose single-step actions through a strict JSON schema.
-- Target internal automation and evaluation workflows that need fast, deterministic, and observable browser steps.
+- Target local obstacle-suite evaluation and internal automation workflows that need fast, deterministic, and observable browser steps.
 - Provide a pluggable browser backend (CDP) and pluggable LLM clients with explicit model and effort escalation.
 - Emphasize performance and telemetry so bottlenecks are measurable rather than guessed.
-- Ship a CLI-driven MVP first, then harden with repair and progress heuristics.
-Success definition: On a 10-task internal web harness, the agent completes at least 8 tasks within 40 steps each, and produces structured logs + metrics for every run.
+- Ship a CLI-driven MVP first, then harden with repair, screenshot grounding, and obstacle-oriented evaluation.
+Success definition: On the 12-task local obstacle suite driven by `mbus challenge`, the agent completes at least 10 tasks within per-task step caps, produces structured logs and screenshots, reports token/cost totals, and emits a reproducible package. The 10-task internal bench remains a regression gate and should continue to pass at 8/10 or better.
 
 ## Scope
 ### In scope:
@@ -28,6 +28,7 @@ Success definition: On a 10-task internal web harness, the agent completes at le
 - Maximizing model autonomy at the expense of determinism.
 - Persisting or indexing raw page content by default.
 - Supporting every browser engine; Chromium-only for MVP.
+- Claiming success through hidden app knowledge, bundle inspection, storage inspection, or direct routes a human operator could not reasonably discover from the page.
 
 ## Requirements
 ### Functional requirements:
@@ -42,6 +43,8 @@ Success definition: On a 10-task internal web harness, the agent completes at le
 9. Stop on `Done` action, or on `max_steps`, and return a machine-readable final record.
 10. Provide a CLI that outputs step-by-step JSON logs and final summary.
 11. If screenshot capture fails, continue with structured text-only observation and emit structured diagnostics.
+12. Treat the local obstacle suite as the primary release proof, and keep the 10-task bench as regression coverage rather than the product-level outcome metric.
+13. All evaluation claims must be grounded in observable page state and user-like browser actions only; reading hidden storage, JavaScript bundles, network payloads, or site-specific shortcut routes does not count as success.
 ### Non-functional requirements:
 - Performance: Observation and action execution should each complete within 1 second on typical pages (excluding LLM latency).
 - Performance: Screenshot capture + packaging should add no more than 300ms p95 snapshot overhead on harness pages.
@@ -199,6 +202,20 @@ Validation rules and invariants:
 - Reproduce a known no-progress loop case and show escalation events before hard failure.
 - Show a successful run where effort escalates without requiring a model swap.
 - Show deterministic `Action.id` validation still anchored to `Observation.elements` with screenshot context enabled.
+
+### Milestone 5: Challenge-first proof + adversarial evaluation
+- Align product docs and backlog around the local obstacle suite as the primary success bar.
+- Publish a reproducible proof workflow for `mbus challenge` plus `mbus package`.
+- Add a supplemental adversarial fixture slice that tests prompt-injection-style copy and misleading UI while staying within observable-only evaluation rules.
+#### Acceptance criteria:
+- `prd.md`, `prd.json`, `README.md`, `docs/quickstart.md`, and `docs/status.md` all describe the same primary success bar and evidence workflow.
+- A checked-in script or command sequence runs `mbus challenge` and `mbus package` without relying on undocumented tribal knowledge.
+- Live-site evaluation guidance explicitly states that reverse-engineering app internals or using hidden shortcuts does not count as success.
+- A supplemental adversarial tasks directory exists with observable-only manifests and at least one automated test path.
+#### Demo checklist:
+- Run the challenge proof workflow locally with a real model and inspect the packaged report.
+- Run the default 12-task challenge suite and the supplemental adversarial suite as separate commands.
+- Show that docs still keep the bench path as regression coverage rather than the release gate.
 
 ## Task List for Engineering (engineer-ready)
 

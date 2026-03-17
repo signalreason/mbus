@@ -1,5 +1,7 @@
 # 2026-02-11 next-step assessment
 
+Historical note. Superseded by `docs/status.md` because the bench/openai gap called out here has since been implemented and the product goal has shifted to challenge-first proof.
+
 - `prd.json` shows all listed tasks completed, but completion status is task-based, not outcome-based.
 - The project-level success definition in `prd.md` is outcome-driven (8/10 harness completion within 40 steps with structured logs + metrics).
 - Local evidence exists in `target/bench/report.json` (timestamp `2026-02-10T02:58:27.730982Z`) showing 10/10 passed and gate passed.

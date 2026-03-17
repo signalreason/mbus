@@ -3,6 +3,8 @@
 ## Purpose
 Deliver a single place for operators to understand mbus observability, recover from recurring failure modes, and follow a verified change/rollback recipe. The troubleshooting sections reference the structured log events and error codes that appear on stdout or stderr, which avoids guesswork when parsing JSON traces.
 
+The primary release-proof workflow is `mbus challenge` on the 12-task local obstacle suite, followed by `mbus package`. The 10-task bench remains useful regression coverage but is not the product-level outcome gate.
+
 ## Observability
 
 ### Key structured log events
@@ -79,14 +81,42 @@ Every section below ties failure symptoms to structured log events, error codes 
   2. If repairs succeed but the run still stalls, the action may be structurally wrong; follow the validation troubleshooting above.  
   3. Use `mbus run --llm-mode stub` and feed known-good actions from `actions.jsonl` to confirm the browser path still works.
 
+## Challenge Operations
+
+### Canonical proof run
+Use the helper script when generating product-level evidence:
+
+```bash
+MBUS_LLM_API_KEY=... \
+MBUS_LLM_INPUT_COST_PER_MILLION=... \
+MBUS_LLM_OUTPUT_COST_PER_MILLION=... \
+./scripts/run_challenge_proof.sh
+```
+
+Expected outputs:
+- a challenge report under `target/challenge/`,
+- a packaged bundle directory under `target/challenge/package/`,
+- a zip archive next to the unpacked bundle.
+
+### Challenge failure buckets
+Challenge reports use the same aggregate structure as bench reports, but the most useful buckets are usually:
+- `run_error:*`: browser launch, transport, timeout, or provider failures prevented evaluation.
+- `status_mismatch:*`: the agent terminated without `done`.
+- `visible_text_mismatch:*`: the page changed, but not to the expected observable success state.
+- `final_url_mismatch:*`: navigation succeeded, but the final location is not the one declared by the manifest.
+- `missing_screenshot_artifact`: artifact persistence broke even though the challenge path requires screenshots.
+- `disallowed_final_url`: the run left the allowed domain set, which is treated as invalid even if the task otherwise looks successful.
+
+When reviewing a proof package, start with `failure_buckets`, then inspect per-task `failure_reason`, screenshots, and final visible text.
+
 ## Runbook
 
 ### Verification checklist
 1. `cargo test` – ensures core crates (telemetry, validator, browser adapters) still compile.  
-2. Run a short scripted task: `cargo run -- run --llm-mode scripted --task "Checkout sample" --plan "" --max-steps 5` (or point at `harness/tasks/` fixture). Confirm the CLI emits a `summary` JSON line with `status="done"` and `final_url_contains`.  
-3. Check a production-like run: `cargo run -- run --task "Open example.com" --max-steps 10` and watch for `step_result` events, verifying `state_hash_streak` resets after progress and `llm_failures_total` stays low.  
-4. If you rely on extraction, ensure `mbus_extract.json` is created and matches whichever `extract` action was used.  
-5. After config changes, rerun `cargo run -- bench` to ensure the deterministic harness still meets `required_passes`.
+2. Run a short scripted task: `cargo run --bin mbus -- run --llm-mode scripted --task "Checkout sample" --plan "" --max-steps 5` (or point at `harness/tasks/` fixture). Confirm the CLI emits a `summary` JSON line with `status="done"` and `final_url_contains`.  
+3. Run `cargo run --bin mbus -- bench --llm-mode scripted` to make sure the regression harness still meets its gate.  
+4. For product-level evidence, run `./scripts/run_challenge_proof.sh` with the required env vars and confirm the packaged report includes screenshots plus token and cost totals.  
+5. If you rely on extraction outside the challenge flow, ensure `mbus_extract.json` is created and matches whichever `extract` action was used.  
 
 ### Rollback procedure
 1. Identify the last known-good commit or tag (e.g., `git describe --tags --abbrev=0`).  
