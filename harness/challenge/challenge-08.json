@@ -1,0 +1,12 @@
+{
+  "id": "challenge-08-scroll-load",
+  "task": "Scroll until the activity feed loads the final card and shows FINAL CARD LOADED.",
+  "start_url": "{{base_url}}/challenge/scroll-load.html",
+  "allowed_domains": ["127.0.0.1"],
+  "max_steps": 25,
+  "expect": {
+    "final_url_contains": "/challenge/scroll-load.html",
+    "final_visible_text_contains": "FINAL CARD LOADED",
+    "screenshot_artifact_required": true
+  }
+}

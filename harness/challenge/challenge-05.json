@@ -1,0 +1,12 @@
+{
+  "id": "challenge-05-disabled-submit",
+  "task": "Type an email address and submit the form so the page shows WAITLIST JOINED.",
+  "start_url": "{{base_url}}/challenge/disabled-submit.html",
+  "allowed_domains": ["127.0.0.1"],
+  "max_steps": 30,
+  "expect": {
+    "final_url_contains": "/challenge/disabled-submit.html",
+    "final_visible_text_contains": "WAITLIST JOINED",
+    "screenshot_artifact_required": true
+  }
+}

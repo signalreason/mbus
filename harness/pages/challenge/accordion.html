@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Accordion Challenge</title>
+    <style>
+      body { font-family: sans-serif; margin: 0; padding: 2rem; }
+      button { padding: 0.75rem 1rem; }
+      #panel[hidden] { display: none; }
+      .status { margin-top: 1rem; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Policies</h1>
+      <p>Reveal the return policy details.</p>
+      <button id="toggle" aria-expanded="false">Show return policy</button>
+      <div id="panel" hidden>
+        <p>RETURNS OPEN</p>
+      </div>
+      <p class="status" id="status">Policy collapsed</p>
+    </main>
+    <script>
+      document.getElementById("toggle").addEventListener("click", () => {
+        document.getElementById("panel").hidden = false;
+        document.getElementById("toggle").setAttribute("aria-expanded", "true");
+        document.getElementById("status").textContent = "RETURNS OPEN";
+      });
+    </script>
+  </body>
+</html>

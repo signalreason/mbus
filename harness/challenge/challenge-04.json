@@ -1,0 +1,12 @@
+{
+  "id": "challenge-04-lazy-cta",
+  "task": "Scroll until you can click Reveal pricing panel and finish when the page shows PRICING PANEL READY.",
+  "start_url": "{{base_url}}/challenge/lazy-cta.html",
+  "allowed_domains": ["127.0.0.1"],
+  "max_steps": 30,
+  "expect": {
+    "final_url_contains": "/challenge/lazy-cta.html",
+    "final_visible_text_contains": "PRICING PANEL READY",
+    "screenshot_artifact_required": true
+  }
+}

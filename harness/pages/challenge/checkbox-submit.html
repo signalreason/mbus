@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Checkbox Submit Challenge</title>
+    <style>
+      body { font-family: sans-serif; margin: 0; padding: 2rem; }
+      form { display: grid; gap: 1rem; max-width: 28rem; }
+      button { padding: 0.75rem 1rem; }
+      .status { margin-top: 1rem; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Request a demo</h1>
+      <p>Agree to the terms before sending the request.</p>
+      <form id="demo-form">
+        <label>
+          <input id="agree" type="checkbox">
+          I agree to the terms
+        </label>
+        <button id="request" type="submit" disabled>Request demo</button>
+      </form>
+      <p class="status" id="status">DEMO NOT REQUESTED</p>
+      <section id="result" hidden>
+        <h2>DEMO REQUESTED</h2>
+      </section>
+    </main>
+    <script>
+      const agree = document.getElementById("agree");
+      const request = document.getElementById("request");
+      agree.addEventListener("change", () => {
+        request.disabled = !agree.checked;
+      });
+      document.getElementById("demo-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        document.getElementById("demo-form").hidden = true;
+        document.getElementById("status").textContent = "DEMO REQUESTED";
+        document.getElementById("result").hidden = false;
+      });
+    </script>
+  </body>
+</html>

@@ -7,10 +7,16 @@ use mbus::bench::{
     BENCH_REPORT_SCHEMA_VERSION, BenchLlmInfo, BenchObservedStatus, BenchPricing, BenchReport,
     BenchServer, BenchTaskResult, BenchTokenUsage, actions_file_path, actions_work_dir,
     bench_task_limit, build_summary, evaluate_gate, evaluate_task, failure_buckets, join_base_url,
-    load_tasks, now_timestamp, render_actions, report_path_default, sleep_between_tasks,
-    tasks_dir_default, write_actions_file, write_report,
+    load_tasks as load_bench_tasks, now_timestamp, render_actions,
+    report_path_default as bench_report_path_default, sleep_between_tasks,
+    tasks_dir_default as bench_tasks_dir_default, write_actions_file, write_report,
 };
 use mbus::browser::CdpBrowser;
+use mbus::challenge::{
+    challenge_task_limit, evaluate_task as evaluate_challenge_task,
+    load_tasks as load_challenge_tasks, report_path_default as challenge_report_path_default,
+    resolve_start_url, tasks_dir_default as challenge_tasks_dir_default,
+};
 use mbus::config::{CliOverrides, ConfigError, LlmConfig, LlmMode, ScreenshotPersist, load_config};
 use mbus::llm::openai::{OpenAiClient, OpenAiConfig};
 use mbus::llm::router::Router;
@@ -38,6 +44,7 @@ struct Cli {
 enum Commands {
     Run(RunArgs),
     Bench(BenchArgs),
+    Challenge(ChallengeArgs),
     Visual(VisualArgs),
 }
 
@@ -171,6 +178,44 @@ struct BenchArgs {
     screenshot_persist: Option<String>,
 }
 
+#[derive(Args, Debug)]
+struct ChallengeArgs {
+    #[arg(long)]
+    tasks_dir: Option<PathBuf>,
+    #[arg(long)]
+    report_path: Option<PathBuf>,
+    #[arg(long)]
+    config: Option<PathBuf>,
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    headless: Option<bool>,
+    #[arg(long)]
+    max_steps_per_task: Option<usize>,
+    #[arg(long)]
+    required_passes: Option<usize>,
+    #[arg(long)]
+    router_ladder: Vec<String>,
+    #[arg(long)]
+    llm_base_url: Option<String>,
+    #[arg(long)]
+    llm_api_key: Option<String>,
+    #[arg(long)]
+    llm_model_fast: Option<String>,
+    #[arg(long)]
+    llm_model_mid: Option<String>,
+    #[arg(long)]
+    llm_model_strong: Option<String>,
+    #[arg(long)]
+    llm_timeout_ms: Option<u64>,
+    #[arg(long)]
+    llm_temperature: Option<f32>,
+    #[arg(long)]
+    llm_max_tokens: Option<u32>,
+    #[arg(long)]
+    llm_input_cost_per_million: Option<f64>,
+    #[arg(long)]
+    llm_output_cost_per_million: Option<f64>,
+}
+
 #[tokio::main]
 async fn main() {
     telemetry::init_tracing();
@@ -185,6 +230,7 @@ async fn run_cli() -> Result<(), Box<dyn Error>> {
     match cli.command {
         Commands::Run(args) => run_command(args).await,
         Commands::Bench(args) => bench_command(args).await,
+        Commands::Challenge(args) => challenge_command(args).await,
         Commands::Visual(args) => visual::run_command(args),
     }
 }
@@ -320,11 +366,17 @@ async fn run_command(args: RunArgs) -> Result<(), Box<dyn Error>> {
 }
 
 async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
-    let tasks_dir = args.tasks_dir.clone().unwrap_or_else(tasks_dir_default);
-    let report_path = args.report_path.clone().unwrap_or_else(report_path_default);
+    let tasks_dir = args
+        .tasks_dir
+        .clone()
+        .unwrap_or_else(bench_tasks_dir_default);
+    let report_path = args
+        .report_path
+        .clone()
+        .unwrap_or_else(bench_report_path_default);
     let max_steps_per_task = args.max_steps_per_task.unwrap_or(40);
 
-    let tasks = load_tasks(&tasks_dir).map_err(|err| format!("bench tasks: {err}"))?;
+    let tasks = load_bench_tasks(&tasks_dir).map_err(|err| format!("bench tasks: {err}"))?;
     let total_tasks = tasks.len();
     let required_passes = args
         .required_passes
@@ -456,6 +508,7 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
         &aggregate_usage,
         BenchPricing::from_config(&base_config.llm),
     );
+    let failure_buckets = failure_buckets(&results);
     let bench_duration_ms = bench_started_at.elapsed().as_millis() as u64;
     let report = BenchReport {
         schema_version: BENCH_REPORT_SCHEMA_VERSION,
@@ -470,6 +523,7 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
         summary: summary.clone(),
         aggregate_usage,
         aggregate_cost,
+        failure_buckets: failure_buckets.clone(),
         results,
     };
     write_report(&report_path, &report)
@@ -484,7 +538,7 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
         median_steps_success: summary.median_steps_success,
         p95_steps_success: summary.p95_steps_success,
         gate_passed: summary.gate_passed,
-        failure_buckets: failure_buckets(&report.results),
+        failure_buckets,
         report_path: report_path.display().to_string(),
     })?;
 
@@ -494,6 +548,200 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
         let reason = gate
             .reason
             .unwrap_or_else(|| "benchmark gate failed".to_string());
+        return Err(reason.into());
+    }
+
+    Ok(())
+}
+
+async fn challenge_command(args: ChallengeArgs) -> Result<(), Box<dyn Error>> {
+    let tasks_dir = args
+        .tasks_dir
+        .clone()
+        .unwrap_or_else(challenge_tasks_dir_default);
+    let report_path = args
+        .report_path
+        .clone()
+        .unwrap_or_else(challenge_report_path_default);
+    let max_steps_per_task = args.max_steps_per_task.unwrap_or(40);
+
+    let tasks =
+        load_challenge_tasks(&tasks_dir).map_err(|err| format!("challenge tasks: {err}"))?;
+    let total_tasks = tasks.len();
+    let required_passes = args.required_passes.unwrap_or_else(|| total_tasks.min(10));
+
+    let config_path = resolve_config_path(args.config.as_deref());
+    let cli_overrides = build_challenge_cli_overrides(&args, max_steps_per_task)?;
+    let mut base_config = load_config(config_path.as_deref(), cli_overrides)?;
+    base_config.llm.mode = LlmMode::OpenAi;
+    base_config.screenshot.enabled = true;
+    base_config.screenshot.persist = ScreenshotPersist::Always;
+    base_config.output.extract_output = None;
+    if base_config.llm.api_key.is_none() {
+        return Err("challenge requires llm.api_key for openai mode".into());
+    }
+
+    let server = BenchServer::start()
+        .await
+        .map_err(|err| format!("challenge server startup failed: {err}"))?;
+    let base_url = server.base_url();
+    let llm_info = BenchLlmInfo {
+        mode: llm_mode_label(&base_config.llm.mode).to_string(),
+        model_fast: base_config.llm.model_fast.clone(),
+        model_mid: base_config.llm.model_mid.clone(),
+        model_strong: base_config.llm.model_strong.clone(),
+    };
+
+    emit_json(&ChallengeConfigLog {
+        r#type: "challenge_config",
+        tasks_dir: tasks_dir.display().to_string(),
+        report_path: report_path.display().to_string(),
+        max_steps_per_task,
+        required_passes,
+        base_url: base_url.clone(),
+    })?;
+
+    let challenge_started_at = std::time::Instant::now();
+    let mut results = Vec::with_capacity(tasks.len());
+
+    for task in tasks {
+        let started_at = std::time::Instant::now();
+        let mut task_config = base_config.clone();
+        let step_limit = challenge_task_limit(&task, max_steps_per_task);
+        task_config.agent.max_steps = step_limit;
+        task_config.browser.initial_url = resolve_start_url(&task.start_url, &base_url);
+
+        let run = execute_agent(&task.task, task.plan.as_deref(), &task_config).await;
+        let usage = match &run {
+            Ok(execution) => aggregate_usage_from_steps(&execution.steps, &LlmMode::OpenAi),
+            Err(_) => aggregate_usage_from_steps(&[], &LlmMode::OpenAi),
+        };
+        let elapsed = started_at.elapsed().as_millis() as u64;
+        let task_result = match run {
+            Ok(execution) => {
+                let terminal_state = run_terminal_state(&execution.result);
+                let run_timestamp = mbus::output::current_timestamp()?;
+                let run_id = mbus::output::run_id_for(&task.id, &run_timestamp);
+                let artifacts = persist_task_artifacts(
+                    &task_config,
+                    &run_id,
+                    &task.task,
+                    &execution.steps,
+                    &task.id,
+                    &run_timestamp,
+                    &terminal_state,
+                    &execution.step_screenshots,
+                );
+                let final_url = execution
+                    .final_observation
+                    .as_ref()
+                    .map(|obs| obs.url.as_str());
+                let final_visible_text = execution
+                    .final_observation
+                    .as_ref()
+                    .map(|obs| obs.visible_text.as_str());
+                let mut evaluated = match execution.result {
+                    Ok(result) => {
+                        let observed_status = match result.status {
+                            RunStatus::Done => BenchObservedStatus::Done,
+                            RunStatus::MaxSteps => BenchObservedStatus::MaxSteps,
+                            RunStatus::NoProgress => BenchObservedStatus::NoProgress,
+                        };
+                        evaluate_challenge_task(
+                            &task,
+                            observed_status,
+                            result.steps.len(),
+                            final_url,
+                            final_visible_text,
+                            step_limit,
+                            None,
+                            usage,
+                            artifacts,
+                        )
+                    }
+                    Err(err) => evaluate_challenge_task(
+                        &task,
+                        BenchObservedStatus::Error,
+                        execution.steps.len(),
+                        final_url,
+                        final_visible_text,
+                        step_limit,
+                        Some(&err.to_string()),
+                        usage,
+                        artifacts,
+                    ),
+                };
+                evaluated.duration_ms = elapsed;
+                evaluated
+            }
+            Err(err) => {
+                let mut evaluated = evaluate_challenge_task(
+                    &task,
+                    BenchObservedStatus::Error,
+                    0,
+                    None,
+                    None,
+                    step_limit,
+                    Some(&err.to_string()),
+                    usage,
+                    Vec::new(),
+                );
+                evaluated.duration_ms = elapsed;
+                evaluated
+            }
+        };
+        emit_json(&ChallengeTaskLog::from(&task_result))?;
+        results.push(task_result);
+        sleep(sleep_between_tasks()).await;
+    }
+
+    let gate = evaluate_gate(&results, required_passes);
+    let summary = build_summary(&results, &gate);
+    let aggregate_usage = aggregate_usage_from_results(&results);
+    let aggregate_cost = estimate_cost(
+        &aggregate_usage,
+        BenchPricing::from_config(&base_config.llm),
+    );
+    let failure_buckets = failure_buckets(&results);
+    let challenge_duration_ms = challenge_started_at.elapsed().as_millis() as u64;
+    let report = BenchReport {
+        schema_version: BENCH_REPORT_SCHEMA_VERSION,
+        timestamp: now_timestamp().map_err(|err| format!("challenge timestamp: {err}"))?,
+        tasks_dir: tasks_dir.display().to_string(),
+        report_path: report_path.display().to_string(),
+        llm: llm_info,
+        max_steps_per_task,
+        required_passes,
+        duration_ms: challenge_duration_ms,
+        gate: gate.clone(),
+        summary: summary.clone(),
+        aggregate_usage,
+        aggregate_cost,
+        failure_buckets: failure_buckets.clone(),
+        results,
+    };
+    write_report(&report_path, &report)
+        .map_err(|err| format!("failed to write challenge report: {err}"))?;
+
+    emit_json(&ChallengeSummaryLog {
+        r#type: "challenge_summary",
+        total_tasks: summary.total_tasks,
+        passed_tasks: summary.passed_tasks,
+        required_passes: summary.required_passes,
+        completion_rate: summary.completion_rate,
+        median_steps_success: summary.median_steps_success,
+        p95_steps_success: summary.p95_steps_success,
+        gate_passed: summary.gate_passed,
+        failure_buckets,
+        report_path: report_path.display().to_string(),
+    })?;
+
+    server.shutdown().await;
+
+    if !gate.passed {
+        let reason = gate
+            .reason
+            .unwrap_or_else(|| "challenge gate failed".to_string());
         return Err(reason.into());
     }
 
@@ -675,6 +923,37 @@ fn build_bench_cli_overrides(
     })
 }
 
+fn build_challenge_cli_overrides(
+    args: &ChallengeArgs,
+    max_steps_per_task: usize,
+) -> Result<CliOverrides, ConfigError> {
+    let router_ladder = if args.router_ladder.is_empty() {
+        None
+    } else {
+        Some(args.router_ladder.clone())
+    };
+
+    Ok(CliOverrides {
+        max_steps: Some(max_steps_per_task),
+        headless: args.headless,
+        router_ladder,
+        llm_mode: Some(LlmMode::OpenAi),
+        llm_base_url: args.llm_base_url.clone(),
+        llm_api_key: args.llm_api_key.clone(),
+        llm_model_fast: args.llm_model_fast.clone(),
+        llm_model_mid: args.llm_model_mid.clone(),
+        llm_model_strong: args.llm_model_strong.clone(),
+        llm_timeout_ms: args.llm_timeout_ms,
+        llm_temperature: args.llm_temperature,
+        llm_max_tokens: args.llm_max_tokens,
+        llm_input_cost_per_million: args.llm_input_cost_per_million,
+        llm_output_cost_per_million: args.llm_output_cost_per_million,
+        screenshot_enabled: Some(true),
+        screenshot_persist: Some(ScreenshotPersist::Always),
+        ..CliOverrides::default()
+    })
+}
+
 fn build_clients(config: &LlmConfig) -> Result<LlmClients, Box<dyn Error>> {
     match config.mode {
         LlmMode::Stub => {
@@ -791,6 +1070,19 @@ fn router_final_state(router: &Router) -> mbus::output::RouterFinalState {
         effort,
         tier: tier_label(tier).to_string(),
         ladder_index,
+    }
+}
+
+fn run_terminal_state(
+    result: &Result<mbus::agent::r#loop::RunResult, mbus::agent::r#loop::AgentError>,
+) -> mbus::output::TerminalState {
+    match result {
+        Ok(result) => match result.status {
+            RunStatus::Done => mbus::output::TerminalState::Done,
+            RunStatus::MaxSteps => mbus::output::TerminalState::MaxSteps,
+            RunStatus::NoProgress => mbus::output::TerminalState::NoProgress,
+        },
+        Err(_) => mbus::output::TerminalState::Error,
     }
 }
 
@@ -972,6 +1264,28 @@ fn write_screenshot_artifacts(
         }
     }
     ScreenshotPersistResult { artifacts, errors }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn persist_task_artifacts(
+    config: &mbus::config::AppConfig,
+    run_id: &str,
+    task: &str,
+    steps: &[mbus::agent::memory::StepRecord],
+    task_id: &str,
+    run_timestamp: &str,
+    terminal_state: &mbus::output::TerminalState,
+    step_screenshots: &[Option<Vec<u8>>],
+) -> Vec<mbus::output::OutputArtifact> {
+    let mut artifacts = Vec::new();
+    if let Ok(Some(artifact)) = write_transition_trace(run_id, task, steps, task_id, run_timestamp)
+    {
+        artifacts.push(artifact);
+    }
+    let screenshot_result =
+        write_screenshot_artifacts(config, run_id, terminal_state, step_screenshots);
+    artifacts.extend(screenshot_result.artifacts);
+    artifacts
 }
 
 fn should_persist_screenshots(
@@ -1253,6 +1567,8 @@ struct BenchTaskLog {
     usage: BenchTokenUsage,
     #[serde(skip_serializing_if = "Option::is_none")]
     failure_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    output_artifacts: Vec<mbus::output::OutputArtifact>,
 }
 
 impl From<&BenchTaskResult> for BenchTaskLog {
@@ -1266,12 +1582,71 @@ impl From<&BenchTaskResult> for BenchTaskLog {
             duration_ms: value.duration_ms,
             usage: value.usage.clone(),
             failure_reason: value.failure_reason.clone(),
+            output_artifacts: value.output_artifacts.clone(),
         }
     }
 }
 
 #[derive(Serialize)]
 struct BenchSummaryLog {
+    #[serde(rename = "type")]
+    r#type: &'static str,
+    total_tasks: usize,
+    passed_tasks: usize,
+    required_passes: usize,
+    completion_rate: f64,
+    median_steps_success: Option<u64>,
+    p95_steps_success: Option<u64>,
+    gate_passed: bool,
+    failure_buckets: std::collections::BTreeMap<String, usize>,
+    report_path: String,
+}
+
+#[derive(Serialize)]
+struct ChallengeConfigLog {
+    #[serde(rename = "type")]
+    r#type: &'static str,
+    tasks_dir: String,
+    report_path: String,
+    max_steps_per_task: usize,
+    required_passes: usize,
+    base_url: String,
+}
+
+#[derive(Serialize)]
+struct ChallengeTaskLog {
+    #[serde(rename = "type")]
+    r#type: &'static str,
+    task_id: String,
+    passed: bool,
+    status: BenchObservedStatus,
+    steps: usize,
+    duration_ms: u64,
+    usage: BenchTokenUsage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    output_artifacts: Vec<mbus::output::OutputArtifact>,
+}
+
+impl From<&BenchTaskResult> for ChallengeTaskLog {
+    fn from(value: &BenchTaskResult) -> Self {
+        Self {
+            r#type: "challenge_task",
+            task_id: value.task_id.clone(),
+            passed: value.passed,
+            status: value.status,
+            steps: value.steps,
+            duration_ms: value.duration_ms,
+            usage: value.usage.clone(),
+            failure_reason: value.failure_reason.clone(),
+            output_artifacts: value.output_artifacts.clone(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct ChallengeSummaryLog {
     #[serde(rename = "type")]
     r#type: &'static str,
     total_tasks: usize,

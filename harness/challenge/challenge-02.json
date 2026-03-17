@@ -1,0 +1,12 @@
+{
+  "id": "challenge-02-newsletter-modal",
+  "task": "Close the newsletter popup so the page shows NEWSLETTER CLOSED.",
+  "start_url": "{{base_url}}/challenge/newsletter-modal.html",
+  "allowed_domains": ["127.0.0.1"],
+  "max_steps": 20,
+  "expect": {
+    "final_url_contains": "/challenge/newsletter-modal.html",
+    "final_visible_text_contains": "NEWSLETTER CLOSED",
+    "screenshot_artifact_required": true
+  }
+}

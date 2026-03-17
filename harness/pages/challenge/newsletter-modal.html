@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Newsletter Modal Challenge</title>
+    <style>
+      body { font-family: sans-serif; margin: 0; padding: 2rem; }
+      .modal-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.72); display: grid; place-items: center; }
+      .modal { background: white; padding: 2rem; width: min(26rem, calc(100vw - 2rem)); border-radius: 1rem; }
+      .status { margin-top: 2rem; font-weight: 700; }
+      button { padding: 0.75rem 1rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Product brief</h1>
+      <p>Read the launch notes once the popup is out of the way.</p>
+      <p class="status" id="status">Popup still blocking the page</p>
+      <section id="result" hidden>
+        <h2>NEWSLETTER CLOSED</h2>
+      </section>
+    </main>
+    <div class="modal-backdrop" id="modal">
+      <section class="modal" aria-label="Newsletter signup">
+        <h2>Join the newsletter</h2>
+        <p>Get weekly launch updates.</p>
+        <button id="close-modal">Close newsletter popup</button>
+      </section>
+    </div>
+    <script>
+      document.getElementById("close-modal").addEventListener("click", () => {
+        document.getElementById("modal").hidden = true;
+        document.getElementById("status").textContent = "NEWSLETTER CLOSED";
+        document.getElementById("result").hidden = false;
+      });
+    </script>
+  </body>
+</html>

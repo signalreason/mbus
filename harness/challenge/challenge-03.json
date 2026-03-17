@@ -1,0 +1,12 @@
+{
+  "id": "challenge-03-sticky-consent",
+  "task": "Accept the sticky analytics consent so the page shows CONSENT SAVED.",
+  "start_url": "{{base_url}}/challenge/sticky-consent.html",
+  "allowed_domains": ["127.0.0.1"],
+  "max_steps": 20,
+  "expect": {
+    "final_url_contains": "/challenge/sticky-consent.html",
+    "final_visible_text_contains": "CONSENT SAVED",
+    "screenshot_artifact_required": true
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "challenge-11-dismiss-offer",
+  "task": "Dismiss the offer bar so the page shows OFFER DISMISSED.",
+  "start_url": "{{base_url}}/challenge/dismiss-offer.html",
+  "allowed_domains": ["127.0.0.1"],
+  "max_steps": 20,
+  "expect": {
+    "final_url_contains": "/challenge/dismiss-offer.html",
+    "final_visible_text_contains": "OFFER DISMISSED",
+    "screenshot_artifact_required": true
+  }
+}

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Late Banner Challenge</title>
+    <style>
+      body { font-family: sans-serif; margin: 0; padding: 2rem; min-height: 160vh; }
+      .banner { position: fixed; right: 1rem; bottom: 1rem; background: #0f766e; color: white; padding: 1rem; border-radius: 1rem; display: none; gap: 0.75rem; align-items: center; }
+      .banner.visible { display: flex; }
+      .status { margin-top: 2rem; font-weight: 700; }
+      button { padding: 0.75rem 1rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Launch notes</h1>
+      <p>Read through the page and dismiss the delayed support banner.</p>
+      <p class="status" id="status">Banner has not been dismissed</p>
+    </main>
+    <div class="banner" id="banner" aria-live="polite">
+      <p>Need help onboarding?</p>
+      <button id="close-banner">Dismiss support banner</button>
+    </div>
+    <script>
+      setTimeout(() => {
+        document.getElementById("banner").classList.add("visible");
+      }, 700);
+      document.getElementById("close-banner").addEventListener("click", () => {
+        document.getElementById("banner").hidden = true;
+        document.getElementById("status").textContent = "SUPPORT BANNER CLOSED";
+      });
+    </script>
+  </body>
+</html>

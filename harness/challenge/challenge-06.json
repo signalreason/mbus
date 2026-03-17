@@ -1,0 +1,12 @@
+{
+  "id": "challenge-06-interstitial",
+  "task": "Continue through the interstitial until the page shows SHOWROOM OPEN.",
+  "start_url": "{{base_url}}/challenge/interstitial.html",
+  "allowed_domains": ["127.0.0.1"],
+  "max_steps": 20,
+  "expect": {
+    "final_url_contains": "/challenge/interstitial.html",
+    "final_visible_text_contains": "SHOWROOM OPEN",
+    "screenshot_artifact_required": true
+  }
+}

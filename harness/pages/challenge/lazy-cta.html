@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Lazy CTA Challenge</title>
+    <style>
+      body { font-family: sans-serif; margin: 0; padding: 2rem; line-height: 1.5; }
+      .spacer { height: 1200px; background: linear-gradient(180deg, #f8fafc, #e2e8f0); margin: 1.5rem 0; border-radius: 1rem; }
+      .status { margin-top: 1rem; font-weight: 700; }
+      .cta-shell { position: sticky; top: 1rem; }
+      button { padding: 0.75rem 1rem; }
+      #panel[hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Pricing page</h1>
+      <p>Scroll until you can reveal the pricing panel.</p>
+      <div class="spacer">Scroll for the primary call to action.</div>
+      <div class="cta-shell">
+        <button id="reveal" hidden>Reveal pricing panel</button>
+      </div>
+      <p class="status" id="status">Pricing panel hidden</p>
+      <section id="panel" hidden>
+        <h2>PRICING PANEL READY</h2>
+      </section>
+    </main>
+    <script>
+      function maybeRevealButton() {
+        if (window.scrollY > 700) {
+          document.getElementById("reveal").hidden = false;
+          document.getElementById("status").textContent = "CTA READY";
+        }
+      }
+      window.addEventListener("scroll", maybeRevealButton, { passive: true });
+      maybeRevealButton();
+      document.getElementById("reveal").addEventListener("click", () => {
+        document.getElementById("panel").hidden = false;
+        document.getElementById("reveal").hidden = true;
+        document.getElementById("status").textContent = "PRICING PANEL READY";
+      });
+    </script>
+  </body>
+</html>

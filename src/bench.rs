@@ -1,3 +1,4 @@
+use crate::output::OutputArtifact;
 use crate::types::Action;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -69,6 +70,12 @@ pub struct BenchTaskResult {
     pub usage: BenchTokenUsage,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub output_artifacts: Vec<OutputArtifact>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_visible_text: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -157,6 +164,7 @@ pub struct BenchReport {
     pub summary: BenchSummary,
     pub aggregate_usage: BenchTokenUsage,
     pub aggregate_cost: BenchCostSummary,
+    pub failure_buckets: BTreeMap<String, usize>,
     pub results: Vec<BenchTaskResult>,
 }
 
@@ -293,6 +301,9 @@ pub fn evaluate_task(
         duration_ms: 0,
         usage,
         failure_reason,
+        output_artifacts: Vec::new(),
+        final_url: final_url.map(ToOwned::to_owned),
+        final_visible_text: final_visible_text.map(ToOwned::to_owned),
     }
 }
 
@@ -510,6 +521,9 @@ fn route_request(method: &str, path: &str) -> (&'static str, String, &'static st
     if let Some(body) = bench_page(path) {
         return ("200 OK", body, "text/html; charset=utf-8");
     }
+    if let Some(body) = challenge_page(path) {
+        return ("200 OK", body, "text/html; charset=utf-8");
+    }
 
     (
         "404 Not Found",
@@ -535,6 +549,20 @@ fn bench_page(path: &str) -> Option<String> {
         None
     }?;
     let full_path = Path::new("harness/pages").join(relative);
+    std::fs::read_to_string(full_path).ok()
+}
+
+fn challenge_page(path: &str) -> Option<String> {
+    let relative = path.strip_prefix("/challenge/")?;
+    if relative.is_empty()
+        || relative.contains("..")
+        || !relative
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+    {
+        return None;
+    }
+    let full_path = Path::new("harness/pages/challenge").join(relative);
     std::fs::read_to_string(full_path).ok()
 }
 
@@ -651,6 +679,9 @@ mod tests {
                 error: None,
             },
             failure_reason: None,
+            output_artifacts: Vec::new(),
+            final_url: None,
+            final_visible_text: None,
         };
         let failed = BenchTaskResult {
             task_id: "t2".to_string(),
@@ -665,6 +696,9 @@ mod tests {
                 error: Some("missing_usage".to_string()),
             },
             failure_reason: Some("run_error: boom".to_string()),
+            output_artifacts: Vec::new(),
+            final_url: None,
+            final_visible_text: None,
         };
         let gate = evaluate_gate(&[passed.clone(), failed.clone()], 1);
         assert!(gate.passed);

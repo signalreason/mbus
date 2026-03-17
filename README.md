@@ -82,6 +82,18 @@ For a concise install + quickstart path (prerequisites, install steps, and the f
 - `--llm-model-fast`, `--llm-model-mid`, `--llm-model-strong`
 - `--llm-timeout-ms`, `--llm-temperature`, `--llm-max-tokens`
 
+`mbus challenge` flags:
+- `--tasks-dir` (default: `harness/challenge`)
+- `--report-path` (default: `target/challenge/report.json`)
+- `--config`
+- `--headless`
+- `--max-steps-per-task` (default: `40`)
+- `--required-passes` (default: `10`)
+- `--llm-base-url`, `--llm-api-key`
+- `--llm-model-fast`, `--llm-model-mid`, `--llm-model-strong`
+- `--llm-timeout-ms`, `--llm-temperature`, `--llm-max-tokens`
+- `--llm-input-cost-per-million`, `--llm-output-cost-per-million`
+
 ## Benchmark Harness
 
 Run the local benchmark harness:
@@ -115,6 +127,38 @@ Task fixture shape (example):
     "status": "done",
     "final_url_contains": "/bench/task-01",
     "final_visible_text_contains": "BENCH TASK 01"
+  }
+}
+```
+
+## Challenge Suite
+
+Run the obstacle suite with the OpenAI-compatible path:
+
+```bash
+MBUS_LLM_API_KEY=... cargo run -- challenge
+```
+
+The command:
+- Loads autonomous challenge manifests from `harness/challenge/*.json`.
+- Starts the local harness server and serves obstacle pages from `harness/pages/challenge`.
+- Forces `openai` mode and persists screenshots to `.ralph/runs/...` for visual diff follow-up.
+- Writes an aggregate report to `target/challenge/report.json`.
+- Enforces the autonomous gate at 10 passed tasks out of 12 by default.
+
+Challenge manifest shape (example):
+
+```json
+{
+  "id": "challenge-01-cookie-banner",
+  "task": "Dismiss the cookie banner so the page clearly shows COOKIE BANNER DISMISSED.",
+  "start_url": "{{base_url}}/challenge/cookie-banner.html",
+  "allowed_domains": ["127.0.0.1"],
+  "max_steps": 20,
+  "expect": {
+    "final_url_contains": "/challenge/cookie-banner.html",
+    "final_visible_text_contains": "COOKIE BANNER DISMISSED",
+    "screenshot_artifact_required": true
   }
 }
 ```

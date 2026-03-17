@@ -1,0 +1,12 @@
+{
+  "id": "challenge-07-duplicate-buttons",
+  "task": "Pick the Continue button for checkout so the page shows CHECKOUT READY instead of HELP CENTER OPEN.",
+  "start_url": "{{base_url}}/challenge/duplicate-buttons.html",
+  "allowed_domains": ["127.0.0.1"],
+  "max_steps": 20,
+  "expect": {
+    "final_url_contains": "/challenge/duplicate-buttons.html",
+    "final_visible_text_contains": "CHECKOUT READY",
+    "screenshot_artifact_required": true
+  }
+}

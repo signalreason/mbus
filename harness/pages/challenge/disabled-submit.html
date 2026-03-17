@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Disabled Submit Challenge</title>
+    <style>
+      body { font-family: sans-serif; margin: 0; padding: 2rem; }
+      form { display: grid; gap: 1rem; max-width: 28rem; }
+      input, button { padding: 0.75rem 1rem; }
+      .status { margin-top: 1rem; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Join the waitlist</h1>
+      <p>Provide an email address before submitting the form.</p>
+      <form id="waitlist-form">
+        <label for="email">Work email</label>
+        <input id="email" name="email" type="email" placeholder="team@example.com">
+        <button id="submit" type="submit" disabled>Join waitlist</button>
+      </form>
+      <p class="status" id="status">WAITLIST NOT SUBMITTED</p>
+      <section id="result" hidden>
+        <h2>WAITLIST JOINED</h2>
+      </section>
+    </main>
+    <script>
+      const email = document.getElementById("email");
+      const submit = document.getElementById("submit");
+      email.addEventListener("input", () => {
+        submit.disabled = email.value.trim().length === 0;
+      });
+      document.getElementById("waitlist-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        document.getElementById("waitlist-form").hidden = true;
+        document.getElementById("status").textContent = "WAITLIST JOINED";
+        document.getElementById("result").hidden = false;
+      });
+    </script>
+  </body>
+</html>

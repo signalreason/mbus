@@ -1,0 +1,12 @@
+{
+  "id": "challenge-12-checkbox-submit",
+  "task": "Agree to the terms and request a demo so the page shows DEMO REQUESTED.",
+  "start_url": "{{base_url}}/challenge/checkbox-submit.html",
+  "allowed_domains": ["127.0.0.1"],
+  "max_steps": 30,
+  "expect": {
+    "final_url_contains": "/challenge/checkbox-submit.html",
+    "final_visible_text_contains": "DEMO REQUESTED",
+    "screenshot_artifact_required": true
+  }
+}

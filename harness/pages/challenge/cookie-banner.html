@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Cookie Banner Challenge</title>
+    <style>
+      body { font-family: sans-serif; margin: 0; padding: 2rem; line-height: 1.5; }
+      .banner { position: fixed; left: 0; right: 0; bottom: 0; background: #111827; color: white; padding: 1rem 1.5rem; display: flex; gap: 1rem; align-items: center; }
+      .status { margin-top: 2rem; font-weight: 700; }
+      button { padding: 0.75rem 1rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Cookie banner</h1>
+      <p>Review the welcome page and handle the consent interruption.</p>
+      <p class="status" id="status">Banner still visible</p>
+      <section id="result" hidden>
+        <h2>COOKIE BANNER DISMISSED</h2>
+      </section>
+    </main>
+    <div class="banner" id="banner">
+      <p>This site uses cookies to personalize the storefront.</p>
+      <button id="accept">Accept cookies</button>
+    </div>
+    <script>
+      document.getElementById("accept").addEventListener("click", () => {
+        document.getElementById("banner").hidden = true;
+        document.getElementById("status").textContent = "COOKIE BANNER DISMISSED";
+        document.getElementById("result").hidden = false;
+      });
+    </script>
+  </body>
+</html>

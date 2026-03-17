@@ -1,0 +1,12 @@
+{
+  "id": "challenge-10-tabs",
+  "task": "Open the Shipping details tab so the page shows DELIVERS IN 2 DAYS.",
+  "start_url": "{{base_url}}/challenge/tabs.html",
+  "allowed_domains": ["127.0.0.1"],
+  "max_steps": 20,
+  "expect": {
+    "final_url_contains": "/challenge/tabs.html",
+    "final_visible_text_contains": "DELIVERS IN 2 DAYS",
+    "screenshot_artifact_required": true
+  }
+}

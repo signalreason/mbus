@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Tabs Challenge</title>
+    <style>
+      body { font-family: sans-serif; margin: 0; padding: 2rem; }
+      .tabs { display: flex; gap: 1rem; }
+      button { padding: 0.75rem 1rem; }
+      [role="tabpanel"][hidden] { display: none; }
+      .status { margin-top: 1rem; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Shipping information</h1>
+      <p>Open the shipping details tab.</p>
+      <div class="tabs" role="tablist" aria-label="Information tabs">
+        <button id="overview-tab" role="tab" aria-selected="true">Overview</button>
+        <button id="shipping-tab" role="tab" aria-selected="false">Shipping details</button>
+      </div>
+      <section id="overview-panel" role="tabpanel">
+        <p>Overview content</p>
+      </section>
+      <section id="shipping-panel" role="tabpanel" hidden>
+        <p>DELIVERS IN 2 DAYS</p>
+      </section>
+      <p class="status" id="status">Shipping tab closed</p>
+      <section id="result" hidden>
+        <h2>DELIVERS IN 2 DAYS</h2>
+      </section>
+    </main>
+    <script>
+      document.getElementById("shipping-tab").addEventListener("click", () => {
+        document.getElementById("overview-panel").hidden = true;
+        document.getElementById("shipping-panel").hidden = false;
+        document.getElementById("overview-tab").setAttribute("aria-selected", "false");
+        document.getElementById("shipping-tab").setAttribute("aria-selected", "true");
+        document.getElementById("shipping-tab").hidden = true;
+        document.getElementById("status").textContent = "DELIVERS IN 2 DAYS";
+        document.getElementById("result").hidden = false;
+      });
+    </script>
+  </body>
+</html>

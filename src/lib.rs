@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod bench;
 pub mod browser;
+pub mod challenge;
 pub mod config;
 pub mod limits;
 pub mod llm;

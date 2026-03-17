@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Scroll Load Challenge</title>
+    <style>
+      body { font-family: sans-serif; margin: 0; padding: 2rem; }
+      .spacer { height: 1800px; background: linear-gradient(180deg, #eff6ff, #bfdbfe); border-radius: 1rem; margin: 1.5rem 0; }
+      .status { margin-top: 1rem; font-weight: 700; }
+      #loaded[hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Activity feed</h1>
+      <p>Scroll until the final card loads.</p>
+      <div class="spacer">Keep scrolling to the end of the feed.</div>
+      <p class="status" id="status">Feed not loaded</p>
+      <section id="loaded" hidden>
+        <h2>FINAL CARD LOADED</h2>
+      </section>
+    </main>
+    <script>
+      const loaded = document.getElementById("loaded");
+      const status = document.getElementById("status");
+      function maybeReveal() {
+        if (window.scrollY > 900) {
+          loaded.hidden = false;
+          status.textContent = "FINAL CARD LOADED";
+        }
+      }
+      window.addEventListener("scroll", maybeReveal, { passive: true });
+      maybeReveal();
+    </script>
+  </body>
+</html>
