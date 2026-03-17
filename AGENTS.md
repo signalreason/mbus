@@ -11,6 +11,7 @@
   note of it.
 - if any instructions are confusing or contradictory, stop and ask for
   clarification.
+- if you make changes to the repo, commit your changes (ignoring files that shouldn't be tracked).
 
 the purpose of this repository is to build an autonomous browser agent capable
 of operating a browser as a human would, especially with regard to the various
