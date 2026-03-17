@@ -2,6 +2,7 @@
 
 - 2026-03-17 ALIGN-001 challenge-first source-of-truth: `notes/2026-03-17-challenge-first-alignment.md`
 - 2026-03-17 RUNTIME-001/RUNTIME-002 priority shift: `notes/2026-03-17-runtime-priority-shift.md`
+- 2026-03-17 RUNTIME-001 launch controls + bootstrap wiring: `notes/2026-03-17-runtime-001-launch-controls.md`
 - 2026-03-17 TEST-001 browser launch failure in Codex environment: `notes/2026-03-17-test-001-browser-launch-failure.md`
 - 2026-03-17 PKG-001 challenge package bundles: `notes/2026-03-17-pkg-001-challenge-package-bundles.md`
 - 2026-03-16 CHALLENGE-001 obstacle suite: `notes/2026-03-16-challenge-001-obstacle-suite.md`

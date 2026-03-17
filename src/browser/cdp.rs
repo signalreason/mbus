@@ -5,12 +5,13 @@ use crate::telemetry;
 use crate::types::{Action, Observation, StepResult};
 use async_trait::async_trait;
 use chromiumoxide::browser::{Browser as ChromiumBrowser, BrowserConfig};
+use chromiumoxide::detection::{DetectionOptions, default_executable};
 use chromiumoxide::page::{Page, ScreenshotParams};
 use chromiumoxide_cdp::cdp::browser_protocol::dom::BackendNodeId;
 use chromiumoxide_cdp::cdp::browser_protocol::page::CaptureScreenshotFormat;
 use futures::StreamExt;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -23,6 +24,11 @@ pub struct CdpConfig {
     pub headful: bool,
     pub initial_url: String,
     pub cdp_url: Option<String>,
+    pub executable_path: Option<PathBuf>,
+    pub launch_timeout: Duration,
+    pub no_sandbox: bool,
+    pub extra_args: Vec<String>,
+    pub keep_user_data_dir: bool,
     pub snapshot_timeout: Duration,
     pub action_timeout: Duration,
     pub max_elements: usize,
@@ -38,6 +44,11 @@ impl Default for CdpConfig {
             headful: false,
             initial_url: "about:blank".to_string(),
             cdp_url: None,
+            executable_path: None,
+            launch_timeout: Duration::from_secs(20),
+            no_sandbox: false,
+            extra_args: Vec::new(),
+            keep_user_data_dir: false,
             snapshot_timeout: Duration::from_secs(5),
             action_timeout: Duration::from_secs(10),
             max_elements: 50,
@@ -62,36 +73,67 @@ struct CdpSession {
     handler_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     owns_browser: bool,
     user_data_dir: Option<PathBuf>,
+    keep_user_data_dir: bool,
     closed: AtomicBool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LaunchDetails {
+    executable_path: PathBuf,
+    executable_source: &'static str,
+    headful: bool,
+    no_sandbox: bool,
+    extra_args: Vec<String>,
+    launch_timeout: Duration,
+    user_data_dir: PathBuf,
+    keep_user_data_dir: bool,
+}
+
+#[derive(Debug)]
+struct PreparedLaunch {
+    browser_config: BrowserConfig,
+    details: LaunchDetails,
 }
 
 impl CdpSession {
     async fn launch(config: &CdpConfig) -> BrowserResult<Self> {
-        let mut builder = BrowserConfig::builder();
-        if config.headful {
-            builder = builder.with_head();
-        }
-        let user_data_dir = unique_user_data_dir();
-        std::fs::create_dir_all(&user_data_dir).map_err(|err| {
-            BrowserError::new("config_error", format!("create user data dir: {err}"))
-        })?;
-        builder = builder.user_data_dir(&user_data_dir);
-        let browser_config = builder
-            .build()
-            .map_err(|err| BrowserError::new("config_error", err))?;
-        let (browser, mut handler) = ChromiumBrowser::launch(browser_config)
+        let prepared = prepare_launch(config)?;
+        let launch_details = prepared.details.clone();
+        let (browser, mut handler) = ChromiumBrowser::launch(prepared.browser_config)
             .await
-            .map_err(|err| BrowserError::new("cdp_launch_failed", err.to_string()))?;
+            .map_err(|err| {
+                cleanup_user_data_dir(
+                    &launch_details.user_data_dir,
+                    launch_details.keep_user_data_dir,
+                );
+                launch_error("launch_process", &launch_details, err.to_string())
+            })?;
         let handler_task =
             tokio::spawn(async move { while let Some(_event) = handler.next().await {} });
-        let page = create_page(&browser, &config.initial_url).await?;
+        let page = match create_page(&browser, &config.initial_url).await {
+            Ok(page) => page,
+            Err(err) => {
+                let mut browser = browser;
+                let _ = browser.close().await;
+                cleanup_user_data_dir(
+                    &launch_details.user_data_dir,
+                    launch_details.keep_user_data_dir,
+                );
+                return Err(launch_error(
+                    "initial_page",
+                    &launch_details,
+                    format!("{}: {}", err.code, err.message),
+                ));
+            }
+        };
 
         Ok(Self {
             browser: Mutex::new(browser),
             page: Mutex::new(page),
             handler_task: Mutex::new(Some(handler_task)),
             owns_browser: true,
-            user_data_dir: Some(user_data_dir),
+            user_data_dir: Some(launch_details.user_data_dir),
+            keep_user_data_dir: config.keep_user_data_dir,
             closed: AtomicBool::new(false),
         })
     }
@@ -110,6 +152,7 @@ impl CdpSession {
             handler_task: Mutex::new(Some(handler_task)),
             owns_browser: false,
             user_data_dir: None,
+            keep_user_data_dir: false,
             closed: AtomicBool::new(false),
         })
     }
@@ -150,7 +193,7 @@ impl CdpSession {
         }
 
         if let Some(user_data_dir) = &self.user_data_dir {
-            let _ = std::fs::remove_dir_all(user_data_dir);
+            cleanup_user_data_dir(user_data_dir, self.keep_user_data_dir);
         }
 
         Ok(())
@@ -170,6 +213,122 @@ fn unique_user_data_dir() -> PathBuf {
     let pid = std::process::id();
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!("chromiumoxide-runner-{pid}-{ts}-{seq}"))
+}
+
+fn resolve_executable_path(config: &CdpConfig) -> BrowserResult<(PathBuf, &'static str)> {
+    if let Some(path) = config.executable_path.as_ref() {
+        return Ok((path.clone(), "explicit"));
+    }
+    let detected = default_executable(DetectionOptions::default()).map_err(|err| {
+        BrowserError::new(
+            "cdp_launch_failed",
+            format!(
+                "stage=resolve_executable executable=auto-detect headful={} no_sandbox={} launch_timeout_ms={} message={err}",
+                config.headful,
+                config.no_sandbox,
+                config.launch_timeout.as_millis()
+            ),
+        )
+    })?;
+    Ok((detected, "auto-detect"))
+}
+
+fn prepare_launch(config: &CdpConfig) -> BrowserResult<PreparedLaunch> {
+    let (executable_path, executable_source) = resolve_executable_path(config)?;
+    let user_data_dir = unique_user_data_dir();
+    std::fs::create_dir_all(&user_data_dir).map_err(|err| {
+        BrowserError::new(
+            "cdp_launch_failed",
+            format!(
+                "stage=prepare_user_data_dir executable={} executable_source={} headful={} no_sandbox={} launch_timeout_ms={} user_data_dir={} message={err}",
+                executable_path.display(),
+                executable_source,
+                config.headful,
+                config.no_sandbox,
+                config.launch_timeout.as_millis(),
+                user_data_dir.display(),
+            ),
+        )
+    })?;
+
+    let mut builder = BrowserConfig::builder()
+        .chrome_executable(&executable_path)
+        .launch_timeout(config.launch_timeout)
+        .user_data_dir(&user_data_dir);
+    if config.headful {
+        builder = builder.with_head();
+    }
+    if config.no_sandbox {
+        builder = builder.no_sandbox();
+    }
+    if !config.extra_args.is_empty() {
+        builder = builder.args(config.extra_args.clone());
+    }
+
+    let details = LaunchDetails {
+        executable_path,
+        executable_source,
+        headful: config.headful,
+        no_sandbox: config.no_sandbox,
+        extra_args: config.extra_args.clone(),
+        launch_timeout: config.launch_timeout,
+        user_data_dir: user_data_dir.clone(),
+        keep_user_data_dir: config.keep_user_data_dir,
+    };
+    let browser_config = builder
+        .build()
+        .map_err(|err| launch_error("build_config", &details, err))?;
+
+    Ok(PreparedLaunch {
+        browser_config,
+        details,
+    })
+}
+
+fn cleanup_user_data_dir(path: &Path, keep_user_data_dir: bool) {
+    if !keep_user_data_dir {
+        let _ = std::fs::remove_dir_all(path);
+    }
+}
+
+fn launch_failure_stage(message: &str) -> &'static str {
+    if message.contains("before websocket URL could be resolved")
+        || message.contains("resolving websocket URL")
+    {
+        "websocket_resolve"
+    } else if message.contains("No such file or directory")
+        || message.contains("os error 2")
+        || message.contains("Permission denied")
+    {
+        "spawn_process"
+    } else {
+        "launch_process"
+    }
+}
+
+fn launch_error(stage: &str, details: &LaunchDetails, message: impl Into<String>) -> BrowserError {
+    let message = message.into();
+    let effective_stage = if stage == "launch_process" {
+        launch_failure_stage(&message)
+    } else {
+        stage
+    };
+    BrowserError::new(
+        "cdp_launch_failed",
+        format!(
+            "stage={} executable={} executable_source={} headful={} no_sandbox={} launch_timeout_ms={} user_data_dir={} keep_user_data_dir={} extra_args={:?} message={}",
+            effective_stage,
+            details.executable_path.display(),
+            details.executable_source,
+            details.headful,
+            details.no_sandbox,
+            details.launch_timeout.as_millis(),
+            details.user_data_dir.display(),
+            details.keep_user_data_dir,
+            details.extra_args,
+            message
+        ),
+    )
 }
 
 async fn create_page(browser: &ChromiumBrowser, initial_url: &str) -> BrowserResult<Page> {
@@ -375,4 +534,94 @@ async fn capture_viewport_screenshot(
         }
     };
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prepare_launch_uses_explicit_executable_and_args() {
+        let config = CdpConfig {
+            executable_path: Some(PathBuf::from("/tmp/fake-chrome")),
+            launch_timeout: Duration::from_millis(12_345),
+            no_sandbox: true,
+            extra_args: vec!["--alpha".to_string(), "--beta=1".to_string()],
+            keep_user_data_dir: true,
+            ..CdpConfig::default()
+        };
+
+        let prepared = prepare_launch(&config).expect("prepare launch");
+        assert_eq!(
+            prepared.details.executable_path,
+            PathBuf::from("/tmp/fake-chrome")
+        );
+        assert_eq!(prepared.details.executable_source, "explicit");
+        assert!(prepared.details.no_sandbox);
+        assert_eq!(
+            prepared.details.extra_args,
+            vec!["--alpha".to_string(), "--beta=1".to_string()]
+        );
+        assert_eq!(
+            prepared.details.launch_timeout,
+            Duration::from_millis(12_345)
+        );
+        assert!(prepared.details.keep_user_data_dir);
+        assert_eq!(
+            prepared.browser_config.user_data_dir,
+            Some(prepared.details.user_data_dir.clone())
+        );
+
+        cleanup_user_data_dir(&prepared.details.user_data_dir, false);
+    }
+
+    #[test]
+    fn cleanup_user_data_dir_removes_directory_when_debug_disabled() {
+        let path = unique_user_data_dir();
+        std::fs::create_dir_all(&path).expect("create temp dir");
+        assert!(path.exists());
+
+        cleanup_user_data_dir(&path, false);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn cleanup_user_data_dir_keeps_directory_when_debug_enabled() {
+        let path = unique_user_data_dir();
+        std::fs::create_dir_all(&path).expect("create temp dir");
+        assert!(path.exists());
+
+        cleanup_user_data_dir(&path, true);
+        assert!(path.exists());
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn launch_error_includes_runtime_context() {
+        let details = LaunchDetails {
+            executable_path: PathBuf::from("/tmp/chrome"),
+            executable_source: "explicit",
+            headful: false,
+            no_sandbox: true,
+            extra_args: vec!["--alpha".to_string()],
+            launch_timeout: Duration::from_millis(4_000),
+            user_data_dir: PathBuf::from("/tmp/profile"),
+            keep_user_data_dir: true,
+        };
+
+        let err = launch_error(
+            "launch_process",
+            &details,
+            "Browser process exited before websocket URL could be resolved",
+        );
+
+        assert_eq!(err.code, "cdp_launch_failed");
+        assert!(err.message.contains("stage=websocket_resolve"));
+        assert!(err.message.contains("executable=/tmp/chrome"));
+        assert!(err.message.contains("no_sandbox=true"));
+        assert!(err.message.contains("launch_timeout_ms=4000"));
+        assert!(err.message.contains("keep_user_data_dir=true"));
+        assert!(err.message.contains("--alpha"));
+    }
 }

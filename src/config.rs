@@ -137,6 +137,11 @@ pub struct CliOverrides {
     pub headless: Option<bool>,
     pub initial_url: Option<String>,
     pub cdp_url: Option<String>,
+    pub browser_executable: Option<PathBuf>,
+    pub browser_launch_timeout_ms: Option<u64>,
+    pub browser_no_sandbox: Option<bool>,
+    pub browser_args: Option<Vec<String>>,
+    pub browser_keep_user_data_dir: Option<bool>,
     pub snapshot_timeout_ms: Option<u64>,
     pub action_timeout_ms: Option<u64>,
     pub max_elements: Option<usize>,
@@ -280,6 +285,21 @@ impl FileConfig {
             if let Some(cdp_url) = browser.cdp_url.as_ref() {
                 config.browser.cdp_url = Some(cdp_url.to_string());
             }
+            if let Some(path) = browser.executable_path.as_ref() {
+                config.browser.executable_path = Some(PathBuf::from(path));
+            }
+            if let Some(timeout_ms) = browser.launch_timeout_ms {
+                config.browser.launch_timeout = Duration::from_millis(timeout_ms);
+            }
+            if let Some(value) = browser.no_sandbox {
+                config.browser.no_sandbox = value;
+            }
+            if let Some(value) = browser.extra_args.as_ref() {
+                config.browser.extra_args = value.clone();
+            }
+            if let Some(value) = browser.keep_user_data_dir {
+                config.browser.keep_user_data_dir = value;
+            }
             if let Some(timeout_ms) = browser.snapshot_timeout_ms {
                 config.browser.snapshot_timeout = Duration::from_millis(timeout_ms);
             }
@@ -411,6 +431,11 @@ struct FileBrowserConfig {
     headful: Option<bool>,
     initial_url: Option<String>,
     cdp_url: Option<String>,
+    executable_path: Option<String>,
+    launch_timeout_ms: Option<u64>,
+    no_sandbox: Option<bool>,
+    extra_args: Option<Vec<String>>,
+    keep_user_data_dir: Option<bool>,
     snapshot_timeout_ms: Option<u64>,
     action_timeout_ms: Option<u64>,
     max_elements: Option<usize>,
@@ -497,6 +522,21 @@ impl EnvOverrides {
                 "MBUS_HEADLESS" => overrides.headless = Some(parse_bool(&key, &value)?),
                 "MBUS_INITIAL_URL" => overrides.initial_url = Some(value),
                 "MBUS_CDP_URL" => overrides.cdp_url = Some(value),
+                "MBUS_BROWSER_EXECUTABLE" => {
+                    overrides.browser_executable = Some(PathBuf::from(value))
+                }
+                "MBUS_BROWSER_LAUNCH_TIMEOUT_MS" => {
+                    overrides.browser_launch_timeout_ms = Some(parse_u64(&key, &value)?)
+                }
+                "MBUS_BROWSER_NO_SANDBOX" => {
+                    overrides.browser_no_sandbox = Some(parse_bool(&key, &value)?)
+                }
+                "MBUS_BROWSER_EXTRA_ARGS" => {
+                    overrides.browser_args = Some(parse_string_list_env(&key, &value)?)
+                }
+                "MBUS_BROWSER_KEEP_USER_DATA_DIR" => {
+                    overrides.browser_keep_user_data_dir = Some(parse_bool(&key, &value)?)
+                }
                 "MBUS_SNAPSHOT_TIMEOUT_MS" => {
                     overrides.snapshot_timeout_ms = Some(parse_u64(&key, &value)?)
                 }
@@ -593,6 +633,21 @@ impl CliOverrides {
         }
         if let Some(cdp_url) = self.cdp_url.as_ref() {
             config.browser.cdp_url = Some(cdp_url.to_string());
+        }
+        if let Some(value) = self.browser_executable.as_ref() {
+            config.browser.executable_path = Some(value.to_path_buf());
+        }
+        if let Some(value) = self.browser_launch_timeout_ms {
+            config.browser.launch_timeout = Duration::from_millis(value);
+        }
+        if let Some(value) = self.browser_no_sandbox {
+            config.browser.no_sandbox = value;
+        }
+        if let Some(value) = self.browser_args.as_ref() {
+            config.browser.extra_args = value.clone();
+        }
+        if let Some(value) = self.browser_keep_user_data_dir {
+            config.browser.keep_user_data_dir = value;
         }
         if let Some(timeout_ms) = self.snapshot_timeout_ms {
             config.browser.snapshot_timeout = Duration::from_millis(timeout_ms);
@@ -754,6 +809,25 @@ fn parse_f64(name: &str, value: &str) -> Result<f64, ConfigError> {
         name: name.to_string(),
         message: err.to_string(),
     })
+}
+
+fn parse_string_list_env(name: &str, value: &str) -> Result<Vec<String>, ConfigError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    if trimmed.starts_with('[') {
+        return serde_json::from_str::<Vec<String>>(trimmed).map_err(|err| ConfigError::Env {
+            name: name.to_string(),
+            message: err.to_string(),
+        });
+    }
+    Ok(trimmed
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(ToString::to_string)
+        .collect())
 }
 
 fn parse_reasoning_effort(value: &str) -> Result<ReasoningEffort, String> {
@@ -1021,6 +1095,94 @@ mod tests {
         ]);
         let err = normalize_router_ladder(&mut config).expect_err("expected error");
         assert!(err.to_string().contains("must not downgrade"));
+    }
+
+    #[test]
+    fn browser_launch_config_respects_precedence() {
+        let mut config = AppConfig::default();
+        let file = FileConfig {
+            browser: Some(FileBrowserConfig {
+                executable_path: Some("/file/chrome".to_string()),
+                launch_timeout_ms: Some(11_000),
+                no_sandbox: Some(false),
+                extra_args: Some(vec!["--file-arg".to_string()]),
+                keep_user_data_dir: Some(false),
+                ..FileBrowserConfig::default()
+            }),
+            ..FileConfig::default()
+        };
+        file.apply(&mut config).expect("file apply");
+
+        let env = EnvOverrides::from_pairs(vec![
+            (
+                "MBUS_BROWSER_EXECUTABLE".to_string(),
+                "/env/chrome".to_string(),
+            ),
+            (
+                "MBUS_BROWSER_LAUNCH_TIMEOUT_MS".to_string(),
+                "22000".to_string(),
+            ),
+            ("MBUS_BROWSER_NO_SANDBOX".to_string(), "true".to_string()),
+            (
+                "MBUS_BROWSER_EXTRA_ARGS".to_string(),
+                "--env-one,--env-two".to_string(),
+            ),
+            (
+                "MBUS_BROWSER_KEEP_USER_DATA_DIR".to_string(),
+                "true".to_string(),
+            ),
+        ])
+        .expect("env overrides");
+        env.apply(&mut config).expect("env apply");
+
+        let cli = CliOverrides {
+            browser_executable: Some(PathBuf::from("/cli/chrome")),
+            browser_launch_timeout_ms: Some(33_000),
+            browser_no_sandbox: Some(false),
+            browser_args: Some(vec!["--cli-arg".to_string()]),
+            browser_keep_user_data_dir: Some(false),
+            ..CliOverrides::default()
+        };
+        cli.apply(&mut config).expect("cli apply");
+
+        assert_eq!(
+            config.browser.executable_path,
+            Some(PathBuf::from("/cli/chrome"))
+        );
+        assert_eq!(config.browser.launch_timeout, Duration::from_millis(33_000));
+        assert!(!config.browser.no_sandbox);
+        assert_eq!(config.browser.extra_args, vec!["--cli-arg".to_string()]);
+        assert!(!config.browser.keep_user_data_dir);
+    }
+
+    #[test]
+    fn parses_browser_extra_args_from_env_csv() {
+        let env = EnvOverrides::from_pairs(vec![(
+            "MBUS_BROWSER_EXTRA_ARGS".to_string(),
+            "--alpha,--beta=1, --gamma ".to_string(),
+        )])
+        .expect("env overrides");
+        assert_eq!(
+            env.inner.browser_args,
+            Some(vec![
+                "--alpha".to_string(),
+                "--beta=1".to_string(),
+                "--gamma".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn parses_browser_extra_args_from_env_json_array() {
+        let env = EnvOverrides::from_pairs(vec![(
+            "MBUS_BROWSER_EXTRA_ARGS".to_string(),
+            "[\"--alpha\",\"--beta=1\"]".to_string(),
+        )])
+        .expect("env overrides");
+        assert_eq!(
+            env.inner.browser_args,
+            Some(vec!["--alpha".to_string(), "--beta=1".to_string()])
+        );
     }
 
     #[test]

@@ -69,6 +69,8 @@ For a concise install + quickstart path (prerequisites, install steps, and the f
 - `--config`
 - `--headless`
 - `--initial-url`
+- `--browser-executable`, `--browser-launch-timeout-ms`
+- `--browser-no-sandbox`, repeated `--browser-arg`, `--browser-keep-user-data-dir`
 - `--max-steps`
 - `--llm-mode` (`stub`, `scripted`, `openai`)
 - `--llm-base-url`, `--llm-api-key`
@@ -82,6 +84,8 @@ For a concise install + quickstart path (prerequisites, install steps, and the f
 - `--report-path` (default: `target/bench/report.json`)
 - `--config`
 - `--headless`
+- `--browser-executable`, `--browser-launch-timeout-ms`
+- `--browser-no-sandbox`, repeated `--browser-arg`, `--browser-keep-user-data-dir`
 - `--max-steps-per-task` (default: `40`)
 - `--required-passes` (default: total tasks minus two)
 - `--llm-mode` (`scripted`, `openai`)
@@ -94,6 +98,8 @@ For a concise install + quickstart path (prerequisites, install steps, and the f
 - `--report-path` (default: `target/challenge/report.json`)
 - `--config`
 - `--headless`
+- `--browser-executable`, `--browser-launch-timeout-ms`
+- `--browser-no-sandbox`, repeated `--browser-arg`, `--browser-keep-user-data-dir`
 - `--max-steps-per-task` (default: `40`)
 - `--required-passes` (default: `10`)
 - `--llm-base-url`, `--llm-api-key`
@@ -106,6 +112,12 @@ For a concise install + quickstart path (prerequisites, install steps, and the f
 - `--output-dir` (default: `target/challenge/package/<report-stem>`)
 - `--zip-path` (default: `target/challenge/package/<report-stem>.zip`)
 - `--overwrite`
+
+`cdp_bootstrap`:
+- validates browser startup only using the same browser config inputs as `mbus`
+- supports `--config`, `--headless`, `--initial-url`, `--cdp-url`
+- supports `--browser-executable`, `--browser-launch-timeout-ms`
+- supports `--browser-no-sandbox`, repeated `--browser-arg`, `--browser-keep-user-data-dir`
 
 ## Challenge Proof Workflow
 

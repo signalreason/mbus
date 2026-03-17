@@ -76,6 +76,16 @@ struct RunArgs {
     initial_url: Option<String>,
     #[arg(long)]
     cdp_url: Option<String>,
+    #[arg(long)]
+    browser_executable: Option<PathBuf>,
+    #[arg(long)]
+    browser_launch_timeout_ms: Option<u64>,
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    browser_no_sandbox: Option<bool>,
+    #[arg(long = "browser-arg")]
+    browser_args: Vec<String>,
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    browser_keep_user_data_dir: Option<bool>,
     #[arg(long, value_parser = clap::value_parser!(usize))]
     max_steps: Option<usize>,
     #[arg(long, value_parser = clap::value_parser!(usize))]
@@ -151,6 +161,16 @@ struct BenchArgs {
     #[arg(long, value_parser = clap::value_parser!(bool))]
     headless: Option<bool>,
     #[arg(long)]
+    browser_executable: Option<PathBuf>,
+    #[arg(long)]
+    browser_launch_timeout_ms: Option<u64>,
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    browser_no_sandbox: Option<bool>,
+    #[arg(long = "browser-arg")]
+    browser_args: Vec<String>,
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    browser_keep_user_data_dir: Option<bool>,
+    #[arg(long)]
     max_steps_per_task: Option<usize>,
     #[arg(long)]
     required_passes: Option<usize>,
@@ -194,6 +214,16 @@ struct ChallengeArgs {
     config: Option<PathBuf>,
     #[arg(long, value_parser = clap::value_parser!(bool))]
     headless: Option<bool>,
+    #[arg(long)]
+    browser_executable: Option<PathBuf>,
+    #[arg(long)]
+    browser_launch_timeout_ms: Option<u64>,
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    browser_no_sandbox: Option<bool>,
+    #[arg(long = "browser-arg")]
+    browser_args: Vec<String>,
+    #[arg(long, value_parser = clap::value_parser!(bool))]
+    browser_keep_user_data_dir: Option<bool>,
     #[arg(long)]
     max_steps_per_task: Option<usize>,
     #[arg(long)]
@@ -433,6 +463,7 @@ async fn bench_command(args: BenchArgs) -> Result<(), Box<dyn Error>> {
         max_steps_per_task,
         required_passes,
         base_url: base_url.clone(),
+        browser: BrowserLog::from(&base_config.browser),
     })?;
 
     let actions_dir = actions_work_dir(&report_path);
@@ -618,6 +649,7 @@ async fn challenge_command(args: ChallengeArgs) -> Result<(), Box<dyn Error>> {
         max_steps_per_task,
         required_passes,
         base_url: base_url.clone(),
+        browser: BrowserLog::from(&base_config.browser),
     })?;
 
     let challenge_started_at = std::time::Instant::now();
@@ -896,6 +928,11 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
     } else {
         Some(args.router_ladder.clone())
     };
+    let browser_args = if args.browser_args.is_empty() {
+        None
+    } else {
+        Some(args.browser_args.clone())
+    };
 
     Ok(CliOverrides {
         max_steps: args.max_steps,
@@ -905,6 +942,11 @@ fn build_cli_overrides(args: &RunArgs) -> Result<CliOverrides, ConfigError> {
         headless: args.headless,
         initial_url: args.initial_url.clone(),
         cdp_url: args.cdp_url.clone(),
+        browser_executable: args.browser_executable.clone(),
+        browser_launch_timeout_ms: args.browser_launch_timeout_ms,
+        browser_no_sandbox: args.browser_no_sandbox,
+        browser_args,
+        browser_keep_user_data_dir: args.browser_keep_user_data_dir,
         snapshot_timeout_ms: args.snapshot_timeout_ms,
         action_timeout_ms: args.action_timeout_ms,
         max_elements: args.max_elements,
@@ -956,10 +998,20 @@ fn build_bench_cli_overrides(
     } else {
         Some(args.router_ladder.clone())
     };
+    let browser_args = if args.browser_args.is_empty() {
+        None
+    } else {
+        Some(args.browser_args.clone())
+    };
 
     Ok(CliOverrides {
         max_steps: Some(max_steps_per_task),
         headless: args.headless,
+        browser_executable: args.browser_executable.clone(),
+        browser_launch_timeout_ms: args.browser_launch_timeout_ms,
+        browser_no_sandbox: args.browser_no_sandbox,
+        browser_args,
+        browser_keep_user_data_dir: args.browser_keep_user_data_dir,
         router_ladder,
         llm_mode,
         llm_base_url: args.llm_base_url.clone(),
@@ -987,10 +1039,20 @@ fn build_challenge_cli_overrides(
     } else {
         Some(args.router_ladder.clone())
     };
+    let browser_args = if args.browser_args.is_empty() {
+        None
+    } else {
+        Some(args.browser_args.clone())
+    };
 
     Ok(CliOverrides {
         max_steps: Some(max_steps_per_task),
         headless: args.headless,
+        browser_executable: args.browser_executable.clone(),
+        browser_launch_timeout_ms: args.browser_launch_timeout_ms,
+        browser_no_sandbox: args.browser_no_sandbox,
+        browser_args,
+        browser_keep_user_data_dir: args.browser_keep_user_data_dir,
         router_ladder,
         llm_mode: Some(LlmMode::OpenAi),
         llm_base_url: args.llm_base_url.clone(),
@@ -1470,19 +1532,7 @@ impl From<&mbus::config::AppConfig> for ConfigLog {
                 memory_max_observations: config.agent.memory.max_observations,
                 memory_max_history: config.agent.memory.max_history,
             },
-            browser: BrowserLog {
-                headful: config.browser.headful,
-                initial_url: config.browser.initial_url.clone(),
-                cdp_url: config
-                    .browser
-                    .cdp_url
-                    .as_ref()
-                    .map(|value| redact_url(value)),
-                snapshot_timeout_ms: config.browser.snapshot_timeout.as_millis() as u64,
-                action_timeout_ms: config.browser.action_timeout.as_millis() as u64,
-                max_elements: config.browser.max_elements,
-                max_text_len: config.browser.max_text_len,
-            },
+            browser: BrowserLog::from(&config.browser),
             router: RouterLog {
                 failures_to_mid: config.router.failures_to_mid,
                 failures_to_strong: config.router.failures_to_strong,
@@ -1553,10 +1603,37 @@ struct BrowserLog {
     headful: bool,
     initial_url: String,
     cdp_url: Option<String>,
+    executable_path: Option<String>,
+    launch_timeout_ms: u64,
+    no_sandbox: bool,
+    extra_args: Vec<String>,
+    keep_user_data_dir: bool,
     snapshot_timeout_ms: u64,
     action_timeout_ms: u64,
     max_elements: usize,
     max_text_len: usize,
+}
+
+impl From<&mbus::browser::CdpConfig> for BrowserLog {
+    fn from(config: &mbus::browser::CdpConfig) -> Self {
+        Self {
+            headful: config.headful,
+            initial_url: config.initial_url.clone(),
+            cdp_url: config.cdp_url.as_ref().map(|value| redact_url(value)),
+            executable_path: config
+                .executable_path
+                .as_ref()
+                .map(|value| value.display().to_string()),
+            launch_timeout_ms: config.launch_timeout.as_millis() as u64,
+            no_sandbox: config.no_sandbox,
+            extra_args: config.extra_args.clone(),
+            keep_user_data_dir: config.keep_user_data_dir,
+            snapshot_timeout_ms: config.snapshot_timeout.as_millis() as u64,
+            action_timeout_ms: config.action_timeout.as_millis() as u64,
+            max_elements: config.max_elements,
+            max_text_len: config.max_text_len,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -1608,6 +1685,7 @@ struct BenchConfigLog {
     max_steps_per_task: usize,
     required_passes: usize,
     base_url: String,
+    browser: BrowserLog,
 }
 
 #[derive(Serialize)]
@@ -1666,6 +1744,7 @@ struct ChallengeConfigLog {
     max_steps_per_task: usize,
     required_passes: usize,
     base_url: String,
+    browser: BrowserLog,
 }
 
 #[derive(Serialize)]
@@ -1724,4 +1803,45 @@ struct PackageSummaryLog {
     zip_path: String,
     files: usize,
     included_files: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn browser_log_includes_runtime_launch_fields() {
+        let mut config = mbus::browser::CdpConfig::default();
+        config.executable_path = Some(PathBuf::from("/tmp/chrome"));
+        config.launch_timeout = Duration::from_millis(12_000);
+        config.no_sandbox = true;
+        config.extra_args = vec!["--alpha".to_string(), "--beta=1".to_string()];
+        config.keep_user_data_dir = true;
+
+        let log = serde_json::to_value(BrowserLog::from(&config)).expect("serialize browser log");
+        assert_eq!(log["executable_path"], json!("/tmp/chrome"));
+        assert_eq!(log["launch_timeout_ms"], json!(12_000));
+        assert_eq!(log["no_sandbox"], json!(true));
+        assert_eq!(log["extra_args"], json!(["--alpha", "--beta=1"]));
+        assert_eq!(log["keep_user_data_dir"], json!(true));
+    }
+
+    #[test]
+    fn config_log_redacts_cdp_url_and_includes_browser_launch_settings() {
+        let mut config = mbus::config::AppConfig::default();
+        config.browser.cdp_url = Some("ws://user:secret@example.test/devtools".to_string());
+        config.browser.executable_path = Some(PathBuf::from("/tmp/chrome"));
+        config.browser.no_sandbox = true;
+        config.browser.extra_args = vec!["--alpha".to_string()];
+
+        let log = serde_json::to_value(ConfigLog::from(&config)).expect("serialize config log");
+        assert_eq!(
+            log["browser"]["cdp_url"],
+            json!("ws://***@example.test/devtools")
+        );
+        assert_eq!(log["browser"]["executable_path"], json!("/tmp/chrome"));
+        assert_eq!(log["browser"]["no_sandbox"], json!(true));
+        assert_eq!(log["browser"]["extra_args"], json!(["--alpha"]));
+    }
 }

@@ -64,7 +64,7 @@ Every section below ties failure symptoms to structured log events, error codes 
   3. `js_error` from observation collection usually means the page script threw while reading visible text; rerun the step with `RUST_LOG=debug` to see the exact JS stack, or increase `browser.max_text_len` if truncation fails.  
   4. Restart the run (`cargo run -- run ...`) after clearing state (delete `target/` if caching matters) and capture the first `snapshot_error` event to triage.
 
-Until a dedicated browser preflight command exists, do not begin expensive `bench` or `challenge` proof runs unless browser startup has already been validated in the same environment. Treat `cdp_launch_failed` as a release-blocking runtime issue first, then return to proof generation.
+Until a dedicated browser preflight command exists, do not begin expensive `bench` or `challenge` proof runs unless browser startup has already been validated in the same environment. Use `cargo run --bin cdp_bootstrap -- --config <config-path>` or the same `--browser-*` flags you intend to pass to `mbus` so startup is checked against the real launch configuration. Treat `cdp_launch_failed` as a release-blocking runtime issue first, then return to proof generation.
 
 ### 4. No-progress / low-actionability loops (`step_result`, `no_progress_termination`)
 **Log signals:**  
@@ -119,7 +119,7 @@ When reviewing a proof package, start with `failure_buckets`, then inspect per-t
 ### Verification checklist
 1. `cargo test` – ensures core crates (telemetry, validator, browser adapters) still compile.  
 2. Run a short scripted task: `cargo run --bin mbus -- run --llm-mode scripted --task "Checkout sample" --plan "" --max-steps 5` (or point at `harness/tasks/` fixture). Confirm the CLI emits a `summary` JSON line with `status="done"` and `final_url_contains`.  
-3. Manually validate browser startup before any multi-task run. At minimum, confirm a browser-backed `mbus run` can launch Chromium cleanly in the current environment. If you hit `cdp_launch_failed`, stop and fix runtime setup before proceeding.  
+3. Manually validate browser startup before any multi-task run. Prefer `cargo run --bin cdp_bootstrap -- --config <config-path>` or matching `--browser-*` overrides so the check uses the same launch settings as `mbus`. If you hit `cdp_launch_failed`, stop and fix runtime setup before proceeding.  
 4. Run `cargo run --bin mbus -- bench --llm-mode scripted` only after browser startup is healthy, to make sure the regression harness still meets its gate.  
 5. For product-level evidence, run `./scripts/run_challenge_proof.sh` with the required env vars only after browser startup is healthy, and confirm the packaged report includes screenshots plus token and cost totals.  
 6. If you rely on extraction outside the challenge flow, ensure `mbus_extract.json` is created and matches whichever `extract` action was used.  
