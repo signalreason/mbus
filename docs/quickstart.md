@@ -14,7 +14,11 @@ A short, repeatable onboarding path for getting `mbus` built, then switching to 
 4. **Confirm success.** `mbus` prints JSON log lines ending with a `{"type":"summary","status":"done","terminal_state":"done"...}` record before exiting.
 
 ## Canonical challenge-proof path
-After the stub smoke test, the primary product workflow is a real-model challenge run plus packaging:
+After the stub smoke test, the primary product workflow is still a real-model challenge run plus packaging, but it should only start after a browser startup sanity check confirms Chromium can launch cleanly in the current environment.
+
+Today that sanity check is still a manual operator step, not a dedicated CLI preflight command. Until the planned preflight work lands, use the browser troubleshooting guidance in `docs/operations-runbook.md` and verify browser-backed runs can start before spending tokens on the full proof workflow.
+
+Once browser startup is known-good, run:
 
 ```bash
 MBUS_LLM_API_KEY=... \
@@ -28,6 +32,8 @@ This workflow:
 - packages the resulting report and screenshots,
 - prints the exact report and bundle paths for inspection.
 
+If Chromium cannot launch reliably, do not treat a failed proof attempt as meaningful product evidence. Resolve the runtime issue first, then rerun the proof workflow.
+
 If you want the raw commands instead of the helper script:
 
 ```bash
@@ -35,11 +41,12 @@ cargo run --bin mbus -- challenge --headless true --report-path target/challenge
 cargo run --bin mbus -- package --report-path target/challenge/report.json
 ```
 
-Use the helper script for reproducibility; use the raw commands only when iterating.
+Use the helper script for reproducibility after browser startup has been validated; use the raw commands only when iterating.
 
 ## Prerequisites
 - **Rust toolchain.** Install via [rustup](https://rustup.rs/) and keep `rustup component add clippy rustfmt` handy for future development.
 - **Chromium/Chrome.** `chromiumoxide` walks your `PATH` for a Chromium/Chrome binary. On macOS `brew install --cask google-chrome`, on Ubuntu/Debian `sudo apt install chromium-browser`, and on Fedora `sudo dnf install chromium`. If you already run a CDP-compatible browser elsewhere, set `MBUS_CDP_URL` or pass `--cdp-url` so `mbus run` attaches instead of launching its own.
+- **Browser startup sanity check.** Before `bench` or `challenge`, confirm Chromium can actually launch in your environment. A dedicated preflight command is planned but not implemented yet; for now, follow `docs/operations-runbook.md` for manual browser startup validation and `cdp_launch_failed` triage.
 
 ## Build or install details
 - Clone or update the repo:

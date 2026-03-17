@@ -85,17 +85,45 @@
       }
     },
     {
+      "task_id": "RUNTIME-001",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Stabilize the Chromium/CDP runtime for proof runs and browser-backed tests",
+      "definition_of_done": [
+        "Document and validate a browser runtime configuration that launches cleanly for local `mbus challenge` proof runs and browser-backed integration tests.",
+        "Current `cdp_launch_failed` startup failures have a reproducible triage path and an agreed operator setup in the docs or config guidance.",
+        "Browser-backed validation is no longer blocked by environment-specific launch instability before step execution begins."
+      ],
+      "recommended": {
+        "approach": "Treat browser startup stability as the proof blocker first, then resume evidence generation once Chromium can launch reliably."
+      }
+    },
+    {
+      "task_id": "RUNTIME-002",
+      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "title": "Add a browser startup preflight check ahead of bench and challenge runs",
+      "definition_of_done": [
+        "Operators have a lightweight preflight path that verifies Chromium/CDP startup before expensive `bench` or `challenge` runs begin.",
+        "Preflight failures surface actionable diagnostics for launch, connection, and binary/runtime misconfiguration instead of failing deep inside a multi-task run.",
+        "Docs and proof workflow guidance require the preflight check before real-model proof generation."
+      ],
+      "recommended": {
+        "approach": "Keep the check narrow and fast: verify browser startup and CDP reachability before spending model tokens or launching the full obstacle suite."
+      }
+    },
+    {
       "task_id": "PROOF-001",
       "status": "unstarted",
       "model": "gpt-5.2-codex",
       "title": "Generate a real-model challenge proof package",
       "definition_of_done": [
-        "Run the canonical challenge proof workflow with a real model against the default 12-task obstacle suite.",
+        "Run the canonical challenge proof workflow with a real model against the default 12-task obstacle suite after the browser runtime is stable and the preflight path is in place.",
         "Produce a packaged report with screenshots, token totals, cost totals, and gate result.",
         "Record the outcome in current status docs or notes without committing generated artifacts."
       ],
       "recommended": {
-        "approach": "Use the scripted proof workflow rather than ad hoc commands so the evidence is reproducible."
+        "approach": "Use the scripted proof workflow rather than ad hoc commands, but only after browser startup is known-good so the evidence run is not wasted on avoidable launch failures."
       }
     },
     {

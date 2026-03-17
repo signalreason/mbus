@@ -57,11 +57,14 @@ Every section below ties failure symptoms to structured log events, error codes 
 ### 3. Browser-level failures (`apply_error`, `snapshot_error`)
 **Log signals:** `apply_error`/`snapshot_error` events with `error_code`, `error_message`, `step_duration_ms`. Subsequent `step_result.error_code` inherits the same `BrowserError`.  
 **Browser `error_code`s:** `config_error`, `cdp_launch_failed`, `cdp_connect_failed`, `cdp_page_close_failed`, `cdp_close_failed`, `cdp_handler_failed`, `cdp_page_failed`, `cdp_nav_failed`, `cdp_error`, `missing_url`, `js_error`.  
+**Current status:** Browser startup stability is now an active delivery blocker, not just a local troubleshooting concern. In the current Codex environment, browser-backed `bench` and `challenge` validation fail before step execution begins because Chromium exits during startup with `cdp_launch_failed`.  
 **Recovery:**  
   1. Check that the Chromium binary is accessible (see `chromiumoxide` requirements) and that no other process is holding the CDP port. Ensure `MBUS_HEADLESS`/`headful` config points to a valid binary.  
   2. For navigation failures (`cdp_nav_failed`), confirm the target URL is reachable and not blocked by certificates; if needed, set `validator.allow_insecure = true` or pass `--initial-url` to seed a safe start page.  
   3. `js_error` from observation collection usually means the page script threw while reading visible text; rerun the step with `RUST_LOG=debug` to see the exact JS stack, or increase `browser.max_text_len` if truncation fails.  
   4. Restart the run (`cargo run -- run ...`) after clearing state (delete `target/` if caching matters) and capture the first `snapshot_error` event to triage.
+
+Until a dedicated browser preflight command exists, do not begin expensive `bench` or `challenge` proof runs unless browser startup has already been validated in the same environment. Treat `cdp_launch_failed` as a release-blocking runtime issue first, then return to proof generation.
 
 ### 4. No-progress / low-actionability loops (`step_result`, `no_progress_termination`)
 **Log signals:**  
@@ -98,6 +101,8 @@ Expected outputs:
 - a packaged bundle directory under `target/challenge/package/`,
 - a zip archive next to the unpacked bundle.
 
+Prerequisite: confirm browser startup is healthy before running the proof script. The planned steady-state workflow includes a lightweight browser preflight check, but that check is not implemented yet.
+
 ### Challenge failure buckets
 Challenge reports use the same aggregate structure as bench reports, but the most useful buckets are usually:
 - `run_error:*`: browser launch, transport, timeout, or provider failures prevented evaluation.
@@ -114,9 +119,10 @@ When reviewing a proof package, start with `failure_buckets`, then inspect per-t
 ### Verification checklist
 1. `cargo test` – ensures core crates (telemetry, validator, browser adapters) still compile.  
 2. Run a short scripted task: `cargo run --bin mbus -- run --llm-mode scripted --task "Checkout sample" --plan "" --max-steps 5` (or point at `harness/tasks/` fixture). Confirm the CLI emits a `summary` JSON line with `status="done"` and `final_url_contains`.  
-3. Run `cargo run --bin mbus -- bench --llm-mode scripted` to make sure the regression harness still meets its gate.  
-4. For product-level evidence, run `./scripts/run_challenge_proof.sh` with the required env vars and confirm the packaged report includes screenshots plus token and cost totals.  
-5. If you rely on extraction outside the challenge flow, ensure `mbus_extract.json` is created and matches whichever `extract` action was used.  
+3. Manually validate browser startup before any multi-task run. At minimum, confirm a browser-backed `mbus run` can launch Chromium cleanly in the current environment. If you hit `cdp_launch_failed`, stop and fix runtime setup before proceeding.  
+4. Run `cargo run --bin mbus -- bench --llm-mode scripted` only after browser startup is healthy, to make sure the regression harness still meets its gate.  
+5. For product-level evidence, run `./scripts/run_challenge_proof.sh` with the required env vars only after browser startup is healthy, and confirm the packaged report includes screenshots plus token and cost totals.  
+6. If you rely on extraction outside the challenge flow, ensure `mbus_extract.json` is created and matches whichever `extract` action was used.  
 
 ### Rollback procedure
 1. Identify the last known-good commit or tag (e.g., `git describe --tags --abbrev=0`).  
